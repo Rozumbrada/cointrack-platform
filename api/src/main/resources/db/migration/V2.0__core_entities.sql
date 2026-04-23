@@ -133,8 +133,9 @@ CREATE TABLE receipts (
     payment_method    VARCHAR(16)     NULL,        -- 'cash' | 'card' | 'unknown'
     note              TEXT            NULL,
 
-    -- Photo keys (S3 object keys), array of strings jako JSONB
-    photo_keys        JSONB           NOT NULL DEFAULT '[]'::jsonb,
+    -- Photo keys (S3 object keys) — JSON-encoded array v TEXT sloupci
+    -- (Exposed má schéma text(); JSON ops nepotřebujeme, jen store+load)
+    photo_keys        TEXT            NOT NULL DEFAULT '[]',
 
     client_version    BIGINT          NOT NULL DEFAULT 1,
     created_at        TIMESTAMPTZ     NOT NULL DEFAULT now(),
@@ -200,8 +201,8 @@ CREATE TABLE invoices (
 
     note              TEXT            NULL,
 
-    -- File keys (S3 object keys), array of strings jako JSONB
-    file_keys         JSONB           NOT NULL DEFAULT '[]'::jsonb,
+    -- File keys (S3 object keys) — JSON-encoded array v TEXT sloupci
+    file_keys         TEXT            NOT NULL DEFAULT '[]',
 
     -- iDoklad integrace
     idoklad_id        VARCHAR(64)     NULL,
