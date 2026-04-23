@@ -1,0 +1,55 @@
+import type { Metadata, Viewport } from "next";
+import { SITE } from "@/lib/utils";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  metadataBase: new URL(SITE.url),
+  title: {
+    default: `${SITE.name} — ${SITE.tagline}`,
+    template: `%s · ${SITE.name}`,
+  },
+  description: SITE.description,
+  keywords: [
+    "správa financí",
+    "účetnictví pro OSVČ",
+    "skenování účtenek",
+    "Fio API",
+    "iDoklad",
+    "open banking",
+    "osobní finance",
+    "faktury",
+    "Cointrack",
+  ],
+  authors: [{ name: "Cointrack" }],
+  openGraph: {
+    type: "website",
+    locale: "cs_CZ",
+    url: SITE.url,
+    title: `${SITE.name} — ${SITE.tagline}`,
+    description: SITE.description,
+    siteName: SITE.name,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${SITE.name} — ${SITE.tagline}`,
+    description: SITE.description,
+  },
+  robots: { index: true, follow: true },
+  icons: {
+    icon: "/favicon.svg",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#fafaf9",
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="cs">
+      <body>{children}</body>
+    </html>
+  );
+}

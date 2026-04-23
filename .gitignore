@@ -1,0 +1,38 @@
+# Env
+.env
+.env.local
+.env.production
+*.pem
+*.key
+
+# Kotlin / Gradle
+api/.gradle/
+api/build/
+api/out/
+api/**/build/
+.idea/
+*.iml
+
+# Node / Next.js
+web/node_modules/
+web/.next/
+web/out/
+web/coverage/
+web/.turbo/
+
+# Docker volumes
+infra/data/
+.docker-volumes/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/

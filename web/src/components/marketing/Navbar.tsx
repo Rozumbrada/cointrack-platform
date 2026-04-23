@@ -1,0 +1,42 @@
+import Link from "next/link";
+import { Logo } from "./Logo";
+import { Button } from "@/components/ui/button";
+import { Container } from "@/components/ui/container";
+
+const navItems = [
+  { href: "/features", label: "Funkce" },
+  { href: "/for-business", label: "Pro firmy" },
+  { href: "/pricing", label: "Ceník" },
+  { href: "/about", label: "O nás" },
+];
+
+export function Navbar() {
+  return (
+    <header className="sticky top-0 z-40 border-b border-ink-200 bg-ink-50/80 backdrop-blur">
+      <Container className="flex h-16 items-center justify-between">
+        <div className="flex items-center gap-8">
+          <Logo />
+          <nav className="hidden md:flex items-center gap-6">
+            {navItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="text-sm text-ink-600 hover:text-ink-900 transition-colors"
+              >
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button asChild variant="ghost" size="sm">
+            <Link href="/login">Přihlásit</Link>
+          </Button>
+          <Button asChild variant="brand" size="sm">
+            <Link href="/signup">Vyzkoušet zdarma</Link>
+          </Button>
+        </div>
+      </Container>
+    </header>
+  );
+}
