@@ -1,0 +1,67 @@
+# Cointrack Caddy reverse proxy
+# Auto SSL přes Let's Encrypt. HTTP→HTTPS redirect automaticky.
+
+{
+    email founder@cointrack.cz
+    # Výchozí providera = Let's Encrypt.
+    # Pokud chceš staging (pro testování bez rate limitu), odkomentuj:
+    # acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+# ─── API ────────────────────────────────────────────────────────────
+api.cointrack.cz {
+    reverse_proxy api:8080 {
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    # Rate limiting je v Ktor vrstvě (per-endpoint), zde jen globální basic
+    @health path /health
+    reverse_proxy @health api:8080
+
+    # Response compression
+    encode gzip zstd
+
+    # Logging
+    log {
+        output file /data/access-api.log {
+            roll_size 50mb
+            roll_keep 5
+        }
+        format json
+    }
+}
+
+# ─── MinIO (public file access přes presigned URLs) ─────────────────
+files.cointrack.cz {
+    reverse_proxy minio:9000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        -Server
+    }
+
+    # CORS pro Next.js web (fotky v UI)
+    @options method OPTIONS
+    handle @options {
+        respond 204
+    }
+
+    encode gzip
+}

@@ -1,0 +1,156 @@
+# Cointrack production stack
+#
+# Postgres 16 + MinIO + Ktor API + Caddy reverse proxy (auto SSL přes Let's Encrypt).
+#
+# Spuštění:
+#   cd /opt/cointrack/infra
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+#
+# Restart:    docker compose ... restart
+# Logs:       docker compose ... logs -f api
+# Update:     git pull && docker compose ... up -d --build
+
+name: cointrack
+
+services:
+
+  # ─── Postgres 16 ──────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: cointrack-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-backup:/backup
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  # ─── MinIO (S3-kompatibilní file storage) ─────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: cointrack-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
+      MINIO_BROWSER_REDIRECT_URL: ${S3_PUBLIC_ENDPOINT}
+    volumes:
+      - minio_data:/data
+    networks: [internal, web]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  # Vytvoří bucket při prvním spuštění
+  minio-init:
+    image: minio/mc:latest
+    container_name: cointrack-minio-init
+    depends_on:
+      minio: { condition: service_healthy }
+    networks: [internal]
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${S3_ACCESS_KEY} ${S3_SECRET_KEY} &&
+      mc mb --ignore-existing local/${S3_BUCKET} &&
+      echo '✓ MinIO bucket ready.'
+      "
+    restart: "no"
+
+  # ─── Ktor API ──────────────────────────────────────────────────────
+  api:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    image: cointrack/api:latest
+    container_name: cointrack-api
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8080
+      SERVER_HOST: 0.0.0.0
+      ENVIRONMENT: ${ENVIRONMENT}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_REGION: ${S3_REGION}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ISSUER: ${JWT_ISSUER}
+      JWT_AUDIENCE: ${JWT_AUDIENCE}
+      JWT_ACCESS_TTL_MINUTES: ${JWT_ACCESS_TTL_MINUTES}
+      JWT_REFRESH_TTL_DAYS: ${JWT_REFRESH_TTL_DAYS}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      EMAIL_FROM: ${EMAIL_FROM}
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL}
+      PUBLIC_API_URL: ${PUBLIC_API_URL}
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio:    { condition: service_healthy }
+    networks: [internal, web]
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  # ─── Caddy reverse proxy + automatic SSL ──────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    container_name: cointrack-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [web]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+networks:
+  # internal — komunikace mezi API ↔ Postgres, mimo internet
+  internal:
+    driver: bridge
+    internal: true
+  # web — komunikace Caddy ↔ API, Caddy ↔ MinIO, přístup z internetu
+  web:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  minio_data:
+  caddy_data:
+  caddy_config:
