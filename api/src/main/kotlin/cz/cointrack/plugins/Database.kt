@@ -37,9 +37,18 @@ object DatabaseSingleton {
         _dataSource = HikariDataSource(config)
 
         // Flyway migrace
+        //
+        // baselineOnMigrate(true) + baselineVersion("0") — umožňuje Flyway
+        // běžet i nad už existující (manuálně osazenou) databází. Pokud
+        // flyway_schema_history je prázdné, vytvoří baseline a pokračuje.
+        // validateMigrationNaming(false) — explicitní; Flyway 10.x s Ktor
+        // fat-jarem někdy mylně odmítá jinak valid jména (V1.0__foo.sql).
         Flyway.configure()
             .dataSource(_dataSource)
             .locations("classpath:db/migration")
+            .baselineOnMigrate(true)
+            .baselineVersion("0")
+            .validateMigrationNaming(false)
             .load()
             .migrate()
 
