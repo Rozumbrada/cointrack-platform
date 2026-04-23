@@ -141,7 +141,9 @@ JWT_ACCESS_TTL_MINUTES=15
 JWT_REFRESH_TTL_DAYS=30
 
 # Email SMTP (DOPLŇ RUČNĚ z WEDOS Mailhosting)
-SMTP_HOST=smtp.wedos.net
+# Pozn.: smtp.wedos.net NEEXISTUJE — správný hostname WEDOS Mailhostingu
+# je wes1-smtp.wedos.net (STARTTLS, port 587) nebo smtp.wedos.com.
+SMTP_HOST=wes1-smtp.wedos.net
 SMTP_PORT=587
 SMTP_USER=founder@cointrack.cz
 SMTP_PASSWORD=__DOPLN__
