@@ -31,8 +31,8 @@ jwt:
 email:
   host: ${SMTP_HOST:-localhost}
   port: ${SMTP_PORT:-1025}
-  user: ${SMTP_USER:-}
-  password: ${SMTP_PASSWORD:-}
+  user: ${SMTP_USER:-none}
+  password: ${SMTP_PASSWORD:-none}
   from: ${EMAIL_FROM:-noreply@cointrack.cz}
 
 environment: ${ENVIRONMENT:-dev}
