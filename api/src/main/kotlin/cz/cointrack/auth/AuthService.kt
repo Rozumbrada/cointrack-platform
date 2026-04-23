@@ -15,8 +15,11 @@ import org.jetbrains.exposed.sql.insertAndGetId
 import org.jetbrains.exposed.sql.lowerCase
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
+import org.slf4j.LoggerFactory
 import java.time.Instant
 import java.util.UUID
+
+private val log = LoggerFactory.getLogger(AuthService::class.java)
 
 class AuthService(
     private val jwt: JwtService,
@@ -194,7 +197,13 @@ class AuthService(
         }
 
         val resetUrl = "$webBaseUrl/reset?token=$token"
-        email.send(userEmail, "Obnova hesla Cointrack", EmailTemplates.passwordReset(resetUrl))
+        // Email send je best-effort — endpoint vrací 200 i když SMTP selže
+        // (už jen z principu "neprozrazovat jestli email existuje").
+        try {
+            email.send(userEmail, "Obnova hesla Cointrack", EmailTemplates.passwordReset(resetUrl))
+        } catch (e: Exception) {
+            log.warn("Failed to send password reset email to $userEmail: ${e.message}")
+        }
     }
 
     suspend fun resetPassword(token: String, newPassword: String) {
@@ -277,7 +286,13 @@ class AuthService(
             }
         }
         val verifyUrl = "$webBaseUrl/verify?token=$token"
-        email.send(toEmail, "Ověř svůj email pro Cointrack", EmailTemplates.verifyEmail(verifyUrl))
+        // Email send je best-effort — pokud SMTP nefunguje, registrace stále projde.
+        // Uživatel si může vyžádat resend verifikačního emailu později.
+        try {
+            email.send(toEmail, "Ověř svůj email pro Cointrack", EmailTemplates.verifyEmail(verifyUrl))
+        } catch (e: Exception) {
+            log.warn("Failed to send verification email to $toEmail (user still registered): ${e.message}")
+        }
     }
 
     // ─── Validace ───────────────────────────────────────────────────────
