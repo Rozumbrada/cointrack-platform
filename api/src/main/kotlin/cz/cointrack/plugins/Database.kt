@@ -3,9 +3,11 @@ package cz.cointrack.plugins
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.server.application.*
-import org.flywaydb.core.Flyway
 import org.jetbrains.exposed.sql.Database
+import org.slf4j.LoggerFactory
 import javax.sql.DataSource
+
+private val migrationLog = LoggerFactory.getLogger("DatabaseMigrations")
 
 object DatabaseSingleton {
     private var _dataSource: HikariDataSource? = null
@@ -20,7 +22,6 @@ object DatabaseSingleton {
         user: String,
         password: String,
     ) {
-        // Pokud už existuje, nejdřív zavři starou instanci (testovací re-init)
         close()
 
         val config = HikariConfig().apply {
@@ -36,26 +37,11 @@ object DatabaseSingleton {
         }
         _dataSource = HikariDataSource(config)
 
-        // Flyway migrace
-        //
-        // baselineOnMigrate(true) + baselineVersion("0") — umožňuje Flyway
-        // běžet i nad už existující (manuálně osazenou) databází. Pokud
-        // flyway_schema_history je prázdné, vytvoří baseline a pokračuje.
-        // validateMigrationNaming(false) — explicitní; Flyway 10.x s Ktor
-        // fat-jarem někdy mylně odmítá jinak valid jména (V1.0__foo.sql).
-        Flyway.configure()
-            .dataSource(_dataSource)
-            .locations("classpath:db/migration")
-            .baselineOnMigrate(true)
-            .baselineVersion("0")
-            .validateMigrationNaming(false)
-            .load()
-            .migrate()
+        runMigrations(_dataSource!!)
 
         Database.connect(_dataSource!!)
     }
 
-    /** Používá se v testech pro clean teardown mezi třídami. */
     fun close() {
         _dataSource?.close()
         _dataSource = null
@@ -72,4 +58,92 @@ fun Application.configureDatabase() {
         password = dbConfig.property("password").getString(),
     )
     log.info("Database initialized and migrations applied.")
+}
+
+/**
+ * Vlastní SQL migrace — nahrazuje Flyway kvůli bugu s detekcí jmen
+ * v Ktor fat-jaru (Flyway 10.21 odmítl i jména odpovídající default regex).
+ *
+ * Chování:
+ *  1. Založí tabulku `schema_migrations` (pokud neexistuje)
+ *  2. Baseline: pokud existuje tabulka `users` ale `schema_migrations` je prázdné,
+ *     označí všechny známé migrace jako aplikované (předpoklad: schéma bylo
+ *     osazeno manuálně nebo dřívějším nástrojem).
+ *  3. Postupně aplikuje každou migraci, která ještě nebyla zaznamenaná.
+ *
+ * Migrace se čtou z classpath: `/db/migration/V<version>__<desc>.sql`.
+ */
+private val MIGRATIONS: List<Pair<String, String>> = listOf(
+    "1.0" to "/db/migration/V1.0__initial_auth.sql",
+    "2.0" to "/db/migration/V2.0__core_entities.sql",
+)
+
+private fun runMigrations(dataSource: DataSource) {
+    dataSource.connection.use { conn ->
+        conn.autoCommit = true
+
+        // 1. Tracking tabulka
+        conn.createStatement().use {
+            it.execute(
+                """
+                CREATE TABLE IF NOT EXISTS schema_migrations (
+                    version     TEXT         PRIMARY KEY,
+                    applied_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
+                )
+                """.trimIndent()
+            )
+        }
+
+        // 2. Baseline: schéma už existuje, ale není trackováno
+        val hasUsers = conn.metaData.getTables(null, "public", "users", null).use { it.next() }
+        val trackedCount = conn.prepareStatement("SELECT COUNT(*) FROM schema_migrations").use { stmt ->
+            stmt.executeQuery().use { rs -> rs.next(); rs.getInt(1) }
+        }
+
+        if (hasUsers && trackedCount == 0) {
+            migrationLog.info("Schema baseline: 'users' existuje ale schema_migrations je prázdná. Označuji všechny známé migrace jako aplikované.")
+            for ((version, _) in MIGRATIONS) {
+                conn.prepareStatement(
+                    "INSERT INTO schema_migrations (version) VALUES (?) ON CONFLICT DO NOTHING"
+                ).use {
+                    it.setString(1, version)
+                    it.executeUpdate()
+                }
+            }
+            return
+        }
+
+        // 3. Aplikuj nové migrace
+        for ((version, path) in MIGRATIONS) {
+            val alreadyApplied = conn.prepareStatement(
+                "SELECT 1 FROM schema_migrations WHERE version = ?"
+            ).use { stmt ->
+                stmt.setString(1, version)
+                stmt.executeQuery().use { it.next() }
+            }
+            if (alreadyApplied) continue
+
+            val sql = DatabaseSingleton::class.java.getResourceAsStream(path)
+                ?.bufferedReader()?.readText()
+                ?: error("Migrace nenalezena na classpath: $path")
+
+            migrationLog.info("Aplikuji migraci $version ($path)...")
+            conn.autoCommit = false
+            try {
+                conn.createStatement().use { it.execute(sql) }
+                conn.prepareStatement("INSERT INTO schema_migrations (version) VALUES (?)").use {
+                    it.setString(1, version)
+                    it.executeUpdate()
+                }
+                conn.commit()
+                migrationLog.info("Migrace $version OK.")
+            } catch (e: Exception) {
+                conn.rollback()
+                migrationLog.error("Migrace $version selhala, rollback.", e)
+                throw e
+            } finally {
+                conn.autoCommit = true
+            }
+        }
+    }
 }

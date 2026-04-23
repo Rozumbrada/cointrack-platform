@@ -62,9 +62,11 @@ dependencies {
     implementation("org.postgresql:postgresql:$postgres_version")
     implementation("com.zaxxer:HikariCP:$hikaricp_version")
 
-    // Flyway migrations
-    implementation("org.flywaydb:flyway-core:$flyway_version")
-    implementation("org.flywaydb:flyway-database-postgresql:$flyway_version")
+    // Flyway odstraněn — nahrazeno vlastním SQL runnerem v plugins/Database.kt.
+    // Důvod: Flyway 10.21 v Ktor fat-jaru špatně detekuje migrace
+    // ("did not follow the filename convention"), přestože jména jsou valid.
+    // Vlastní runner (~50 řádků) čte SQL z classpath přímo a tracká je
+    // v tabulce schema_migrations.
 
     // Password hashing (Argon2id — BouncyCastle pure-Java, no JNA/native code
     // — native argon2-jvm segfaults on QEMU Virtual CPU used by WEDOS VPS)
