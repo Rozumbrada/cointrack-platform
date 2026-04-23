@@ -66,8 +66,9 @@ dependencies {
     implementation("org.flywaydb:flyway-core:$flyway_version")
     implementation("org.flywaydb:flyway-database-postgresql:$flyway_version")
 
-    // Password hashing (Argon2)
-    implementation("de.mkammerer:argon2-jvm:2.11")
+    // Password hashing (Argon2id — BouncyCastle pure-Java, no JNA/native code
+    // — native argon2-jvm segfaults on QEMU Virtual CPU used by WEDOS VPS)
+    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
 
     // SMTP (Jakarta Mail)
     implementation("org.eclipse.angus:jakarta.mail:2.0.3")
