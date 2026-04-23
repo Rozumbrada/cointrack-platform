@@ -100,16 +100,37 @@
 - [x] UI: tlačítko „Synchronizovat teď" aktivní v CloudSettingsScreen — loading / success / error feedback
 - [x] v15.67 APK built, 0 chyb, Room KSP OK
 
-## Sprint 5c — Data sync loop (po Sprint 6 deploy)
+## ✅ Sprint 5c.1 — Core sync loop (hotovo, v15.68)
 
-- [ ] Rozšířit `CloudSyncRepository.syncNow()`:
-  - [ ] **Pull**: GET /sync?since=<last> → aplikovat entity do Room přes `syncId` lookup
-  - [ ] **Push**: vybrat entity `WHERE updatedAt > lastPushAt`, serializovat do `SyncPushRequest`
-  - [ ] **Conflict resolution**: server wins (LWW), klient refetch pokud je rozdíl
-- [ ] DAO metody: `getAllForSync(since)`, `getBySyncId(id)`, `upsertFromSync(entity)` pro 6 entit
-- [ ] `settings.lastSyncTimestamp` v DataStore
-- [ ] Periodic `SyncWorker` (WorkManager, hourly + on-demand)
+Core 4 entity: profiles, accounts, categories, transactions.
+
+- [x] Rozšířen `CloudSyncRepository.syncNow()`:
+  - [x] **Pull**: GET /sync?since=<last> → aplikuje 4 entity types do Room přes `getBySyncId` lookup
+  - [x] **Push**: `getModifiedSince(lastSyncMs)` → POST /sync s cross-ref překladem db_id ↔ sync_id
+  - [x] **Conflict resolution**: server wins (LWW) — konflikty se re-apply přes stejný pull pipeline
+- [x] DAO metody: `getBySyncId`, `getModifiedSince` pro Profile, Account, Category, Transaction, Receipt, Invoice + items
+- [x] `SettingsDataStore.cloudLastSyncIso` (Flow + getter/setter)
+- [x] v15.68 APK built, 0 chyb
+
+**Testovací postup** (až bude telefon zase připojen):
+1. ADB install: `finance-v15.68-debug.apk`
+2. V appce: Cloud → Synchronizovat teď → ověř status „Hotovo"
+3. Na serveru: `SELECT COUNT(*) FROM transactions;` ukáže nárůst o počet lokálních tx
+4. Odhlásit na telefonu, přeinstalovat appku → přihlásit → sync → ověř že Room obsahuje dříve pushnuté entity
+
+## Sprint 5c.2 — Receipts + invoices sync (TODO)
+
+- [ ] `entityToReceipt`, `entityToReceiptItem`, `entityToInvoice`, `entityToInvoiceItem` mappers
 - [ ] MinIO file upload: fotky účtenek + PDF faktur přes presigned URL
+  - [ ] POST /api/v1/files/upload-url → získat presigned URL
+  - [ ] PUT fotka/PDF → MinIO přes presigned URL
+  - [ ] SyncEntity.data.photoKeys → storage keys z uploadu
+- [ ] Pull receipts + receipt_items + invoices + invoice_items → download presigned URL → lokální cache
+
+## Sprint 5c.3 — Periodic sync + UX (TODO)
+
+- [ ] `SyncWorker` v WorkManager — 1× za hodinu automaticky + on app open
+- [ ] Offline queue: pokud sync selže, retry s expo backoff
 - [ ] Entitlement feature gating (Free/Cloud/Business/Pro)
 - [ ] Migrace z Drive backup → cloud sync (Drive zůstane jako záloha)
 
