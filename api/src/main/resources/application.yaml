@@ -1,40 +1,40 @@
 ktor:
   deployment:
-    port: ${SERVER_PORT:-8080}
-    host: ${SERVER_HOST:-0.0.0.0}
+    port: "$SERVER_PORT:8080"
+    host: "$SERVER_HOST:0.0.0.0"
   application:
     modules:
       - cz.cointrack.ApplicationKt.module
 
 database:
-  host: ${POSTGRES_HOST:-localhost}
-  port: ${POSTGRES_PORT:-5432}
-  name: ${POSTGRES_DB:-cointrack}
-  user: ${POSTGRES_USER:-cointrack}
-  password: ${POSTGRES_PASSWORD:-cointrack}
+  host: "$POSTGRES_HOST:localhost"
+  port: "$POSTGRES_PORT:5432"
+  name: "$POSTGRES_DB:cointrack"
+  user: "$POSTGRES_USER:cointrack"
+  password: "$POSTGRES_PASSWORD:cointrack"
 
 storage:
-  endpoint: ${S3_ENDPOINT:-http://localhost:9000}
-  publicEndpoint: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
-  accessKey: ${S3_ACCESS_KEY:-cointrack}
-  secretKey: ${S3_SECRET_KEY:-cointrack123}
-  bucket: ${S3_BUCKET:-cointrack-files}
-  region: ${S3_REGION:-eu-central-1}
+  endpoint: "$S3_ENDPOINT:http://localhost:9000"
+  publicEndpoint: "$S3_PUBLIC_ENDPOINT:http://localhost:9000"
+  accessKey: "$S3_ACCESS_KEY:cointrack"
+  secretKey: "$S3_SECRET_KEY:cointrack123"
+  bucket: "$S3_BUCKET:cointrack-files"
+  region: "$S3_REGION:eu-central-1"
 
 jwt:
-  secret: ${JWT_SECRET:-dev_secret_change_me_in_production_xxxxxxxxxxxxxxxxxxxx}
-  issuer: ${JWT_ISSUER:-cointrack}
-  audience: ${JWT_AUDIENCE:-cointrack-clients}
-  accessTtlMinutes: ${JWT_ACCESS_TTL_MINUTES:-15}
-  refreshTtlDays: ${JWT_REFRESH_TTL_DAYS:-30}
+  secret: "$JWT_SECRET:dev_secret_change_me_in_production_xxxxxxxxxxxxxxxxxxxx"
+  issuer: "$JWT_ISSUER:cointrack"
+  audience: "$JWT_AUDIENCE:cointrack-clients"
+  accessTtlMinutes: "$JWT_ACCESS_TTL_MINUTES:15"
+  refreshTtlDays: "$JWT_REFRESH_TTL_DAYS:30"
 
 email:
-  host: ${SMTP_HOST:-localhost}
-  port: ${SMTP_PORT:-1025}
-  user: ${SMTP_USER:-none}
-  password: ${SMTP_PASSWORD:-none}
-  from: ${EMAIL_FROM:-noreply@cointrack.cz}
+  host: "$SMTP_HOST:localhost"
+  port: "$SMTP_PORT:1025"
+  user: "$SMTP_USER:none"
+  password: "$SMTP_PASSWORD:none"
+  from: "$EMAIL_FROM:noreply@cointrack.cz"
 
-environment: ${ENVIRONMENT:-dev}
-publicWebUrl: ${PUBLIC_WEB_URL:-http://localhost:3000}
-publicApiUrl: ${PUBLIC_API_URL:-http://localhost:8080}
+environment: "$ENVIRONMENT:dev"
+publicWebUrl: "$PUBLIC_WEB_URL:http://localhost:3000"
+publicApiUrl: "$PUBLIC_API_URL:http://localhost:8080"
