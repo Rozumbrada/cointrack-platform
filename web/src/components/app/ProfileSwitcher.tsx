@@ -22,7 +22,13 @@ export default function ProfileSwitcher() {
         const res = await withAuth((t) => sync.pull(t));
         const raw = res.entities["profiles"] ?? [];
         const list: Profile[] = raw
-          .filter((e) => !e.deletedAt)
+          .filter((e) => {
+            // Smazané profily: envelope.deletedAt NEBO data.deletedAt
+            if (e.deletedAt) return false;
+            const d = e.data as Record<string, unknown>;
+            if (d.deletedAt != null && d.deletedAt !== 0) return false;
+            return true;
+          })
           .map((e) => ({
             syncId: e.syncId,
             data: e.data as unknown as ProfileData,

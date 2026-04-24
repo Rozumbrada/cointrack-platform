@@ -23,11 +23,12 @@ interface CategoryData {
 }
 
 export default function TransactionsPage() {
-  const { loading, error, entitiesByProfile } = useSyncData();
+  const { loading, error, entitiesByProfile, diagnose, profileSyncId } = useSyncData();
   const [filter, setFilter] = useState<"ALL" | "INCOME" | "EXPENSE">("ALL");
   const [query, setQuery] = useState("");
 
   const txs = entitiesByProfile<TxData>("transactions");
+  const diag = diagnose("transactions");
   const cats = entitiesByProfile<CategoryData>("categories");
   const catMap = useMemo(() => {
     const m = new Map<number, CategoryData>();
@@ -67,6 +68,26 @@ export default function TransactionsPage() {
         </Link>
       </div>
 
+      {!loading && diag.total > 0 && diag.matched === 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+          <div className="font-medium mb-1">Žádné transakce pro aktivní profil</div>
+          <p className="text-amber-700">
+            Máš {diag.total} transakcí celkem, ale žádná z nich nepatří do právě vybraného profilu.
+            Zkontroluj přepínač profilu nahoře — možná patří do jiného profilu.
+          </p>
+          {profileSyncId && (
+            <p className="text-[10px] text-amber-600 mt-2 font-mono break-all">
+              aktivní profil: {profileSyncId}
+            </p>
+          )}
+          {diag.otherProfiles.size > 0 && (
+            <p className="text-[10px] text-amber-600 mt-1 font-mono break-all">
+              profily v datech: {Array.from(diag.otherProfiles).slice(0, 5).join(", ")}
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row gap-3">
         <input
           type="text"
@@ -98,7 +119,8 @@ export default function TransactionsPage() {
             {filtered.map((r) => {
               const cat = r.data.categoryId ? catMap.get(r.data.categoryId) : undefined;
               return (
-                <li key={r.syncId} className="px-6 py-3 flex items-center gap-3">
+                <li key={r.syncId}>
+                <Link href={`/app/transactions/${r.syncId}/edit`} className="px-6 py-3 flex items-center gap-3 hover:bg-ink-50/50 transition-colors">
                   <div
                     className={`w-8 h-8 rounded-full grid place-items-center text-sm ${
                       r.data.type === "INCOME"
@@ -136,6 +158,7 @@ export default function TransactionsPage() {
                     {r.data.type === "INCOME" ? "+" : r.data.type === "EXPENSE" ? "−" : ""}
                     {fmt(r.data.amount, r.data.currency)}
                   </div>
+                </Link>
                 </li>
               );
             })}

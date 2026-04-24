@@ -47,13 +47,18 @@ export function useSyncData() {
       if (!data) return [];
       const all = data.entities[key] ?? [];
       return all
-        .filter((e) => !e.deletedAt)
+        .filter((e) => {
+          if (e.deletedAt) return false;
+          const d = e.data as Record<string, unknown>;
+          if (d.deletedAt != null && d.deletedAt !== 0) return false;
+          return true;
+        })
         .filter((e) => {
           if (alwaysGlobal) return true;
           if (profileSyncId == null) return true;
           const pid = (e.data as Record<string, unknown>).profileId;
           if (pid == null) return true;          // entity bez profileId (např. profiles samotné) → vše
-          return pid === profileSyncId;          // string === string
+          return String(pid) === profileSyncId;  // trpí starý format (number) by se stejně nematchoval
         })
         .map((e) => ({ syncId: e.syncId, data: e.data as unknown as T }));
     },
@@ -69,6 +74,24 @@ export function useSyncData() {
     [data],
   );
 
+  /** Diagnostika — kolik entit je v daném typu celkem vs. po filter by profile. */
+  const diagnose = useCallback(
+    (key: string): { total: number; matched: number; otherProfiles: Set<string> } => {
+      if (!data) return { total: 0, matched: 0, otherProfiles: new Set() };
+      const all = (data.entities[key] ?? []).filter((e) => !e.deletedAt);
+      const matched = entitiesByProfile(key).length;
+      const otherProfiles = new Set<string>();
+      all.forEach((e) => {
+        const pid = (e.data as Record<string, unknown>).profileId;
+        if (pid != null && String(pid) !== profileSyncId) {
+          otherProfiles.add(String(pid));
+        }
+      });
+      return { total: all.length, matched, otherProfiles };
+    },
+    [data, profileSyncId, entitiesByProfile],
+  );
+
   return {
     loading,
     error,
@@ -76,5 +99,6 @@ export function useSyncData() {
     reload: load,
     entitiesByProfile,
     rawEntities,
+    diagnose,
   };
 }
