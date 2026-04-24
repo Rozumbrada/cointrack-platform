@@ -27,6 +27,7 @@ abstract class SyncableTable(name: String) : UUIDTable(name) {
 // ─── Profiles ──────────────────────────────────────────────────────
 object Profiles : SyncableTable("profiles") {
     val ownerUserId    = reference("owner_user_id", Users)
+    val organizationId = reference("organization_id", Organizations).nullable()  // Sprint 5e — org profil
     val name           = varchar("name", 128)
     val type           = varchar("type", 16)
     val color          = integer("color").nullable()

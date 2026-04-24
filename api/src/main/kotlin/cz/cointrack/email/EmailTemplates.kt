@@ -42,6 +42,37 @@ object EmailTemplates {
         """
     )
 
+    fun organizationInvite(
+        organizationName: String,
+        inviterEmail: String,
+        role: String,
+        acceptUrl: String,
+    ): String {
+        val roleCz = when (role) {
+            "owner" -> "vlastníka"
+            "admin" -> "administrátora"
+            else -> "člena"
+        }
+        return layout(
+            title = "Pozvánka do organizace $organizationName",
+            body = """
+                <p>Uživatel <strong>$inviterEmail</strong> tě pozval do organizace
+                   <strong>$organizationName</strong> v Cointracku s rolí $roleCz.</p>
+                <p>
+                    <a href="$acceptUrl"
+                       style="display:inline-block;background:#111;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">
+                       Přijmout pozvánku
+                    </a>
+                </p>
+                <p style="color:#666;font-size:14px;">Odkaz platí 14 dní.</p>
+                <p style="color:#666;font-size:12px;">
+                    Pokud ještě nemáš účet Cointrack, budeš si moct nejdřív vytvořit na tento e-mail.
+                    <br>Nebo zkopíruj:<br><code>$acceptUrl</code>
+                </p>
+            """,
+        )
+    }
+
     fun passwordReset(resetUrl: String) = layout(
         title = "Obnova hesla",
         body = """
