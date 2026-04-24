@@ -71,8 +71,33 @@ class SaltEdgeProvider(private val config: SaltEdgeConfig) : BankingProvider {
                 put("identifier", userId)
             })
         }
-        val res = post("/customers", body)
-        return requireString(res, "data.id")
+        // Idempotence: pokud Salt Edge vrátí 409 DuplicatedCustomer (customer už existuje
+        // od předchozího pokusu), dohledej ho přes GET /customers?identifier=...
+        return try {
+            val res = post("/customers", body)
+            requireString(res, "data.id")
+        } catch (e: SaltEdgeException) {
+            if (e.status == HttpStatusCode.Conflict) {
+                log.info("Salt Edge customer $userId už existuje, dohledávám přes GET.")
+                findCustomerByIdentifier(userId)
+                    ?: throw IllegalStateException(
+                        "Salt Edge vrátil 409 Conflict, ale GET /customers?identifier=$userId " +
+                            "neobsahuje výsledek. Data nekonzistentní.", e
+                    )
+            } else throw e
+        }
+    }
+
+    /**
+     * Najde Salt Edge customer-a podle našeho identifier-u (user UUID).
+     * Vrací null pokud neexistuje.
+     */
+    private suspend fun findCustomerByIdentifier(identifier: String): String? {
+        val res = get("/customers?identifier=$identifier")
+        val arr = (res["data"] as? JsonArray) ?: return null
+        return arr.filterIsInstance<JsonObject>()
+            .firstOrNull { it["identifier"]?.jsonPrimitive?.contentOrNull == identifier }
+            ?.get("id")?.jsonPrimitive?.contentOrNull
     }
 
     override suspend fun createConnectSession(
