@@ -1,0 +1,169 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { sync, SyncEntity } from "@/lib/api";
+import { withAuth } from "@/lib/auth-store";
+
+interface InvoiceData {
+  invoiceNumber: string;
+  issueDate: string;
+  dueDate?: string;
+  supplierName: string;
+  customerName?: string;
+  totalWithVat: number;
+  isExpense: boolean;
+  isPaid: boolean;
+  linkedTransactionId?: number;
+  variabilniSymbol?: string;
+}
+
+export default function InvoicesPage() {
+  const [invoices, setInvoices] = useState<SyncEntity[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"ALL" | "RECEIVED" | "ISSUED">("ALL");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await withAuth((t) => sync.pull(t));
+        setInvoices(res.entities["invoices"] ?? []);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const filtered = useMemo(() => {
+    return [...invoices]
+      .filter((e) => !e.deletedAt)
+      .map((e) => ({ syncId: e.syncId, data: e.data as unknown as InvoiceData }))
+      .filter((r) => {
+        if (filter === "RECEIVED") return r.data.isExpense;
+        if (filter === "ISSUED") return !r.data.isExpense;
+        return true;
+      })
+      .filter((r) => {
+        if (!query) return true;
+        const q = query.toLowerCase();
+        return (
+          r.data.invoiceNumber?.toLowerCase().includes(q) ||
+          r.data.supplierName?.toLowerCase().includes(q) ||
+          r.data.customerName?.toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => (b.data.issueDate ?? "").localeCompare(a.data.issueDate ?? ""));
+  }, [invoices, query, filter]);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold text-ink-900">Faktury</h1>
+        <p className="text-sm text-ink-600 mt-1">Přijaté a vystavené faktury.</p>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3">
+        <input
+          type="text"
+          placeholder="Hledat číslo faktury / partner…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="flex-1 h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+        />
+        <div className="flex rounded-lg border border-ink-300 bg-white overflow-hidden text-sm">
+          {(["ALL", "RECEIVED", "ISSUED"] as const).map((f) => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`px-4 py-2 ${
+                filter === f ? "bg-brand-50 text-brand-700" : "text-ink-700 hover:bg-ink-50"
+              }`}
+            >
+              {f === "ALL" ? "Vše" : f === "RECEIVED" ? "Přijaté" : "Vystavené"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>
+      ) : filtered.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-ink-200 p-12 text-center">
+          <div className="text-4xl mb-3">📄</div>
+          <div className="font-medium text-ink-900">Žádné faktury</div>
+          <p className="text-sm text-ink-600 mt-2">
+            Fakturace zatím jen přes mobilní aplikaci. Upload z webu přijde v příští verzi.
+          </p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-ink-200 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-ink-50 text-ink-600 text-left text-xs uppercase tracking-wide">
+              <tr>
+                <th className="px-6 py-3 font-medium">Číslo</th>
+                <th className="px-6 py-3 font-medium">Partner</th>
+                <th className="px-6 py-3 font-medium">Datum</th>
+                <th className="px-6 py-3 font-medium">Typ</th>
+                <th className="px-6 py-3 font-medium">Stav</th>
+                <th className="px-6 py-3 font-medium text-right">Částka</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-ink-100">
+              {filtered.map((r) => (
+                <tr key={r.syncId} className="hover:bg-ink-50/50">
+                  <td className="px-6 py-3 font-medium text-ink-900 tabular-nums">
+                    {r.data.invoiceNumber || "—"}
+                  </td>
+                  <td className="px-6 py-3 text-ink-700 max-w-xs truncate">
+                    {r.data.isExpense
+                      ? r.data.supplierName || "—"
+                      : r.data.customerName || "—"}
+                  </td>
+                  <td className="px-6 py-3 text-ink-600">{r.data.issueDate || "—"}</td>
+                  <td className="px-6 py-3">
+                    <span
+                      className={`inline-block text-[10px] uppercase px-1.5 py-0.5 rounded ${
+                        r.data.isExpense
+                          ? "bg-red-100 text-red-700"
+                          : "bg-emerald-100 text-emerald-700"
+                      }`}
+                    >
+                      {r.data.isExpense ? "přijatá" : "vystavená"}
+                    </span>
+                  </td>
+                  <td className="px-6 py-3">
+                    {r.data.isPaid || r.data.linkedTransactionId ? (
+                      <span className="text-emerald-700 text-xs font-medium">✓ uhrazeno</span>
+                    ) : (
+                      <span className="text-ink-500 text-xs">nezaplaceno</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-3 text-right font-semibold tabular-nums text-ink-900">
+                    {fmt(r.data.totalWithVat, "CZK")}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function fmt(amount: number, currency: string): string {
+  return new Intl.NumberFormat("cs-CZ", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}

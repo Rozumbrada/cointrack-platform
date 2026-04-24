@@ -114,3 +114,86 @@ export const auth = {
       body: { token, newPassword },
     }),
 };
+
+// ─── Sync pull (seznam všech entit) ─────────────────────────────────
+export interface SyncEntity {
+  syncId: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+  clientVersion: number;
+  data: Record<string, unknown>;
+}
+
+export interface SyncPullResponse {
+  serverTime: string;
+  entities: Record<string, SyncEntity[]>;
+}
+
+export const sync = {
+  pull: (token: string, since?: string) =>
+    api<SyncPullResponse>(
+      `/api/v1/sync${since ? `?since=${encodeURIComponent(since)}` : ""}`,
+      { token },
+    ),
+};
+
+// ─── Banking (Sprint 6 Salt Edge) ───────────────────────────────────
+export interface BankAccountExtDto {
+  id: string;
+  name?: string;
+  nature?: string;
+  currencyCode: string;
+  iban?: string;
+  accountNumber?: string;
+  balance?: string;
+  balanceUpdatedAt?: string;
+}
+
+export interface BankConnectionDto {
+  id: string;
+  providerCode?: string;
+  providerName?: string;
+  status: string;
+  lastSuccessAt?: string;
+  consentExpiresAt?: string;
+  lastError?: string;
+  accounts: BankAccountExtDto[];
+}
+
+export interface BankTransactionExtDto {
+  id: string;
+  accountId: string;
+  amount: string;
+  currencyCode: string;
+  description?: string;
+  madeOn: string;
+  merchantName?: string;
+  status: string;
+}
+
+export const bank = {
+  listConnections: (token: string) =>
+    api<{ connections: BankConnectionDto[] }>("/api/v1/bank/connections", { token }),
+
+  connect: (token: string, providerCode?: string, locale = "cs") =>
+    api<{ connectUrl: string; expiresAt: string }>("/api/v1/bank/connect", {
+      method: "POST",
+      token,
+      body: { providerCode, locale },
+    }),
+
+  delete: (token: string, id: string) =>
+    api<void>(`/api/v1/bank/connections/${id}`, { method: "DELETE", token }),
+
+  reconnect: (token: string, id: string, locale = "cs") =>
+    api<{ connectUrl: string; expiresAt: string }>(
+      `/api/v1/bank/connections/${id}/reconnect?locale=${locale}`,
+      { method: "POST", token },
+    ),
+
+  listTransactions: (token: string, accountId: string, limit = 100) =>
+    api<{ transactions: BankTransactionExtDto[] }>(
+      `/api/v1/bank/accounts/${accountId}/transactions?limit=${limit}`,
+      { token },
+    ),
+};

@@ -1,0 +1,162 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import {
+  clearAuth,
+  getAccessToken,
+  getStoredUser,
+} from "@/lib/auth-store";
+import { auth, UserDto } from "@/lib/api";
+
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [user, setUser] = useState<UserDto | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const token = getAccessToken();
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+
+    // Optimistic — zobraz cached user okamžitě
+    const cached = getStoredUser();
+    if (cached) setUser(cached);
+
+    // Ověř token voláním /me
+    auth
+      .me(token)
+      .then((u) => {
+        setUser(u);
+        setLoading(false);
+      })
+      .catch(() => {
+        clearAuth();
+        router.replace("/login");
+      });
+  }, [router]);
+
+  async function onLogout() {
+    const refreshToken =
+      (typeof window !== "undefined" && localStorage.getItem("refreshToken")) ||
+      "";
+    try {
+      if (refreshToken) await auth.logout(refreshToken);
+    } catch {
+      // ignore — stejně mažeme lokální stav
+    }
+    clearAuth();
+    router.replace("/login");
+  }
+
+  if (loading && !user) {
+    return (
+      <div className="min-h-screen grid place-items-center bg-ink-50">
+        <div className="text-ink-600 text-sm">Načítám…</div>
+      </div>
+    );
+  }
+
+  const nav: Array<{ href: string; label: string }> = [
+    { href: "/app/dashboard", label: "Přehled" },
+    { href: "/app/transactions", label: "Transakce" },
+    { href: "/app/receipts", label: "Účtenky" },
+    { href: "/app/invoices", label: "Faktury" },
+    { href: "/app/banks", label: "Banky" },
+    { href: "/app/settings", label: "Nastavení" },
+  ];
+
+  return (
+    <div className="min-h-screen bg-ink-50 flex">
+      <aside className="w-60 bg-white border-r border-ink-200 hidden md:flex flex-col">
+        <div className="h-16 flex items-center px-6 border-b border-ink-200">
+          <Link href="/app/dashboard" className="font-semibold text-ink-900 text-lg">
+            Cointrack
+          </Link>
+        </div>
+        <nav className="flex-1 p-3 space-y-1">
+          {nav.map((item) => {
+            const active =
+              pathname === item.href ||
+              (item.href !== "/app/dashboard" && pathname?.startsWith(item.href));
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`block rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  active
+                    ? "bg-brand-50 text-brand-700"
+                    : "text-ink-700 hover:bg-ink-100"
+                }`}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+        <div className="p-3 border-t border-ink-200">
+          <div className="px-3 py-2 text-xs text-ink-600">
+            <div className="truncate font-medium text-ink-900">
+              {user?.displayName || user?.email}
+            </div>
+            <div className="truncate">{user?.email}</div>
+            <div className="mt-1 text-[10px] uppercase tracking-wide text-ink-500">
+              {user?.tier ?? "free"}
+            </div>
+          </div>
+          <button
+            onClick={onLogout}
+            className="w-full text-left rounded-lg px-3 py-2 text-sm text-ink-700 hover:bg-ink-100"
+          >
+            Odhlásit
+          </button>
+        </div>
+      </aside>
+
+      <main className="flex-1 min-w-0">
+        <header className="md:hidden h-14 bg-white border-b border-ink-200 flex items-center justify-between px-4">
+          <Link href="/app/dashboard" className="font-semibold text-ink-900">
+            Cointrack
+          </Link>
+          <button
+            onClick={onLogout}
+            className="text-sm text-ink-700"
+            aria-label="Odhlásit"
+          >
+            Odhlásit
+          </button>
+        </header>
+
+        {/* Mobile nav — horizontální scroll */}
+        <div className="md:hidden bg-white border-b border-ink-200 overflow-x-auto">
+          <div className="flex gap-1 px-3 py-2 whitespace-nowrap">
+            {nav.map((item) => {
+              const active =
+                pathname === item.href ||
+                (item.href !== "/app/dashboard" && pathname?.startsWith(item.href));
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                    active
+                      ? "bg-brand-50 text-brand-700"
+                      : "text-ink-700 hover:bg-ink-100"
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="max-w-6xl mx-auto p-4 md:p-8">{children}</div>
+      </main>
+    </div>
+  );
+}
