@@ -54,6 +54,32 @@ fun Route.bankRoutes(service: BankService) {
                 call.respond(HttpStatusCode.NoContent)
             }
 
+            // ─── Bank ↔ profile assignments (Sprint 8) ─────────────
+            get("/assignments") {
+                val userId = call.userId()
+                call.respond(mapOf("assignments" to service.listAssignments(userId)))
+            }
+
+            post("/accounts/{accountId}/assign-to-profile") {
+                val userId = call.userId()
+                val accountId = call.pathUuid("accountId")
+                val req = call.receive<AssignBankAccountRequest>()
+                val profileUuid = try {
+                    java.util.UUID.fromString(req.profileId)
+                } catch (e: IllegalArgumentException) {
+                    throw ApiException(HttpStatusCode.BadRequest, "invalid_profile_id", "profileId není valid UUID.")
+                }
+                call.respond(service.assignAccountToProfile(userId, accountId, profileUuid, req.autoImport))
+            }
+
+            delete("/accounts/{accountId}/assignment/{profileId}") {
+                val userId = call.userId()
+                val accountId = call.pathUuid("accountId")
+                val profileId = call.pathUuid("profileId")
+                service.unassignAccountFromProfile(userId, accountId, profileId)
+                call.respond(HttpStatusCode.NoContent)
+            }
+
             // Seznam transakcí účtu (ověřený owner)
             get("/accounts/{accountId}/transactions") {
                 val userId = call.userId()

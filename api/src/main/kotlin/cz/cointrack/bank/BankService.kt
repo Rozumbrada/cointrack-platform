@@ -1,17 +1,21 @@
 package cz.cointrack.bank
 
+import cz.cointrack.db.BankAccountProfileAssignments
 import cz.cointrack.db.BankAccountsExt
 import cz.cointrack.db.BankConnections
 import cz.cointrack.db.BankCustomers
 import cz.cointrack.db.BankTransactionsExt
 import cz.cointrack.db.BankWebhookEvents
+import cz.cointrack.db.Profiles
 import cz.cointrack.db.Users
 import cz.cointrack.db.db
 import cz.cointrack.plugins.ApiException
 import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.json.*
 import org.jetbrains.exposed.sql.SortOrder
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insertAndGetId
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
@@ -106,6 +110,24 @@ class BankService(
                 .orderBy(BankConnections.createdAt, SortOrder.DESC)
                 .toList()
 
+            // Načti všechna přiřazení tohoto user-a (přes všechny účty v jeho connections)
+            val allConnIds = connections.map { it[BankConnections.id].value }
+            val allAccountIds = if (allConnIds.isEmpty()) emptyList() else
+                BankAccountsExt.selectAll()
+                    .where { BankAccountsExt.connectionId inList allConnIds }
+                    .map { it[BankAccountsExt.id].value }
+            val assignmentsByAccount: Map<UUID, List<Pair<UUID, Boolean>>> =
+                if (allAccountIds.isEmpty()) emptyMap()
+                else BankAccountProfileAssignments.selectAll()
+                    .where { BankAccountProfileAssignments.bankAccountExtId inList allAccountIds }
+                    .groupBy { it[BankAccountProfileAssignments.bankAccountExtId].value }
+                    .mapValues { (_, rows) ->
+                        rows.map {
+                            it[BankAccountProfileAssignments.profileId] to
+                                it[BankAccountProfileAssignments.autoImport]
+                        }
+                    }
+
             connections.map { c ->
                 val connUuid = c[BankConnections.id].value
                 val accounts = BankAccountsExt
@@ -115,8 +137,10 @@ class BankService(
                             (BankAccountsExt.deletedAt.isNull())
                     }
                     .map { a ->
+                        val accId = a[BankAccountsExt.id].value
+                        val assignments = assignmentsByAccount[accId] ?: emptyList()
                         BankAccountExtDto(
-                            id = a[BankAccountsExt.id].value.toString(),
+                            id = accId.toString(),
                             name = a[BankAccountsExt.name],
                             nature = a[BankAccountsExt.nature],
                             currencyCode = a[BankAccountsExt.currencyCode],
@@ -124,6 +148,8 @@ class BankService(
                             accountNumber = a[BankAccountsExt.accountNumber],
                             balance = a[BankAccountsExt.balance]?.toPlainString(),
                             balanceUpdatedAt = a[BankAccountsExt.balanceUpdatedAt]?.toString(),
+                            assignedProfileIds = assignments.map { it.first.toString() },
+                            autoImportProfileIds = assignments.filter { it.second }.map { it.first.toString() },
                         )
                     }
                 BankConnectionDto(
@@ -246,6 +272,128 @@ class BankService(
                     status = t[BankTransactionsExt.status],
                 )
             }
+    }
+
+    // ─── Bank account ↔ profile assignment (Sprint 8) ──────────────────
+
+    /** Seznam přiřazení pro user-a: které bank účty patří kterým profilům. */
+    suspend fun listAssignments(userId: UUID): List<BankAssignmentDto> = db {
+        // Přes všechny user-ovi profily
+        val userProfileIds = Profiles
+            .selectAll()
+            .where { (Profiles.ownerUserId eq userId) and (Profiles.deletedAt.isNull()) }
+            .map { it[Profiles.id].value }
+
+        if (userProfileIds.isEmpty()) return@db emptyList()
+
+        BankAccountProfileAssignments
+            .selectAll()
+            .where { BankAccountProfileAssignments.profileId inList userProfileIds }
+            .orderBy(BankAccountProfileAssignments.createdAt, SortOrder.DESC)
+            .map { row ->
+                BankAssignmentDto(
+                    id = row[BankAccountProfileAssignments.id].value.toString(),
+                    bankAccountExtId = row[BankAccountProfileAssignments.bankAccountExtId].value.toString(),
+                    profileId = row[BankAccountProfileAssignments.profileId].toString(),
+                    autoImport = row[BankAccountProfileAssignments.autoImport],
+                    createdAt = row[BankAccountProfileAssignments.createdAt].toString(),
+                )
+            }
+    }
+
+    /**
+     * Přiřadí bankovní účet k profilu. Ověří, že:
+     *  - bank účet patří user-ovi (přes connection → customer → user)
+     *  - profil taky patří user-ovi
+     */
+    suspend fun assignAccountToProfile(
+        userId: UUID,
+        accountExtId: UUID,
+        profileSyncId: UUID,
+        autoImport: Boolean,
+    ): BankAssignmentDto = db {
+        // 1. Bank account ownership
+        val acc = BankAccountsExt
+            .selectAll()
+            .where { BankAccountsExt.id eq accountExtId }
+            .singleOrNull()
+            ?: throw ApiException(HttpStatusCode.NotFound, "account_not_found", "Účet neexistuje.")
+        val conn = BankConnections
+            .selectAll()
+            .where { BankConnections.id eq acc[BankAccountsExt.connectionId] }
+            .single()
+        val customer = BankCustomers
+            .selectAll()
+            .where { BankCustomers.id eq conn[BankConnections.customerId] }
+            .single()
+        if (customer[BankCustomers.userId].value != userId) {
+            throw ApiException(HttpStatusCode.Forbidden, "forbidden", "Není váš účet.")
+        }
+
+        // 2. Profile ownership
+        val profile = Profiles
+            .selectAll()
+            .where { Profiles.id eq profileSyncId }
+            .singleOrNull()
+            ?: throw ApiException(HttpStatusCode.NotFound, "profile_not_found", "Profil neexistuje.")
+        if (profile[Profiles.ownerUserId].value != userId) {
+            throw ApiException(HttpStatusCode.Forbidden, "forbidden", "Není váš profil.")
+        }
+
+        // 3. Upsert assignment
+        val existing = BankAccountProfileAssignments
+            .selectAll()
+            .where {
+                (BankAccountProfileAssignments.bankAccountExtId eq accountExtId) and
+                    (BankAccountProfileAssignments.profileId eq profileSyncId)
+            }
+            .singleOrNull()
+
+        val assignmentId = if (existing != null) {
+            BankAccountProfileAssignments.update({
+                BankAccountProfileAssignments.id eq existing[BankAccountProfileAssignments.id]
+            }) {
+                it[BankAccountProfileAssignments.autoImport] = autoImport
+            }
+            existing[BankAccountProfileAssignments.id].value
+        } else {
+            BankAccountProfileAssignments.insertAndGetId {
+                it[BankAccountProfileAssignments.bankAccountExtId] = accountExtId
+                it[BankAccountProfileAssignments.profileId] = profileSyncId
+                it[BankAccountProfileAssignments.autoImport] = autoImport
+                it[BankAccountProfileAssignments.createdAt] = Instant.now()
+            }.value
+        }
+
+        BankAssignmentDto(
+            id = assignmentId.toString(),
+            bankAccountExtId = accountExtId.toString(),
+            profileId = profileSyncId.toString(),
+            autoImport = autoImport,
+            createdAt = Instant.now().toString(),
+        )
+    }
+
+    /** Smaže přiřazení (soft delete přes hard delete OK — uživatel může znovu vytvořit). */
+    suspend fun unassignAccountFromProfile(
+        userId: UUID,
+        accountExtId: UUID,
+        profileSyncId: UUID,
+    ) {
+        // Ověř ownership přes existující listAssignments path
+        val ownsProfile = db {
+            Profiles.selectAll()
+                .where { (Profiles.id eq profileSyncId) and (Profiles.ownerUserId eq userId) }
+                .any()
+        }
+        if (!ownsProfile) {
+            throw ApiException(HttpStatusCode.Forbidden, "forbidden", "Není váš profil.")
+        }
+        db {
+            BankAccountProfileAssignments.deleteWhere {
+                (bankAccountExtId eq accountExtId) and (profileId eq profileSyncId)
+            }
+        }
     }
 
     /** Pomocné — dohledá external ID pro lokální connection UUID. */

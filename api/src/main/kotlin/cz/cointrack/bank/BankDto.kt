@@ -42,6 +42,10 @@ data class BankAccountExtDto(
     val accountNumber: String?,
     val balance: String?,          // decimal jako string aby se neztratila přesnost
     val balanceUpdatedAt: String?,
+    /** Sprint 8: profily (syncId), ke kterým je tento účet přiřazen. */
+    val assignedProfileIds: List<String> = emptyList(),
+    /** Profily s auto-importem dat (synchronizace transakcí přes klienta). */
+    val autoImportProfileIds: List<String> = emptyList(),
 )
 
 @Serializable
@@ -62,4 +66,21 @@ data class WebhookAck(val received: Boolean = true)
 @Serializable
 data class BankTransactionsResponse(
     val transactions: List<BankTransactionExtDto>,
+)
+
+// ─── Bank account ↔ profile assignment (Sprint 8) ───────────────────
+
+@Serializable
+data class BankAssignmentDto(
+    val id: String,
+    val bankAccountExtId: String,
+    val profileId: String,
+    val autoImport: Boolean,
+    val createdAt: String,
+)
+
+@Serializable
+data class AssignBankAccountRequest(
+    val profileId: String,           // syncId profilu
+    val autoImport: Boolean = false,
 )

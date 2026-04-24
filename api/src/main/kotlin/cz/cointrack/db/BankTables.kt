@@ -78,6 +78,17 @@ object BankTransactionsExt : UUIDTable("bank_transactions_ext") {
     }
 }
 
+object BankAccountProfileAssignments : UUIDTable("bank_account_profile_assignments") {
+    val bankAccountExtId = reference("bank_account_ext_id", BankAccountsExt)
+    val profileId        = uuid("profile_id")     // FK na profiles, ale UUID-only ref kvůli circular dep
+    val autoImport       = bool("auto_import").default(false)
+    val createdAt        = timestamp("created_at")
+
+    init {
+        uniqueIndex(bankAccountExtId, profileId)
+    }
+}
+
 object BankWebhookEvents : UUIDTable("bank_webhook_events") {
     val provider              = varchar("provider", 32)
     val eventType             = varchar("event_type", 64)
