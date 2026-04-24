@@ -157,7 +157,7 @@ class BankService(
                 .selectAll()
                 .where { BankCustomers.id eq c[BankConnections.customerId] }
                 .single()
-            if (customer[BankCustomers.userId] != userId) {
+            if (customer[BankCustomers.userId].value != userId) {
                 throw ApiException(HttpStatusCode.Forbidden, "forbidden", "Není vaše připojení.")
             }
             c[BankConnections.externalId]
@@ -195,7 +195,9 @@ class BankService(
         val customer = BankCustomers.selectAll()
             .where { BankCustomers.id eq connection[BankConnections.customerId] }
             .single()
-        if (customer[BankCustomers.userId] != userId) {
+        // Pozor: BankCustomers.userId je Column<EntityID<UUID>>, dostaneme EntityID<UUID>.
+        // Pro porovnání s čistým UUID použít .value.
+        if (customer[BankCustomers.userId].value != userId) {
             throw ApiException(HttpStatusCode.Forbidden, "forbidden", "Není váš účet.")
         }
 
