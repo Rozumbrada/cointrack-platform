@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
-import { sync, SyncEntity } from "@/lib/api";
-import { withAuth } from "@/lib/auth-store";
+import { useSyncData } from "@/lib/sync-hook";
 
 interface AccountData {
   name: string;
@@ -11,6 +10,7 @@ interface AccountData {
   balance: number;
   currency: string;
   includeInTotal: boolean;
+  profileId?: number;
 }
 
 interface TransactionData {
@@ -20,35 +20,20 @@ interface TransactionData {
   accountId: number;
   note: string;
   dateTime: string;
+  profileId?: number;
 }
 
 export default function DashboardPage() {
-  const [accounts, setAccounts] = useState<SyncEntity[]>([]);
-  const [transactions, setTransactions] = useState<SyncEntity[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { loading, error, entitiesByProfile } = useSyncData();
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await withAuth((t) => sync.pull(t));
-        setAccounts(res.entities["accounts"] ?? []);
-        setTransactions(res.entities["transactions"] ?? []);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  const accounts = entitiesByProfile<AccountData>("accounts");
+  const transactions = entitiesByProfile<TransactionData>("transactions");
 
   const totalBalance = useMemo(() => {
     const totals: Record<string, number> = {};
-    for (const e of accounts) {
-      if (e.deletedAt) continue;
-      const a = e.data as unknown as AccountData;
-      if (!a.includeInTotal) continue;
-      totals[a.currency] = (totals[a.currency] ?? 0) + a.balance;
+    for (const a of accounts) {
+      if (!a.data.includeInTotal) continue;
+      totals[a.data.currency] = (totals[a.data.currency] ?? 0) + a.data.balance;
     }
     return totals;
   }, [accounts]);
@@ -58,20 +43,16 @@ export default function DashboardPage() {
     const monthKey = now.toISOString().slice(0, 7);
     let income = 0;
     let expense = 0;
-    for (const e of transactions) {
-      if (e.deletedAt) continue;
-      const t = e.data as unknown as TransactionData;
-      if (!t.dateTime?.startsWith(monthKey)) continue;
-      if (t.type === "INCOME") income += t.amount;
-      else if (t.type === "EXPENSE") expense += t.amount;
+    for (const t of transactions) {
+      if (!t.data.dateTime?.startsWith(monthKey)) continue;
+      if (t.data.type === "INCOME") income += t.data.amount;
+      else if (t.data.type === "EXPENSE") expense += t.data.amount;
     }
     return { income, expense };
   }, [transactions]);
 
   const recent = useMemo(() => {
     return [...transactions]
-      .filter((e) => !e.deletedAt)
-      .map((e) => ({ syncId: e.syncId, data: e.data as unknown as TransactionData }))
       .sort((a, b) => (b.data.dateTime ?? "").localeCompare(a.data.dateTime ?? ""))
       .slice(0, 10);
   }, [transactions]);
@@ -83,7 +64,9 @@ export default function DashboardPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold text-ink-900">Přehled</h1>
-        <p className="text-sm text-ink-600 mt-1">Přehled tvých financí napříč všemi účty.</p>
+        <p className="text-sm text-ink-600 mt-1">
+          Přehled financí pro aktivní profil.
+        </p>
       </div>
 
       {/* KPI tiles */}
@@ -117,10 +100,7 @@ export default function DashboardPage() {
       <section className="bg-white rounded-2xl border border-ink-200">
         <div className="px-6 py-4 border-b border-ink-200 flex items-center justify-between">
           <h2 className="font-semibold text-ink-900">Poslední transakce</h2>
-          <Link
-            href="/app/transactions"
-            className="text-sm text-brand-600 hover:text-brand-700"
-          >
+          <Link href="/app/transactions" className="text-sm text-brand-600 hover:text-brand-700">
             Všechny →
           </Link>
         </div>
@@ -178,11 +158,7 @@ function Tile({ label, children }: { label: string; children: React.ReactNode })
 }
 
 function Loading() {
-  return (
-    <div className="grid place-items-center py-20">
-      <div className="text-ink-500 text-sm">Načítám data…</div>
-    </div>
-  );
+  return <div className="grid place-items-center py-20 text-ink-500 text-sm">Načítám data…</div>;
 }
 
 function ErrorState({ message }: { message: string }) {

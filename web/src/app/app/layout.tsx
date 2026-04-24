@@ -9,6 +9,7 @@ import {
   getStoredUser,
 } from "@/lib/auth-store";
 import { auth, UserDto } from "@/lib/api";
+import ProfileSwitcher from "@/components/app/ProfileSwitcher";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -61,12 +62,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const nav: Array<{ href: string; label: string }> = [
+  const nav: Array<{ href: string; label: string; section?: string }> = [
     { href: "/app/dashboard", label: "Přehled" },
+    { href: "/app/accounts", label: "Účty" },
     { href: "/app/transactions", label: "Transakce" },
-    { href: "/app/receipts", label: "Účtenky" },
+    { href: "/app/categories", label: "Kategorie" },
+    { href: "/app/statistics", label: "Statistiky" },
+    { href: "/app/receipts", label: "Účtenky", section: "Doklady" },
     { href: "/app/invoices", label: "Faktury" },
-    { href: "/app/banks", label: "Banky" },
+    { href: "/app/budgets", label: "Rozpočty", section: "Plánování" },
+    { href: "/app/planned", label: "Plánované platby" },
+    { href: "/app/debts", label: "Dluhy" },
+    { href: "/app/goals", label: "Cíle" },
+    { href: "/app/banks", label: "Banky", section: "Ostatní" },
+    { href: "/app/organizations", label: "Organizace" },
     { href: "/app/settings", label: "Nastavení" },
   ];
 
@@ -78,23 +87,32 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             Cointrack
           </Link>
         </div>
-        <nav className="flex-1 p-3 space-y-1">
+        <div className="px-3 pt-3">
+          <ProfileSwitcher />
+        </div>
+        <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
           {nav.map((item) => {
             const active =
               pathname === item.href ||
               (item.href !== "/app/dashboard" && pathname?.startsWith(item.href));
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`block rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  active
-                    ? "bg-brand-50 text-brand-700"
-                    : "text-ink-700 hover:bg-ink-100"
-                }`}
-              >
-                {item.label}
-              </Link>
+              <div key={item.href}>
+                {item.section && (
+                  <div className="mt-4 mb-1 px-3 text-[10px] font-semibold uppercase tracking-wide text-ink-500">
+                    {item.section}
+                  </div>
+                )}
+                <Link
+                  href={item.href}
+                  className={`block rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                    active
+                      ? "bg-brand-50 text-brand-700"
+                      : "text-ink-700 hover:bg-ink-100"
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              </div>
             );
           })}
         </nav>
