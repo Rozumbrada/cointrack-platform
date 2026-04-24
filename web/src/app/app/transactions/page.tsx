@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useSyncData } from "@/lib/sync-hook";
 
@@ -53,9 +54,17 @@ export default function TransactionsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-ink-900">Transakce</h1>
-        <p className="text-sm text-ink-600 mt-1">Všechny transakce pro aktivní profil.</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-ink-900">Transakce</h1>
+          <p className="text-sm text-ink-600 mt-1">Všechny transakce pro aktivní profil.</p>
+        </div>
+        <Link
+          href="/app/transactions/new"
+          className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium grid place-items-center"
+        >
+          + Nová
+        </Link>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">

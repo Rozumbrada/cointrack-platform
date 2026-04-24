@@ -129,12 +129,24 @@ export interface SyncPullResponse {
   entities: Record<string, SyncEntity[]>;
 }
 
+export interface SyncPushRequest {
+  entities: Record<string, SyncEntity[]>;
+}
+
+export interface SyncPushResponse {
+  accepted: Record<string, string[]>;
+  conflicts: Record<string, SyncEntity[]>;
+}
+
 export const sync = {
   pull: (token: string, since?: string) =>
     api<SyncPullResponse>(
       `/api/v1/sync${since ? `?since=${encodeURIComponent(since)}` : ""}`,
       { token },
     ),
+
+  push: (token: string, req: SyncPushRequest) =>
+    api<SyncPushResponse>("/api/v1/sync", { method: "POST", token, body: req }),
 };
 
 // ─── Banking (Sprint 6 Salt Edge) ───────────────────────────────────
