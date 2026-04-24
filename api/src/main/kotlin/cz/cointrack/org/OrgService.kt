@@ -167,9 +167,10 @@ class OrgService(
         newRole: String,
         callerUserId: UUID,
     ) {
-        if (newRole !in setOf("admin", "member")) {
+        // Sprint 8: 'accountant' může vidět účtenky+faktury napříč orgem (přes /accounting web)
+        if (newRole !in setOf("admin", "member", "accountant")) {
             throw ApiException(HttpStatusCode.BadRequest, "invalid_role",
-                "Role musí být 'admin' nebo 'member'. Ownera nelze měnit přes tento endpoint.")
+                "Role musí být 'admin', 'member' nebo 'accountant'. Ownera nelze měnit přes tento endpoint.")
         }
         requireOrgAdmin(orgId, callerUserId)
 

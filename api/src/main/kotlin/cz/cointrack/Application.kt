@@ -10,6 +10,8 @@ import cz.cointrack.bank.SaltEdgeProvider
 import cz.cointrack.bank.bankRoutes
 import cz.cointrack.email.EmailConfig
 import cz.cointrack.email.EmailService
+import cz.cointrack.org.AccountantService
+import cz.cointrack.org.accountantRoutes
 import cz.cointrack.org.OrgService
 import cz.cointrack.org.orgRoutes
 import cz.cointrack.org.PermissionService
@@ -67,6 +69,7 @@ fun Application.module() {
         webBaseUrl = webBaseUrl,
     )
     val permissionService = PermissionService()
+    val accountantService = AccountantService()
 
     // Banking — pro teď jen Salt Edge. Pokud není nakonfigurovaný, bankService je null.
     val bankService: BankService? = loadBankService()
@@ -96,6 +99,7 @@ fun Application.module() {
             storageRoutes(storageService)
             orgRoutes(orgService)
             permissionRoutes(permissionService)
+            accountantRoutes(accountantService)
             if (bankService != null) bankRoutes(bankService)
 
             // TODO (Sprint 8): billing endpoints

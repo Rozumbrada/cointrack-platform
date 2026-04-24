@@ -159,6 +159,17 @@ export interface BankAccountExtDto {
   accountNumber?: string;
   balance?: string;
   balanceUpdatedAt?: string;
+  /** Profile syncIds, ke kterým je účet přiřazen. */
+  assignedProfileIds?: string[];
+  autoImportProfileIds?: string[];
+}
+
+export interface BankAssignmentDto {
+  id: string;
+  bankAccountExtId: string;
+  profileId: string;
+  autoImport: boolean;
+  createdAt: string;
 }
 
 export interface BankConnectionDto {
@@ -208,4 +219,21 @@ export const bank = {
       `/api/v1/bank/accounts/${accountId}/transactions?limit=${limit}`,
       { token },
     ),
+
+  // ─── Sprint 8 — assignment ─────────────────────────────────────
+  listAssignments: (token: string) =>
+    api<{ assignments: BankAssignmentDto[] }>("/api/v1/bank/assignments", { token }),
+
+  assignToProfile: (token: string, accountId: string, profileId: string, autoImport = false) =>
+    api<BankAssignmentDto>(`/api/v1/bank/accounts/${accountId}/assign-to-profile`, {
+      method: "POST",
+      token,
+      body: { profileId, autoImport },
+    }),
+
+  unassignFromProfile: (token: string, accountId: string, profileId: string) =>
+    api<void>(`/api/v1/bank/accounts/${accountId}/assignment/${profileId}`, {
+      method: "DELETE",
+      token,
+    }),
 };
