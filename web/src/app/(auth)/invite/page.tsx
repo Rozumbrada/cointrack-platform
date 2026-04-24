@@ -16,16 +16,42 @@ import { Button } from "@/components/ui/button";
  *  4. Alternativne user muze manualne vlozit token v app -> Nastaveni -> Cloud -> Pozvanky.
  */
 
+/**
+ * Detekuj Android z UA — tam pouzivame `intent://` URL (Chrome-safe deep link).
+ * Jinak fallback na `cointrack://` custom scheme.
+ */
+function buildDeepLink(token: string, isAndroid: boolean): string {
+  const encodedToken = encodeURIComponent(token);
+  if (isAndroid) {
+    // Intent URL scheme: Chrome Android otevre app pokud je nainstalovana,
+    // jinak spusti browser_fallback_url (Play Store).
+    const fallback = encodeURIComponent(
+      "https://play.google.com/store/apps/details?id=cz.wallet.finance",
+    );
+    return (
+      `intent://accept-invite?token=${encodedToken}` +
+      `#Intent;scheme=cointrack;package=cz.wallet.finance;` +
+      `S.browser_fallback_url=${fallback};end`
+    );
+  }
+  return `cointrack://accept-invite?token=${encodedToken}`;
+}
+
 function InviteContent() {
   const params = useSearchParams();
   const token = params.get("token") ?? "";
   const [attempted, setAttempted] = useState(false);
+  const [deepLink, setDeepLink] = useState("");
 
   useEffect(() => {
     if (!token) return;
-    // Auto-redirect pokusem o otevreni aplikace
-    const deepLink = `cointrack://accept-invite?token=${encodeURIComponent(token)}`;
-    window.location.href = deepLink;
+    const isAndroid = /android/i.test(
+      typeof navigator !== "undefined" ? navigator.userAgent : "",
+    );
+    const link = buildDeepLink(token, isAndroid);
+    setDeepLink(link);
+    // Auto-otevreni aplikace (redirect hned po prvním renderu)
+    window.location.href = link;
     const t = setTimeout(() => setAttempted(true), 1500);
     return () => clearTimeout(t);
   }, [token]);
@@ -44,7 +70,6 @@ function InviteContent() {
     );
   }
 
-  const deepLink = `cointrack://accept-invite?token=${encodeURIComponent(token)}`;
   const playStoreUrl = "https://play.google.com/store/apps/details?id=cz.wallet.finance";
 
   return (
