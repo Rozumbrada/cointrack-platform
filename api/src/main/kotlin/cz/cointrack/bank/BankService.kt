@@ -175,6 +175,48 @@ class BankService(
         }
     }
 
+    /**
+     * Vrátí transakce daného účtu seřazené od nejnovější. Ověřuje, že účet patří
+     * user-ovi (přes connection → customer → user).
+     */
+    suspend fun listTransactions(
+        userId: UUID,
+        accountExtId: UUID,
+        limit: Int = 100,
+    ): List<BankTransactionExtDto> = db {
+        val account = BankAccountsExt.selectAll()
+            .where { BankAccountsExt.id eq accountExtId }
+            .singleOrNull()
+            ?: throw ApiException(HttpStatusCode.NotFound, "account_not_found", "Účet neexistuje.")
+
+        val connection = BankConnections.selectAll()
+            .where { BankConnections.id eq account[BankAccountsExt.connectionId] }
+            .single()
+        val customer = BankCustomers.selectAll()
+            .where { BankCustomers.id eq connection[BankConnections.customerId] }
+            .single()
+        if (customer[BankCustomers.userId] != userId) {
+            throw ApiException(HttpStatusCode.Forbidden, "forbidden", "Není váš účet.")
+        }
+
+        BankTransactionsExt.selectAll()
+            .where { BankTransactionsExt.accountExtId eq accountExtId }
+            .orderBy(BankTransactionsExt.madeOn, SortOrder.DESC)
+            .limit(limit)
+            .map { t ->
+                BankTransactionExtDto(
+                    id = t[BankTransactionsExt.id].value.toString(),
+                    accountId = accountExtId.toString(),
+                    amount = t[BankTransactionsExt.amount].toPlainString(),
+                    currencyCode = t[BankTransactionsExt.currencyCode],
+                    description = t[BankTransactionsExt.description],
+                    madeOn = t[BankTransactionsExt.madeOn].toString(),
+                    merchantName = t[BankTransactionsExt.merchantName],
+                    status = t[BankTransactionsExt.status],
+                )
+            }
+    }
+
     /** Pomocné — dohledá external ID pro lokální connection UUID. */
     suspend fun findExternalConnectionId(connectionId: UUID): String = db {
         BankConnections

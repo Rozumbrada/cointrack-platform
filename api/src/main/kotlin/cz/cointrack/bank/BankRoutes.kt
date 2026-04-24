@@ -54,6 +54,14 @@ fun Route.bankRoutes(service: BankService) {
                 call.respond(HttpStatusCode.NoContent)
             }
 
+            // Seznam transakcí účtu (ověřený owner)
+            get("/accounts/{accountId}/transactions") {
+                val userId = call.userId()
+                val accountId = call.pathUuid("accountId")
+                val limit = call.request.queryParameters["limit"]?.toIntOrNull()?.coerceIn(1, 500) ?: 100
+                call.respond(BankTransactionsResponse(transactions = service.listTransactions(userId, accountId, limit)))
+            }
+
             // Manuální refresh (třeba když uživatel klikne "Aktualizovat")
             post("/connections/{id}/refresh") {
                 call.userId()

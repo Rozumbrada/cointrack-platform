@@ -58,3 +58,8 @@ data class BankTransactionExtDto(
 
 @Serializable
 data class WebhookAck(val received: Boolean = true)
+
+@Serializable
+data class BankTransactionsResponse(
+    val transactions: List<BankTransactionExtDto>,
+)
