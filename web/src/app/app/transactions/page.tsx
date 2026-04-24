@@ -53,7 +53,7 @@ export default function TransactionsPage() {
       .filter((r) =>
         query ? r.data.note?.toLowerCase().includes(query.toLowerCase()) : true,
       )
-      .sort((a, b) => b.data.dateTime.localeCompare(a.data.dateTime));
+      .sort((a, b) => (b.data.dateTime ?? "").localeCompare(a.data.dateTime ?? ""));
   }, [txs, filter, query]);
 
   if (loading) return <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>;

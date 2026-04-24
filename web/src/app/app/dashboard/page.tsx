@@ -72,7 +72,7 @@ export default function DashboardPage() {
     return [...transactions]
       .filter((e) => !e.deletedAt)
       .map((e) => ({ syncId: e.syncId, data: e.data as unknown as TransactionData }))
-      .sort((a, b) => b.data.dateTime.localeCompare(a.data.dateTime))
+      .sort((a, b) => (b.data.dateTime ?? "").localeCompare(a.data.dateTime ?? ""))
       .slice(0, 10);
   }, [transactions]);
 
