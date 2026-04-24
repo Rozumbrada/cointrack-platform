@@ -231,6 +231,37 @@ class SaltEdgeProvider(private val config: SaltEdgeConfig) : BankingProvider {
         }
     }
 
+    override suspend fun reconnectSession(
+        externalConnectionId: String,
+        locale: String,
+        returnUrl: String,
+    ): ConnectSessionPayload {
+        // Salt Edge v6: POST /connections/{id}/reconnect
+        // Vyžaduje znovu consent scope + attempt, ale ne customer_id (už ho zná z connection).
+        val body = buildJsonObject {
+            put("data", buildJsonObject {
+                put("consent", buildJsonObject {
+                    putJsonArray("scopes") {
+                        add("accounts")
+                        add("transactions")
+                    }
+                })
+                put("attempt", buildJsonObject {
+                    put("return_to", returnUrl)
+                    put("locale", locale)
+                    put("fetch_scopes", buildJsonArray {
+                        add("accounts")
+                        add("transactions")
+                    })
+                })
+            })
+        }
+        val res = post("/connections/$externalConnectionId/reconnect", body)
+        val url = requireString(res, "data.connect_url")
+        val expiresStr = requireString(res, "data.expires_at")
+        return ConnectSessionPayload(url = url, expiresAt = parseInstant(expiresStr))
+    }
+
     override suspend fun removeConnection(externalConnectionId: String) {
         delete("/connections/$externalConnectionId")
     }

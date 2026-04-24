@@ -43,6 +43,16 @@ interface BankingProvider {
         fromId: String? = null,
     ): List<TransactionPayload>
 
+    /**
+     * Vytvoří reconnect session pro existující connection — uživatel musí obnovit consent.
+     * Vrací stejnou strukturu jako createConnectSession.
+     */
+    suspend fun reconnectSession(
+        externalConnectionId: String,
+        locale: String,
+        returnUrl: String,
+    ): ConnectSessionPayload
+
     /** Smaže connection na straně provider-a. */
     suspend fun removeConnection(externalConnectionId: String)
 

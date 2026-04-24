@@ -62,6 +62,14 @@ fun Route.bankRoutes(service: BankService) {
                 call.respond(BankTransactionsResponse(transactions = service.listTransactions(userId, accountId, limit)))
             }
 
+            // Reconnect — uživatel obnovuje consent
+            post("/connections/{id}/reconnect") {
+                val userId = call.userId()
+                val id = call.pathUuid("id")
+                val locale = call.request.queryParameters["locale"] ?: "cs"
+                call.respond(service.reconnectSession(userId, id, locale))
+            }
+
             // Manuální refresh (třeba když uživatel klikne "Aktualizovat")
             post("/connections/{id}/refresh") {
                 call.userId()

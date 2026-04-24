@@ -141,6 +141,35 @@ class BankService(
     }
 
     /**
+     * Reconnect — uživatel potřebuje obnovit consent pro existující připojení.
+     * Vrátí connect_url, kam ho klient má přesměrovat (WebView).
+     */
+    suspend fun reconnectSession(
+        userId: UUID,
+        connectionId: UUID,
+        locale: String = "cs",
+    ): ConnectSessionResponse {
+        val externalId = db {
+            val c = BankConnections.selectAll()
+                .where { BankConnections.id eq connectionId }
+                .singleOrNull()
+                ?: throw ApiException(HttpStatusCode.NotFound, "connection_not_found", "Připojení neexistuje.")
+            val customer = BankCustomers.selectAll()
+                .where { BankCustomers.id eq c[BankConnections.customerId] }
+                .single()
+            if (customer[BankCustomers.userId].value != userId) {
+                throw ApiException(HttpStatusCode.Forbidden, "forbidden", "Není vaše připojení.")
+            }
+            c[BankConnections.externalId]
+        }
+        val payload = bankingProvider.reconnectSession(externalId, locale, returnUrl)
+        return ConnectSessionResponse(
+            connectUrl = payload.url,
+            expiresAt = payload.expiresAt.toString(),
+        )
+    }
+
+    /**
      * Smaže connection (u provider-a i lokálně). Transakce a účty zůstanou — uživatel je
      * už stáhl a může je používat offline. Soft delete přes deleted_at.
      */
