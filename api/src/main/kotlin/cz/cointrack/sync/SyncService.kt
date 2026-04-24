@@ -22,6 +22,47 @@ import java.util.UUID
 class SyncService {
 
     // ═══════════════════════════════════════════════════════════════════
+    // Access control helpers (Sprint 5e.4)
+    // ═══════════════════════════════════════════════════════════════════
+
+    /**
+     * Vrátí orgId kde user má roli owner nebo admin (plný přístup ke všem profilům v orgu).
+     */
+    private fun Transaction.orgsWhereAdmin(userId: UUID): List<UUID> =
+        OrganizationMembers.selectAll()
+            .where {
+                (OrganizationMembers.userId eq userId) and
+                    (OrganizationMembers.role inList listOf("owner", "admin"))
+            }
+            .map { it[OrganizationMembers.organizationId].value }
+
+    /**
+     * Profily které vidí user U:
+     *   - vlastní (ownerUserId == U) — personal i org
+     *   - všechny v orgech, kde U je owner/admin
+     * TODO 5f: přidat profile_permissions (sdílení per-profile s members).
+     */
+    private fun Transaction.accessibleProfileIds(userId: UUID): List<UUID> {
+        val adminOrgs = orgsWhereAdmin(userId)
+        return Profiles.selectAll()
+            .where {
+                (Profiles.ownerUserId eq userId) or
+                    (if (adminOrgs.isNotEmpty()) Profiles.organizationId inList adminOrgs else Op.FALSE)
+            }
+            .map { it[Profiles.id].value }
+    }
+
+    /**
+     * Může user zapisovat do profilu (vytvořit/upravit/smazat entity na něj navázané)?
+     * Podmínky: vlastní profil, nebo admin/owner orgu kam profil patří.
+     */
+    private fun Transaction.canWriteProfile(userId: UUID, profileRow: ResultRow): Boolean {
+        if (profileRow[Profiles.ownerUserId].value == userId) return true
+        val orgId = profileRow[Profiles.organizationId]?.value ?: return false
+        return orgId in orgsWhereAdmin(userId)
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
     // PULL: GET /sync?since=ISO
     // ═══════════════════════════════════════════════════════════════════
 
@@ -30,9 +71,7 @@ class SyncService {
         val effectiveSince = since ?: Instant.EPOCH
 
         return db {
-            val userProfileIds = Profiles.selectAll()
-                .where { Profiles.ownerUserId eq userId }
-                .map { it[Profiles.id].value }
+            val userProfileIds = accessibleProfileIds(userId)
 
             // Mapování db_id → sync_id pro každou referenční tabulku
             val profileIdToSync = Profiles.selectAll()
@@ -66,9 +105,10 @@ class SyncService {
 
             val result = mutableMapOf<String, List<SyncEntity>>()
 
-            result["profiles"] = Profiles.selectAll()
-                .where { (Profiles.ownerUserId eq userId) and (Profiles.updatedAt greater effectiveSince) }
-                .map { profileToEntity(it) }
+            result["profiles"] = if (userProfileIds.isEmpty()) emptyList() else
+                Profiles.selectAll()
+                    .where { (Profiles.id inList userProfileIds) and (Profiles.updatedAt greater effectiveSince) }
+                    .map { profileToEntity(it) }
 
             result["accounts"] = if (userProfileIds.isEmpty()) emptyList() else
                 Accounts.selectAll()
@@ -234,7 +274,7 @@ class SyncService {
     private fun Transaction.resolveProfileDbId(syncIdStr: String, userId: UUID): UUID? {
         val syncId = runCatching { UUID.fromString(syncIdStr) }.getOrNull() ?: return null
         val row = Profiles.selectAll().where { Profiles.syncId eq syncId }.singleOrNull() ?: return null
-        return if (row[Profiles.ownerUserId].value == userId) row[Profiles.id].value else null
+        return if (canWriteProfile(userId, row)) row[Profiles.id].value else null
     }
 
     private fun Transaction.resolveAccountDbId(syncIdStr: String?): UUID? {
@@ -272,24 +312,49 @@ class SyncService {
     ): UpsertResult {
         val existing = Profiles.selectAll().where { Profiles.syncId eq syncId }.singleOrNull()
         if (existing != null) {
-            if (existing[Profiles.ownerUserId].value != userId) return UpsertResult.Forbidden
+            if (!canWriteProfile(userId, existing)) return UpsertResult.Forbidden
             if (existing[Profiles.updatedAt] >= updatedAt) return UpsertResult.Conflict(profileToEntity(existing))
             Profiles.update({ Profiles.syncId eq syncId }) {
-                applyProfileFields(it, e.data, e.clientVersion, updatedAt, deletedAt)
+                applyProfileFields(it, e.data, e.clientVersion, updatedAt, deletedAt, userId)
             }
         } else {
+            // Při vytváření nového profilu: pokud e.data obsahuje organizationId,
+            // ověř že user je člen toho orgu. Jinak profile patří jen userovi.
+            val orgId = resolveProfileOrganization(e.data, userId)
             Profiles.insert {
                 it[Profiles.syncId] = syncId
                 it[Profiles.ownerUserId] = userId
+                it[Profiles.organizationId] = orgId
                 it[Profiles.createdAt] = updatedAt
-                applyProfileFields(it, e.data, e.clientVersion, updatedAt, deletedAt)
+                applyProfileFields(it, e.data, e.clientVersion, updatedAt, deletedAt, userId)
             }
         }
         return UpsertResult.Accepted
     }
 
-    private fun applyProfileFields(
-        s: UpdateBuilder<*>, d: JsonObject, clientVersion: Long, updatedAt: Instant, deletedAt: Instant?
+    /**
+     * Přečte organizationId z příchozího profilu a ověří členství. NULL pokud není
+     * v datech nebo user není členem toho orgu.
+     */
+    private fun Transaction.resolveProfileOrganization(d: JsonObject, userId: UUID): EntityID<UUID>? {
+        val orgIdStr = d.strOrNull("organizationId") ?: return null
+        val orgId = runCatching { UUID.fromString(orgIdStr) }.getOrNull() ?: return null
+        val isMember = OrganizationMembers.selectAll()
+            .where {
+                (OrganizationMembers.organizationId eq orgId) and
+                    (OrganizationMembers.userId eq userId)
+            }.any()
+        if (!isMember) return null
+        return EntityID(orgId, Organizations)
+    }
+
+    /**
+     * @param userIdForOrgCheck UUID volajícího pro validaci organizationId (členství v orgu).
+     *                          Null při jednoduchém update bez změny orgu (zachová současnou hodnotu).
+     */
+    private fun Transaction.applyProfileFields(
+        s: UpdateBuilder<*>, d: JsonObject, clientVersion: Long, updatedAt: Instant, deletedAt: Instant?,
+        userIdForOrgCheck: UUID? = null,
     ) {
         s[Profiles.name] = d.str("name")
         s[Profiles.type] = d.str("type")
@@ -303,6 +368,10 @@ class SyncService {
         s[Profiles.city] = d.strOrNull("city")
         s[Profiles.phone] = d.strOrNull("phone")
         s[Profiles.email] = d.strOrNull("email")
+        // Sprint 5e — přiřazení k orgu (NULL = osobní profil)
+        if (userIdForOrgCheck != null && d.containsKey("organizationId")) {
+            s[Profiles.organizationId] = resolveProfileOrganization(d, userIdForOrgCheck)
+        }
         s[Profiles.clientVersion] = clientVersion
         s[Profiles.updatedAt] = updatedAt
         s[Profiles.deletedAt] = deletedAt
@@ -567,7 +636,7 @@ class SyncService {
         // Ověř ownership přes receipt.profile
         val receipt = Receipts.selectAll().where { Receipts.id eq receiptDbId }.singleOrNull() ?: return UpsertResult.Forbidden
         val profile = Profiles.selectAll().where { Profiles.id eq receipt[Receipts.profileId].value }.singleOrNull() ?: return UpsertResult.Forbidden
-        if (profile[Profiles.ownerUserId].value != userId) return UpsertResult.Forbidden
+        if (!canWriteProfile(userId, profile)) return UpsertResult.Forbidden
 
         val existing = ReceiptItems.selectAll().where { ReceiptItems.syncId eq syncId }.singleOrNull()
         if (existing != null) {
@@ -611,7 +680,7 @@ class SyncService {
         val invoiceDbId = resolveInvoiceDbId(e.data.str("invoiceId")) ?: return UpsertResult.Forbidden
         val invoice = Invoices.selectAll().where { Invoices.id eq invoiceDbId }.singleOrNull() ?: return UpsertResult.Forbidden
         val profile = Profiles.selectAll().where { Profiles.id eq invoice[Invoices.profileId].value }.singleOrNull() ?: return UpsertResult.Forbidden
-        if (profile[Profiles.ownerUserId].value != userId) return UpsertResult.Forbidden
+        if (!canWriteProfile(userId, profile)) return UpsertResult.Forbidden
 
         val existing = InvoiceItems.selectAll().where { InvoiceItems.syncId eq syncId }.singleOrNull()
         if (existing != null) {
@@ -714,6 +783,8 @@ class SyncService {
             r[Profiles.city]?.let { put("city", it) }
             r[Profiles.phone]?.let { put("phone", it) }
             r[Profiles.email]?.let { put("email", it) }
+            r[Profiles.organizationId]?.value?.let { put("organizationId", it.toString()) }
+            put("ownerUserId", r[Profiles.ownerUserId].value.toString())
         },
     )
 
@@ -1088,7 +1159,7 @@ class SyncService {
         val listSync = runCatching { UUID.fromString(listSyncStr) }.getOrNull() ?: return UpsertResult.Forbidden
         val listRow = ShoppingLists.selectAll().where { ShoppingLists.syncId eq listSync }.singleOrNull() ?: return UpsertResult.Forbidden
         val profile = Profiles.selectAll().where { Profiles.id eq listRow[ShoppingLists.profileId].value }.singleOrNull() ?: return UpsertResult.Forbidden
-        if (profile[Profiles.ownerUserId].value != userId) return UpsertResult.Forbidden
+        if (!canWriteProfile(userId, profile)) return UpsertResult.Forbidden
         val listDbId = listRow[ShoppingLists.id].value
 
         val existing = ShoppingItems.selectAll().where { ShoppingItems.syncId eq syncId }.singleOrNull()
