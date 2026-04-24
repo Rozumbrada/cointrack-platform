@@ -49,11 +49,11 @@ export default function NewTransactionPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const profileId = getCurrentProfileId();
+    const profileSyncId = getCurrentProfileId();   // UUID string
     const accId = Number.parseInt(accountId, 10);
     const amt = Number.parseFloat(amount.replace(",", "."));
 
-    if (!profileId) {
+    if (!profileSyncId) {
       setError("Není vybraný profil.");
       return;
     }
@@ -91,7 +91,7 @@ export default function NewTransactionPage() {
                   categoryId: categoryId ? Number.parseInt(categoryId, 10) : null,
                   note,
                   dateTime,
-                  profileId,
+                  profileId: profileSyncId,  // UUID string, backend dedup expects string
                 },
               },
             ],

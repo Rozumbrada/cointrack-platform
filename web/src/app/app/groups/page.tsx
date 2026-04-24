@@ -29,9 +29,9 @@ interface GroupExpenseItemData {
 }
 
 interface ProfileData {
-  id?: number;
   name: string;
-  isGroup?: boolean;
+  type?: string;       // "PERSONAL" | "BUSINESS" | "GROUP" (nebo lowercase varianta)
+  isGroup?: boolean;   // starší klient
 }
 
 export default function GroupsPage() {
@@ -45,17 +45,17 @@ export default function GroupsPage() {
   const profiles = rawEntities("profiles");
 
   const currentProfile = useMemo(() => {
-    const pid = Number(
-      typeof window !== "undefined"
-        ? localStorage.getItem("cointrack_currentProfileId")
-        : null,
-    );
-    return profiles
-      .map((e) => e.data as unknown as ProfileData)
-      .find((p) => p.id === pid);
+    const syncId = typeof window !== "undefined"
+      ? localStorage.getItem("cointrack_currentProfileSyncId")
+      : null;
+    if (!syncId) return undefined;
+    const entry = profiles.find((e) => e.syncId === syncId);
+    return entry ? (entry.data as unknown as ProfileData) : undefined;
   }, [profiles]);
 
-  const isGroup = currentProfile?.isGroup ?? false;
+  const isGroup =
+    currentProfile?.isGroup === true ||
+    (typeof currentProfile?.type === "string" && currentProfile.type === "GROUP");
 
   // Map member ID → member data
   const memberMap = useMemo(() => {

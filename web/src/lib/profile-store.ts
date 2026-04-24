@@ -1,41 +1,45 @@
 /**
- * Profile context — web drží currentProfileId v localStorage.
- * Používá se pro filtrování entit napříč stránkami (accounts, transactions, ...).
+ * Profile context — web identifikuje profil přes syncId (UUID string),
+ * protože backend serializuje profileId napříč entitami jako UUID.
  */
 
 "use client";
 
-const KEY = "cointrack_currentProfileId";
+const KEY = "cointrack_currentProfileSyncId";
 
 export interface ProfileData {
   name: string;
+  type?: string;
   icon?: string;
   color?: number;
-  isBusiness?: boolean;
-  isGroup?: boolean;
-  organizationId?: string;
   ico?: string;
   dic?: string;
-  isVatPayer?: boolean;
+  companyName?: string;
+  organizationId?: string;
 }
 
 export interface Profile {
-  id: number;           // lokální Room ID (posílá mobilní klient)
-  syncId: string;
+  syncId: string;        // primární klíč na webu
   data: ProfileData;
 }
 
-export function getCurrentProfileId(): number | null {
+export function getCurrentProfileSyncId(): string | null {
   if (typeof window === "undefined") return null;
-  const raw = localStorage.getItem(KEY);
-  if (!raw) return null;
-  const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) ? n : null;
+  return localStorage.getItem(KEY);
 }
 
-export function setCurrentProfileId(id: number | null) {
+export function setCurrentProfileSyncId(syncId: string | null) {
   if (typeof window === "undefined") return;
-  if (id == null) localStorage.removeItem(KEY);
-  else localStorage.setItem(KEY, String(id));
+  if (syncId == null) localStorage.removeItem(KEY);
+  else localStorage.setItem(KEY, syncId);
   window.dispatchEvent(new CustomEvent("cointrack:profile-changed"));
+}
+
+// Zpětná kompatibilita se starším kódem co volal getCurrentProfileId()
+export function getCurrentProfileId(): string | null {
+  return getCurrentProfileSyncId();
+}
+
+export function setCurrentProfileId(syncId: string | null) {
+  setCurrentProfileSyncId(syncId);
 }

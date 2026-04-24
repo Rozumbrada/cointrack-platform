@@ -1,6 +1,5 @@
 /**
- * Sdílený hook pro pull všech entit + filtrování podle currentProfileId.
- * Odstraní duplication mezi stránkami (každá potřebuje sync.pull + filter by profile).
+ * Sdílený hook pro pull všech entit + filtrování podle aktuálního profilu (syncId / UUID).
  */
 
 "use client";
@@ -8,13 +7,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { sync, SyncEntity, SyncPullResponse } from "./api";
 import { withAuth } from "./auth-store";
-import { getCurrentProfileId } from "./profile-store";
+import { getCurrentProfileSyncId } from "./profile-store";
 
 export function useSyncData() {
   const [data, setData] = useState<SyncPullResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [profileId, setProfileId] = useState<number | null>(null);
+  const [profileSyncId, setProfileSyncId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -31,14 +30,18 @@ export function useSyncData() {
 
   useEffect(() => {
     load();
-    setProfileId(getCurrentProfileId());
+    setProfileSyncId(getCurrentProfileSyncId());
 
-    const onProfileChange = () => setProfileId(getCurrentProfileId());
+    const onProfileChange = () => setProfileSyncId(getCurrentProfileSyncId());
     window.addEventListener("cointrack:profile-changed", onProfileChange);
-    return () => window.removeEventListener("cointrack:profile-changed", onProfileChange);
+    return () =>
+      window.removeEventListener("cointrack:profile-changed", onProfileChange);
   }, [load]);
 
-  /** Získá entity daného typu filtrované podle aktuálního profilu. */
+  /**
+   * Získá entity daného typu filtrované podle aktuálního profilu.
+   * Backend serializuje profileId jako UUID string (= syncId profilu).
+   */
   const entitiesByProfile = useCallback(
     <T,>(key: string, alwaysGlobal = false): Array<{ syncId: string; data: T }> => {
       if (!data) return [];
@@ -47,16 +50,17 @@ export function useSyncData() {
         .filter((e) => !e.deletedAt)
         .filter((e) => {
           if (alwaysGlobal) return true;
-          if (profileId == null) return true;
+          if (profileSyncId == null) return true;
           const pid = (e.data as Record<string, unknown>).profileId;
-          return pid == null || pid === profileId;
+          if (pid == null) return true;          // entity bez profileId (např. profiles samotné) → vše
+          return pid === profileSyncId;          // string === string
         })
         .map((e) => ({ syncId: e.syncId, data: e.data as unknown as T }));
     },
-    [data, profileId],
+    [data, profileSyncId],
   );
 
-  /** Raw entities (bez filter) — pro profiles, organizations apod. */
+  /** Raw entities (bez filtering) — pro profiles, group_expense_items apod. */
   const rawEntities = useCallback(
     (key: string): SyncEntity[] => {
       if (!data) return [];
@@ -68,7 +72,7 @@ export function useSyncData() {
   return {
     loading,
     error,
-    profileId,
+    profileSyncId,
     reload: load,
     entitiesByProfile,
     rawEntities,
