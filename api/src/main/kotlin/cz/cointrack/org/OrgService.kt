@@ -194,7 +194,10 @@ class OrgService(
     }
 
     suspend fun removeMember(orgId: UUID, targetUserId: UUID, callerUserId: UUID) {
-        requireOrgAdmin(orgId, callerUserId)
+        // Self-removal (leave org) je povoleno pro kohokoli — jinak jen admini.
+        val isSelfRemoval = targetUserId == callerUserId
+        if (!isSelfRemoval) requireOrgAdmin(orgId, callerUserId)
+        else requireOrgMember(orgId, callerUserId)
 
         db {
             val target = OrganizationMembers.selectAll()
@@ -202,9 +205,10 @@ class OrgService(
                 .singleOrNull()
                 ?: throw ApiException(HttpStatusCode.NotFound, "member_not_found", "Člen nenalezen.")
 
-            if (target[OrganizationMembers.role] == "owner") {
+            // Owner se může sám odebrat (opustit skupinu) — ale admin ho odebrat nemůže.
+            if (target[OrganizationMembers.role] == "owner" && !isSelfRemoval) {
                 throw ApiException(HttpStatusCode.Forbidden, "cannot_remove_owner",
-                    "Ownera nelze odebrat. Přesuň vlastnictví organizace nebo organizaci smaž.")
+                    "Ownera může odebrat jen on sám (opustit skupinu).")
             }
 
             OrganizationMembers.deleteWhere {
