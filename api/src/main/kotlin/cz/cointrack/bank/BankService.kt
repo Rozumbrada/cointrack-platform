@@ -1,0 +1,373 @@
+package cz.cointrack.bank
+
+import cz.cointrack.db.BankAccountsExt
+import cz.cointrack.db.BankConnections
+import cz.cointrack.db.BankCustomers
+import cz.cointrack.db.BankTransactionsExt
+import cz.cointrack.db.BankWebhookEvents
+import cz.cointrack.db.Users
+import cz.cointrack.db.db
+import cz.cointrack.plugins.ApiException
+import io.ktor.http.HttpStatusCode
+import kotlinx.serialization.json.*
+import org.jetbrains.exposed.sql.SortOrder
+import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.insertAndGetId
+import org.jetbrains.exposed.sql.selectAll
+import org.jetbrains.exposed.sql.update
+import org.slf4j.LoggerFactory
+import java.time.Instant
+import java.util.UUID
+
+private val log = LoggerFactory.getLogger(BankService::class.java)
+
+class BankService(
+    private val bankingProvider: BankingProvider,
+    private val returnUrl: String,
+) {
+    /** Shortcut pro použití v DB closures, kde symbol `provider` koliduje s Exposed DSL. */
+    private val providerId: String = bankingProvider.id
+
+
+    /**
+     * Vytvoří nebo vrátí existujícího external customer-a pro user-a.
+     */
+    suspend fun ensureCustomer(userId: UUID): String {
+        // 1. Zkus najít
+        val existing = db {
+            BankCustomers
+                .selectAll()
+                .where {
+                    (BankCustomers.userId eq userId) and
+                        (BankCustomers.provider eq providerId)
+                }
+                .singleOrNull()
+                ?.get(BankCustomers.externalId)
+        }
+        if (existing != null) return existing
+
+        // 2. Vytvoř u provider-a
+        val email = db {
+            Users.selectAll().where { Users.id eq userId }.singleOrNull()
+                ?.get(Users.email)
+        }
+        val externalId = bankingProvider.createCustomer(userId.toString(), email)
+
+        // 3. Ulož mapping
+        db {
+            BankCustomers.insertAndGetId {
+                it[BankCustomers.userId] = userId
+                it[BankCustomers.provider] = providerId
+                it[BankCustomers.externalId] = externalId
+                it[BankCustomers.createdAt] = Instant.now()
+            }
+        }
+        return externalId
+    }
+
+    /**
+     * Vytvoří connect session — vrátí klientovi URL, kam ho má přesměrovat (WebView).
+     */
+    suspend fun createConnectSession(userId: UUID, req: ConnectSessionRequest): ConnectSessionResponse {
+        val externalCustomerId = ensureCustomer(userId)
+        val payload = bankingProvider.createConnectSession(
+            externalCustomerId = externalCustomerId,
+            providerCode = req.providerCode,
+            locale = req.locale,
+            returnUrl = returnUrl,
+        )
+        return ConnectSessionResponse(
+            connectUrl = payload.url,
+            expiresAt = payload.expiresAt.toString(),
+        )
+    }
+
+    /**
+     * Vrátí připojené banky + jejich účty. Pokud connection status != active,
+     * označí v UI jako vyžadující obnovu.
+     */
+    suspend fun listConnections(userId: UUID): List<BankConnectionDto> {
+        return db {
+            val customerRow = BankCustomers
+                .selectAll()
+                .where {
+                    (BankCustomers.userId eq userId) and
+                        (BankCustomers.provider eq providerId)
+                }
+                .singleOrNull()
+                ?: return@db emptyList()
+
+            val connections = BankConnections
+                .selectAll()
+                .where {
+                    (BankConnections.customerId eq customerRow[BankCustomers.id]) and
+                        (BankConnections.deletedAt.isNull())
+                }
+                .orderBy(BankConnections.createdAt, SortOrder.DESC)
+                .toList()
+
+            connections.map { c ->
+                val connUuid = c[BankConnections.id].value
+                val accounts = BankAccountsExt
+                    .selectAll()
+                    .where {
+                        (BankAccountsExt.connectionId eq connUuid) and
+                            (BankAccountsExt.deletedAt.isNull())
+                    }
+                    .map { a ->
+                        BankAccountExtDto(
+                            id = a[BankAccountsExt.id].value.toString(),
+                            name = a[BankAccountsExt.name],
+                            nature = a[BankAccountsExt.nature],
+                            currencyCode = a[BankAccountsExt.currencyCode],
+                            iban = a[BankAccountsExt.iban],
+                            accountNumber = a[BankAccountsExt.accountNumber],
+                            balance = a[BankAccountsExt.balance]?.toPlainString(),
+                            balanceUpdatedAt = a[BankAccountsExt.balanceUpdatedAt]?.toString(),
+                        )
+                    }
+                BankConnectionDto(
+                    id = connUuid.toString(),
+                    providerCode = c[BankConnections.providerCode],
+                    providerName = c[BankConnections.providerName],
+                    status = c[BankConnections.status],
+                    lastSuccessAt = c[BankConnections.lastSuccessAt]?.toString(),
+                    consentExpiresAt = c[BankConnections.consentExpiresAt]?.toString(),
+                    lastError = c[BankConnections.lastError],
+                    accounts = accounts,
+                )
+            }
+        }
+    }
+
+    /**
+     * Smaže connection (u provider-a i lokálně). Transakce a účty zůstanou — uživatel je
+     * už stáhl a může je používat offline. Soft delete přes deleted_at.
+     */
+    suspend fun deleteConnection(userId: UUID, connectionId: UUID) {
+        val externalId = db {
+            val c = BankConnections
+                .selectAll()
+                .where { BankConnections.id eq connectionId }
+                .singleOrNull() ?: throw ApiException(
+                HttpStatusCode.NotFound, "connection_not_found", "Připojení neexistuje."
+            )
+            // Ověř vlastnictví
+            val customer = BankCustomers
+                .selectAll()
+                .where { BankCustomers.id eq c[BankConnections.customerId] }
+                .single()
+            if (customer[BankCustomers.userId] != userId) {
+                throw ApiException(HttpStatusCode.Forbidden, "forbidden", "Není vaše připojení.")
+            }
+            c[BankConnections.externalId]
+        }
+
+        runCatching { bankingProvider.removeConnection(externalId) }
+            .onFailure { log.warn("Provider removeConnection selhal: ${it.message}") }
+
+        db {
+            BankConnections.update({ BankConnections.id eq connectionId }) {
+                it[BankConnections.deletedAt] = Instant.now()
+                it[BankConnections.updatedAt] = Instant.now()
+                it[BankConnections.status] = "disabled"
+            }
+        }
+    }
+
+    /** Pomocné — dohledá external ID pro lokální connection UUID. */
+    suspend fun findExternalConnectionId(connectionId: UUID): String = db {
+        BankConnections
+            .selectAll()
+            .where { BankConnections.id eq connectionId }
+            .singleOrNull()
+            ?.get(BankConnections.externalId)
+            ?: throw ApiException(HttpStatusCode.NotFound, "connection_not_found", "Připojení neexistuje.")
+    }
+
+    // ─── Webhook ingest ────────────────────────────────────────────────
+
+    /**
+     * Uloží webhook event + zpracuje (upsert connection, stáhne accounts+transactions).
+     * Vrátí true, pokud payload byl validní.
+     */
+    suspend fun ingestWebhook(rawBody: String, signature: String?): Boolean {
+        val json = try {
+            Json.parseToJsonElement(rawBody).jsonObject
+        } catch (_: Exception) {
+            log.warn("Webhook: nelze parsovat JSON")
+            return false
+        }
+
+        // Log eventu
+        val data = json["data"] as? JsonObject
+        val eventType = (json["meta"] as? JsonObject)?.get("version")?.jsonPrimitive?.contentOrNull
+            ?: json["notification_type"]?.jsonPrimitive?.contentOrNull
+            ?: "unknown"
+        val externalConnectionId = data?.get("connection_id")?.jsonPrimitive?.contentOrNull
+            ?: data?.get("connection")?.let { (it as? JsonObject)?.get("id")?.jsonPrimitive?.contentOrNull }
+
+        val eventId = db {
+            BankWebhookEvents.insertAndGetId {
+                it[BankWebhookEvents.provider] = providerId
+                it[BankWebhookEvents.eventType] = eventType
+                it[BankWebhookEvents.externalConnectionId] = externalConnectionId
+                it[BankWebhookEvents.payload] = rawBody
+                it[BankWebhookEvents.signature] = signature
+                it[BankWebhookEvents.receivedAt] = Instant.now()
+            }.value
+        }
+
+        if (externalConnectionId == null) {
+            db {
+                BankWebhookEvents.update({ BankWebhookEvents.id eq eventId }) {
+                    it[BankWebhookEvents.processedAt] = Instant.now()
+                    it[BankWebhookEvents.error] = "no_connection_id"
+                }
+            }
+            return true
+        }
+
+        try {
+            refreshConnection(externalConnectionId)
+            db {
+                BankWebhookEvents.update({ BankWebhookEvents.id eq eventId }) {
+                    it[BankWebhookEvents.processedAt] = Instant.now()
+                }
+            }
+        } catch (e: Exception) {
+            log.error("Webhook processing selhal", e)
+            db {
+                BankWebhookEvents.update({ BankWebhookEvents.id eq eventId }) {
+                    it[BankWebhookEvents.processedAt] = Instant.now()
+                    it[BankWebhookEvents.error] = e.message?.take(1000)
+                }
+            }
+        }
+        return true
+    }
+
+    /**
+     * Refresh jedné connection — načte status, accounts, new transactions z provider-a
+     * a uloží do DB. Volané z webhooku a manuálně.
+     */
+    suspend fun refreshConnection(externalConnectionId: String) {
+        val conn = bankingProvider.fetchConnection(externalConnectionId)
+
+        // Najdi nebo vytvoř lokální záznam
+        val (connUuid, customerUuid) = db {
+            val existing = BankConnections.selectAll().where {
+                (BankConnections.provider eq providerId) and
+                    (BankConnections.externalId eq externalConnectionId)
+            }.singleOrNull()
+
+            if (existing != null) {
+                BankConnections.update({ BankConnections.id eq existing[BankConnections.id] }) {
+                    it[BankConnections.status] = conn.status
+                    it[BankConnections.providerCode] = conn.providerCode
+                    it[BankConnections.providerName] = conn.providerName
+                    it[BankConnections.lastSuccessAt] = conn.lastSuccessAt
+                    it[BankConnections.consentExpiresAt] = conn.consentExpiresAt
+                    it[BankConnections.lastError] = conn.lastError
+                    it[BankConnections.updatedAt] = Instant.now()
+                }
+                existing[BankConnections.id].value to existing[BankConnections.customerId].value
+            } else {
+                // Nový connection — potřebujeme zjistit customer_id z raw payloadu
+                val customerExternalId = (conn.raw as? JsonObject)
+                    ?.get("customer_id")?.jsonPrimitive?.contentOrNull
+                    ?: error("Salt Edge connection $externalConnectionId bez customer_id")
+                val customerRow = BankCustomers.selectAll().where {
+                    (BankCustomers.provider eq providerId) and
+                        (BankCustomers.externalId eq customerExternalId)
+                }.singleOrNull() ?: error("Customer $customerExternalId nemá lokální záznam")
+                val newId = BankConnections.insertAndGetId {
+                    it[BankConnections.customerId] = customerRow[BankCustomers.id]
+                    it[BankConnections.provider] = providerId
+                    it[BankConnections.externalId] = externalConnectionId
+                    it[BankConnections.providerCode] = conn.providerCode
+                    it[BankConnections.providerName] = conn.providerName
+                    it[BankConnections.status] = conn.status
+                    it[BankConnections.lastSuccessAt] = conn.lastSuccessAt
+                    it[BankConnections.consentExpiresAt] = conn.consentExpiresAt
+                    it[BankConnections.lastError] = conn.lastError
+                    it[BankConnections.createdAt] = Instant.now()
+                    it[BankConnections.updatedAt] = Instant.now()
+                }.value
+                newId to customerRow[BankCustomers.id].value
+            }
+        }
+
+        // Stáhni účty
+        val accounts = bankingProvider.fetchAccounts(externalConnectionId)
+        val accountIdMap = mutableMapOf<String, UUID>()
+        db {
+            accounts.forEach { a ->
+                val existing = BankAccountsExt.selectAll().where {
+                    (BankAccountsExt.connectionId eq connUuid) and
+                        (BankAccountsExt.externalId eq a.externalId)
+                }.singleOrNull()
+                val id = if (existing != null) {
+                    BankAccountsExt.update({ BankAccountsExt.id eq existing[BankAccountsExt.id] }) {
+                        it[BankAccountsExt.name] = a.name
+                        it[BankAccountsExt.nature] = a.nature
+                        it[BankAccountsExt.currencyCode] = a.currencyCode
+                        it[BankAccountsExt.iban] = a.iban
+                        it[BankAccountsExt.accountNumber] = a.accountNumber
+                        it[BankAccountsExt.balance] = a.balance
+                        it[BankAccountsExt.balanceUpdatedAt] = a.balanceUpdatedAt
+                        it[BankAccountsExt.raw] = a.raw.toString()
+                        it[BankAccountsExt.updatedAt] = Instant.now()
+                    }
+                    existing[BankAccountsExt.id].value
+                } else {
+                    BankAccountsExt.insertAndGetId {
+                        it[BankAccountsExt.connectionId] = connUuid
+                        it[BankAccountsExt.externalId] = a.externalId
+                        it[BankAccountsExt.name] = a.name
+                        it[BankAccountsExt.nature] = a.nature
+                        it[BankAccountsExt.currencyCode] = a.currencyCode
+                        it[BankAccountsExt.iban] = a.iban
+                        it[BankAccountsExt.accountNumber] = a.accountNumber
+                        it[BankAccountsExt.balance] = a.balance
+                        it[BankAccountsExt.balanceUpdatedAt] = a.balanceUpdatedAt
+                        it[BankAccountsExt.raw] = a.raw.toString()
+                        it[BankAccountsExt.createdAt] = Instant.now()
+                        it[BankAccountsExt.updatedAt] = Instant.now()
+                    }.value
+                }
+                accountIdMap[a.externalId] = id
+            }
+        }
+
+        // Stáhni transakce pro každý účet, dedup přes unique (account_ext_id, external_id)
+        accountIdMap.forEach { (externalAccId, localAccId) ->
+            val txs = bankingProvider.fetchTransactions(externalConnectionId, externalAccId)
+            if (txs.isEmpty()) return@forEach
+            db {
+                txs.forEach { t ->
+                    val exists = BankTransactionsExt.selectAll().where {
+                        (BankTransactionsExt.accountExtId eq localAccId) and
+                            (BankTransactionsExt.externalId eq t.externalId)
+                    }.limit(1).any()
+                    if (!exists) {
+                        BankTransactionsExt.insertAndGetId {
+                            it[BankTransactionsExt.accountExtId] = localAccId
+                            it[BankTransactionsExt.externalId] = t.externalId
+                            it[BankTransactionsExt.amount] = t.amount
+                            it[BankTransactionsExt.currencyCode] = t.currencyCode
+                            it[BankTransactionsExt.description] = t.description
+                            it[BankTransactionsExt.categoryHint] = t.categoryHint
+                            it[BankTransactionsExt.madeOn] = t.madeOn
+                            it[BankTransactionsExt.merchantName] = t.merchantName
+                            it[BankTransactionsExt.extra] = t.extra?.toString()
+                            it[BankTransactionsExt.status] = t.status
+                            it[BankTransactionsExt.raw] = t.raw.toString()
+                            it[BankTransactionsExt.createdAt] = Instant.now()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

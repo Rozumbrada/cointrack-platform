@@ -4,6 +4,10 @@ import cz.cointrack.auth.AuthService
 import cz.cointrack.auth.JwtConfig
 import cz.cointrack.auth.JwtService
 import cz.cointrack.auth.authRoutes
+import cz.cointrack.bank.BankService
+import cz.cointrack.bank.SaltEdgeConfig
+import cz.cointrack.bank.SaltEdgeProvider
+import cz.cointrack.bank.bankRoutes
 import cz.cointrack.email.EmailConfig
 import cz.cointrack.email.EmailService
 import cz.cointrack.org.OrgService
@@ -64,6 +68,9 @@ fun Application.module() {
     )
     val permissionService = PermissionService()
 
+    // Banking — pro teď jen Salt Edge. Pokud není nakonfigurovaný, bankService je null.
+    val bankService: BankService? = loadBankService()
+
     configureSecurity(jwtService, jwtConfig)
 
     val version = "0.1.0"
@@ -89,8 +96,8 @@ fun Application.module() {
             storageRoutes(storageService)
             orgRoutes(orgService)
             permissionRoutes(permissionService)
+            if (bankService != null) bankRoutes(bankService)
 
-            // TODO (Sprint 6): banking endpoints
             // TODO (Sprint 8): billing endpoints
         }
     }
@@ -114,6 +121,34 @@ private fun Application.loadEmailConfig(): EmailConfig {
         user = cfg.propertyOrNull("user")?.getString().orEmpty(),
         password = cfg.propertyOrNull("password")?.getString().orEmpty(),
         from = cfg.property("from").getString(),
+    )
+}
+
+private fun Application.loadBankService(): BankService? {
+    val bankingProvider = environment.config.propertyOrNull("banking.provider")?.getString()
+        ?: "fio_only"
+    if (bankingProvider != "saltedge") {
+        log.info("Banking provider = $bankingProvider (Salt Edge neaktivní).")
+        return null
+    }
+    val se = environment.config.config("saltedge")
+    val appId = se.property("appId").getString()
+    val secret = se.property("secret").getString()
+    if (appId.isBlank() || secret.isBlank()) {
+        log.warn("SALT_EDGE_APP_ID / SALT_EDGE_SECRET nejsou nastavené — banking endpointy neaktivní.")
+        return null
+    }
+    val cfg = SaltEdgeConfig(
+        appId = appId,
+        secret = secret,
+        baseUrl = se.property("baseUrl").getString(),
+        returnUrl = se.property("returnUrl").getString(),
+        callbackUrl = se.property("callbackUrl").getString(),
+    )
+    log.info("Salt Edge banking aktivován (baseUrl=${cfg.baseUrl}).")
+    return BankService(
+        bankingProvider = SaltEdgeProvider(cfg),
+        returnUrl = cfg.returnUrl,
     )
 }
 

@@ -114,6 +114,13 @@ services:
       EMAIL_FROM: ${EMAIL_FROM}
       PUBLIC_WEB_URL: ${PUBLIC_WEB_URL}
       PUBLIC_API_URL: ${PUBLIC_API_URL}
+      # Banking (Sprint 6)
+      BANKING_PROVIDER: ${BANKING_PROVIDER:-fio_only}
+      SALT_EDGE_APP_ID: ${SALT_EDGE_APP_ID:-}
+      SALT_EDGE_SECRET: ${SALT_EDGE_SECRET:-}
+      SALT_EDGE_BASE_URL: ${SALT_EDGE_BASE_URL:-https://www.saltedge.com/api/v5}
+      SALT_EDGE_RETURN_URL: ${SALT_EDGE_RETURN_URL:-}
+      SALT_EDGE_CALLBACK_URL: ${SALT_EDGE_CALLBACK_URL:-}
     depends_on:
       postgres: { condition: service_healthy }
       minio:    { condition: service_healthy }
