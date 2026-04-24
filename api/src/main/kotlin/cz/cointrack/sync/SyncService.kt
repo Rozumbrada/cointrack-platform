@@ -37,29 +37,56 @@ class SyncService {
             .map { it[OrganizationMembers.organizationId].value }
 
     /**
+     * IDs profilů, kde má user per-profile permission (view nebo edit).
+     * Sprint 5f.
+     */
+    private fun Transaction.profilesWithPermission(userId: UUID, minLevel: String = "view"): List<UUID> {
+        val allowed = if (minLevel == "edit") listOf("edit") else listOf("view", "edit")
+        return ProfilePermissions.selectAll()
+            .where {
+                (ProfilePermissions.userId eq userId) and
+                    (ProfilePermissions.permission inList allowed)
+            }
+            .map { it[ProfilePermissions.profileId].value }
+    }
+
+    /**
      * Profily které vidí user U:
      *   - vlastní (ownerUserId == U) — personal i org
      *   - všechny v orgech, kde U je owner/admin
-     * TODO 5f: přidat profile_permissions (sdílení per-profile s members).
+     *   - profily s per-profile permissions (view nebo edit) — Sprint 5f
      */
     private fun Transaction.accessibleProfileIds(userId: UUID): List<UUID> {
         val adminOrgs = orgsWhereAdmin(userId)
+        val permissionProfiles = profilesWithPermission(userId, "view")
         return Profiles.selectAll()
             .where {
                 (Profiles.ownerUserId eq userId) or
-                    (if (adminOrgs.isNotEmpty()) Profiles.organizationId inList adminOrgs else Op.FALSE)
+                    (if (adminOrgs.isNotEmpty()) Profiles.organizationId inList adminOrgs else Op.FALSE) or
+                    (if (permissionProfiles.isNotEmpty()) Profiles.id inList permissionProfiles else Op.FALSE)
             }
             .map { it[Profiles.id].value }
     }
 
     /**
      * Může user zapisovat do profilu (vytvořit/upravit/smazat entity na něj navázané)?
-     * Podmínky: vlastní profil, nebo admin/owner orgu kam profil patří.
+     * Podmínky:
+     *   - vlastní profil, nebo
+     *   - admin/owner orgu kam profil patří, nebo
+     *   - per-profile permission 'edit' (Sprint 5f)
      */
     private fun Transaction.canWriteProfile(userId: UUID, profileRow: ResultRow): Boolean {
         if (profileRow[Profiles.ownerUserId].value == userId) return true
-        val orgId = profileRow[Profiles.organizationId]?.value ?: return false
-        return orgId in orgsWhereAdmin(userId)
+        val orgId = profileRow[Profiles.organizationId]?.value
+        if (orgId != null && orgId in orgsWhereAdmin(userId)) return true
+        // Per-profile edit permission
+        val profileId = profileRow[Profiles.id].value
+        return ProfilePermissions.selectAll()
+            .where {
+                (ProfilePermissions.profileId eq profileId) and
+                    (ProfilePermissions.userId eq userId) and
+                    (ProfilePermissions.permission eq "edit")
+            }.any()
     }
 
     // ═══════════════════════════════════════════════════════════════════

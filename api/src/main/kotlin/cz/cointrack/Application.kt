@@ -8,6 +8,8 @@ import cz.cointrack.email.EmailConfig
 import cz.cointrack.email.EmailService
 import cz.cointrack.org.OrgService
 import cz.cointrack.org.orgRoutes
+import cz.cointrack.org.PermissionService
+import cz.cointrack.org.permissionRoutes
 import cz.cointrack.plugins.*
 import cz.cointrack.storage.StorageConfig
 import cz.cointrack.storage.StorageService
@@ -60,6 +62,7 @@ fun Application.module() {
         email = emailService,
         webBaseUrl = webBaseUrl,
     )
+    val permissionService = PermissionService()
 
     configureSecurity(jwtService, jwtConfig)
 
@@ -85,6 +88,7 @@ fun Application.module() {
             syncRoutes(syncService)
             storageRoutes(storageService)
             orgRoutes(orgService)
+            permissionRoutes(permissionService)
 
             // TODO (Sprint 6): banking endpoints
             // TODO (Sprint 8): billing endpoints

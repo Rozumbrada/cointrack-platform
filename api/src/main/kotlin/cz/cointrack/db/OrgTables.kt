@@ -40,3 +40,16 @@ object OrganizationInvites : UUIDTable("organization_invites") {
     val revokedAt         = timestamp("revoked_at").nullable()
     val createdAt         = timestamp("created_at")
 }
+
+/** Sprint 5f — per-profile permissions pro memberi orgu. */
+object ProfilePermissions : UUIDTable("profile_permissions") {
+    val profileId         = reference("profile_id", Profiles)
+    val userId            = reference("user_id", Users)
+    val permission        = varchar("permission", 16)          // 'view' / 'edit'
+    val grantedByUserId   = reference("granted_by_user_id", Users).nullable()
+    val grantedAt         = timestamp("granted_at")
+
+    init {
+        uniqueIndex(profileId, userId)
+    }
+}
