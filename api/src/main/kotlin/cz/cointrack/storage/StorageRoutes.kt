@@ -39,7 +39,7 @@ data class DownloadUrlResponse(
     val expiresIn: Int,
 )
 
-private val allowedPurposes = setOf("receipt", "invoice", "warranty", "avatar")
+private val allowedPurposes = setOf("receipt", "invoice", "warranty", "avatar", "loyalty")
 private val allowedContentTypes = setOf(
     "image/jpeg", "image/png", "image/webp", "image/heic",
     "application/pdf"

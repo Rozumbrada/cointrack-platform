@@ -105,6 +105,11 @@ class SyncService {
                     .where { (Invoices.profileId inList userProfileIds) and (InvoiceItems.updatedAt greater effectiveSince) }
                     .map { invoiceItemToEntity(it, invoiceIdToSync) }
 
+            result["loyalty_cards"] = if (userProfileIds.isEmpty()) emptyList() else
+                LoyaltyCards.selectAll()
+                    .where { (LoyaltyCards.profileId inList userProfileIds) and (LoyaltyCards.updatedAt greater effectiveSince) }
+                    .map { loyaltyCardToEntity(it, profileIdToSync) }
+
             SyncPullResponse(serverTime.toString(), result)
         }
     }
@@ -154,6 +159,7 @@ class SyncService {
             SyncEntityType.INVOICES      -> upsertInvoice(userId, syncId, e, updatedAt, deletedAt)
             SyncEntityType.RECEIPT_ITEMS -> upsertReceiptItem(userId, syncId, e, updatedAt, deletedAt)
             SyncEntityType.INVOICE_ITEMS -> upsertInvoiceItem(userId, syncId, e, updatedAt, deletedAt)
+            SyncEntityType.LOYALTY_CARDS -> upsertLoyaltyCard(userId, syncId, e, updatedAt, deletedAt)
         }
     }
 
@@ -575,6 +581,51 @@ class SyncService {
         s[InvoiceItems.deletedAt] = deletedAt
     }
 
+    // ─── Loyalty card upsert ────────────────────────────────────────────
+
+    private fun Transaction.upsertLoyaltyCard(
+        userId: UUID, syncId: UUID, e: SyncEntity, updatedAt: Instant, deletedAt: Instant?
+    ): UpsertResult {
+        val profileDbId = resolveProfileDbId(e.data.str("profileId"), userId) ?: return UpsertResult.Forbidden
+        val existing = LoyaltyCards.selectAll().where { LoyaltyCards.syncId eq syncId }.singleOrNull()
+
+        if (existing != null) {
+            if (existing[LoyaltyCards.updatedAt] >= updatedAt) {
+                val profileSync = Profiles.selectAll().where { Profiles.id eq existing[LoyaltyCards.profileId].value }
+                    .singleOrNull()?.get(Profiles.syncId) ?: UUID.randomUUID()
+                return UpsertResult.Conflict(loyaltyCardToEntity(existing, mapOf(existing[LoyaltyCards.profileId].value to profileSync)))
+            }
+            LoyaltyCards.update({ LoyaltyCards.syncId eq syncId }) {
+                applyLoyaltyCardFields(it, e.data, e.clientVersion, updatedAt, deletedAt, profileDbId, isInsert = false)
+            }
+        } else {
+            LoyaltyCards.insert {
+                it[LoyaltyCards.syncId] = syncId
+                it[LoyaltyCards.createdAt] = updatedAt
+                applyLoyaltyCardFields(it, e.data, e.clientVersion, updatedAt, deletedAt, profileDbId, isInsert = true)
+            }
+        }
+        return UpsertResult.Accepted
+    }
+
+    private fun applyLoyaltyCardFields(
+        s: UpdateBuilder<*>, d: JsonObject, cv: Long, updatedAt: Instant, deletedAt: Instant?,
+        profileDbId: UUID, isInsert: Boolean
+    ) {
+        if (isInsert) s[LoyaltyCards.profileId] = EntityID(profileDbId, Profiles)
+        s[LoyaltyCards.storeName] = d.str("storeName")
+        s[LoyaltyCards.cardNumber] = d.str("cardNumber")
+        s[LoyaltyCards.barcodeFormat] = d.strOr("barcodeFormat", "CODE_128")
+        s[LoyaltyCards.color] = d.intOrNull("color")
+        s[LoyaltyCards.note] = d.strOr("note", "")
+        s[LoyaltyCards.logoUrl] = d.strOrNull("logoUrl")
+        s[LoyaltyCards.frontImageKey] = d.strOrNull("frontImageKey")
+        s[LoyaltyCards.backImageKey] = d.strOrNull("backImageKey")
+        s[LoyaltyCards.clientVersion] = cv
+        s[LoyaltyCards.updatedAt] = updatedAt
+        s[LoyaltyCards.deletedAt] = deletedAt
+    }
+
     // ═══════════════════════════════════════════════════════════════════
     // Mappery: ResultRow -> SyncEntity (db_id → sync_id translation)
     // ═══════════════════════════════════════════════════════════════════
@@ -769,6 +820,24 @@ class SyncService {
             put("totalPriceWithVat", r[InvoiceItems.totalPriceWithVat].toPlainString())
             r[InvoiceItems.vatRate]?.let { put("vatRate", it.toPlainString()) }
             put("position", r[InvoiceItems.position])
+        },
+    )
+
+    private fun loyaltyCardToEntity(r: ResultRow, profileIdToSync: Map<UUID, UUID>) = SyncEntity(
+        syncId = r[LoyaltyCards.syncId].toString(),
+        updatedAt = r[LoyaltyCards.updatedAt].toString(),
+        deletedAt = r[LoyaltyCards.deletedAt]?.toString(),
+        clientVersion = r[LoyaltyCards.clientVersion],
+        data = buildJsonObject {
+            put("profileId", (profileIdToSync[r[LoyaltyCards.profileId].value] ?: r[LoyaltyCards.profileId].value).toString())
+            put("storeName", r[LoyaltyCards.storeName])
+            put("cardNumber", r[LoyaltyCards.cardNumber])
+            put("barcodeFormat", r[LoyaltyCards.barcodeFormat])
+            r[LoyaltyCards.color]?.let { put("color", it) }
+            put("note", r[LoyaltyCards.note])
+            r[LoyaltyCards.logoUrl]?.let { put("logoUrl", it) }
+            r[LoyaltyCards.frontImageKey]?.let { put("frontImageKey", it) }
+            r[LoyaltyCards.backImageKey]?.let { put("backImageKey", it) }
         },
     )
 }

@@ -164,6 +164,19 @@ object InvoiceItems : SyncableTable("invoice_items") {
     val position            = integer("position").default(0)
 }
 
+// ─── Loyalty cards ─────────────────────────────────────────────────
+object LoyaltyCards : SyncableTable("loyalty_cards") {
+    val profileId       = reference("profile_id", Profiles)
+    val storeName       = varchar("store_name", 256)
+    val cardNumber      = varchar("card_number", 256)
+    val barcodeFormat   = varchar("barcode_format", 32).default("CODE_128")
+    val color           = integer("color").nullable()
+    val note            = text("note").default("")
+    val logoUrl         = text("logo_url").nullable()
+    val frontImageKey   = text("front_image_key").nullable()
+    val backImageKey    = text("back_image_key").nullable()
+}
+
 // ─── Files metadata ────────────────────────────────────────────────
 object Files : UUIDTable("files") {
     val ownerUserId  = reference("owner_user_id", Users)
