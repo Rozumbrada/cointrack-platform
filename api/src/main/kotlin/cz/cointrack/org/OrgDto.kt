@@ -82,6 +82,19 @@ data class AcceptInviteRequest(
     val token: String,
 )
 
+/** Sprint 5g.FIX.2 — preview pozvánky bez auth (získat cílový email + org info). */
+@Serializable
+data class InvitePreviewResponse(
+    val email: String,
+    val role: String,
+    val organizationId: String,
+    val organizationName: String,
+    val organizationType: String,     // 'B2B' | 'GROUP'
+    val expired: Boolean,
+    val accepted: Boolean,
+    val revoked: Boolean,
+)
+
 @Serializable
 data class AcceptInviteResponse(
     val organizationId: String,

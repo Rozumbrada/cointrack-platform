@@ -370,6 +370,29 @@ class OrgService(
      * Volající user přijímá pozvánku. Token musí platit, email pozvánky se
      * musí shodovat s emailem přihlášeného usera (nikdo jiný pozvánku nevyužije).
      */
+    /** Sprint 5g.FIX.2 — veřejný preview pozvánky (bez auth). */
+    suspend fun previewInvite(token: String): InvitePreviewResponse = db {
+        val tokenHash = TokenGenerator.hash(token)
+        val invite = OrganizationInvites.selectAll()
+            .where { OrganizationInvites.tokenHash eq tokenHash }
+            .singleOrNull()
+            ?: throw ApiException(HttpStatusCode.NotFound, "invalid_invite", "Pozvánka nenalezena.")
+
+        val orgId = invite[OrganizationInvites.organizationId].value
+        val org = Organizations.selectAll().where { Organizations.id eq orgId }.single()
+
+        InvitePreviewResponse(
+            email = invite[OrganizationInvites.email],
+            role = invite[OrganizationInvites.role],
+            organizationId = orgId.toString(),
+            organizationName = org[Organizations.name],
+            organizationType = org[Organizations.type],
+            expired = invite[OrganizationInvites.expiresAt].isBefore(Instant.now()),
+            accepted = invite[OrganizationInvites.acceptedAt] != null,
+            revoked = invite[OrganizationInvites.revokedAt] != null,
+        )
+    }
+
     suspend fun acceptInvite(token: String, acceptingUserId: UUID): AcceptInviteResponse {
         val tokenHash = TokenGenerator.hash(token)
         val now = Instant.now()

@@ -16,6 +16,15 @@ import io.ktor.server.routing.route
 import java.util.UUID
 
 fun Route.orgRoutes(orgService: OrgService) {
+    // Preview pozvánky — BEZ auth (uživatel nemusí být ani přihlášen)
+    route("/org/invites") {
+        get("/preview") {
+            val token = call.request.queryParameters["token"]
+                ?: throw ApiException(HttpStatusCode.BadRequest, "missing_token", "Chybí token.")
+            call.respond(orgService.previewInvite(token))
+        }
+    }
+
     authenticate("jwt") {
         route("/org") {
 
