@@ -7,6 +7,11 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class CreateOrganizationRequest(
     val name: String,
+    /** 'B2B' (default) nebo 'GROUP' (Sprint 5g). */
+    val type: String = "B2B",
+    val currency: String = "CZK",
+    /** Volitelný seznam e-mailů na rozeslání pozvánek hned při vytvoření. */
+    val inviteEmails: List<String> = emptyList(),
 )
 
 @Serializable
@@ -18,6 +23,8 @@ data class OrganizationDto(
     val maxFreeMembers: Int,
     val myRole: String,          // role volajícího v této orgu
     val memberCount: Int,
+    val type: String = "B2B",
+    val currency: String = "CZK",
     val createdAt: String,
 )
 

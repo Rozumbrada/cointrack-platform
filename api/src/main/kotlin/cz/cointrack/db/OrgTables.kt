@@ -13,6 +13,9 @@ object Organizations : UUIDTable("organizations") {
     val ownerUserId     = reference("owner_user_id", Users)
     val planTier        = varchar("plan_tier", 32).default("organization")
     val maxFreeMembers  = integer("max_free_members").default(5)
+    /** 'B2B' (Sprint 5e) nebo 'GROUP' (Sprint 5g). */
+    val type            = varchar("type", 16).default("B2B")
+    val currency        = varchar("currency", 3).default("CZK")
     val createdAt       = timestamp("created_at")
     val updatedAt       = timestamp("updated_at")
     val deletedAt       = timestamp("deleted_at").nullable()

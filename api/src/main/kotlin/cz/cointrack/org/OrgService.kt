@@ -42,19 +42,25 @@ class OrgService(
             throw ApiException(HttpStatusCode.BadRequest, "invalid_name", "Neplatný název organizace.")
         }
 
-        val ownerId = ownerUserId  // alias pro rozlišení od sloupce
-        return db {
+        if (req.type !in setOf("B2B", "GROUP")) {
+            throw ApiException(HttpStatusCode.BadRequest, "invalid_type",
+                "type musí být 'B2B' nebo 'GROUP'.")
+        }
+
+        val ownerId = ownerUserId
+        val createdOrg = db {
             val now = Instant.now()
             val orgId = Organizations.insertAndGetId {
                 it[Organizations.name] = name
                 it[Organizations.ownerUserId] = ownerId
                 it[Organizations.planTier] = "organization"
                 it[Organizations.maxFreeMembers] = 5
+                it[Organizations.type] = req.type
+                it[Organizations.currency] = req.currency
                 it[Organizations.createdAt] = now
                 it[Organizations.updatedAt] = now
             }.value
 
-            // Owner se automaticky stává členem s role=owner
             OrganizationMembers.insertAndGetId {
                 it[OrganizationMembers.organizationId] = orgId
                 it[OrganizationMembers.userId] = ownerId
@@ -70,9 +76,30 @@ class OrgService(
                 maxFreeMembers = 5,
                 myRole = "owner",
                 memberCount = 1,
+                type = req.type,
+                currency = req.currency,
                 createdAt = now.toString(),
             )
         }
+
+        // Odeslat pozvánky (best-effort, selhání jedné nerozbije ostatní)
+        req.inviteEmails
+            .map { it.trim().lowercase() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .forEach { email ->
+                runCatching {
+                    createInvite(
+                        orgId = UUID.fromString(createdOrg.id),
+                        req = CreateInviteRequest(email = email, role = "member"),
+                        callerUserId = ownerUserId,
+                    )
+                }.onFailure { e ->
+                    log.warn("Failed to auto-invite $email to new org ${createdOrg.id}: ${e.message}")
+                }
+            }
+
+        return createdOrg
     }
 
     /** Seznam všech orgů, v kterých je user členem. */
@@ -103,6 +130,8 @@ class OrgService(
                     maxFreeMembers = row[Organizations.maxFreeMembers],
                     myRole = myMemberships[orgId] ?: "member",
                     memberCount = count,
+                    type = row[Organizations.type],
+                    currency = row[Organizations.currency],
                     createdAt = row[Organizations.createdAt].toString(),
                 )
             }

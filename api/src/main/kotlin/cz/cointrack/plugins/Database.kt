@@ -80,6 +80,7 @@ private val MIGRATIONS: List<Pair<String, String>> = listOf(
     "4.0" to "/db/migration/V4.0__remaining_entities.sql",
     "5.0" to "/db/migration/V5.0__organizations.sql",
     "6.0" to "/db/migration/V6.0__profile_permissions.sql",
+    "7.0" to "/db/migration/V7.0__org_types.sql",
 )
 
 private fun runMigrations(dataSource: DataSource) {
