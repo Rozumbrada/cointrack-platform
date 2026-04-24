@@ -90,14 +90,30 @@ class SaltEdgeProvider(private val config: SaltEdgeConfig) : BankingProvider {
 
     /**
      * Najde Salt Edge customer-a podle našeho identifier-u (user UUID).
-     * Vrací null pokud neexistuje.
+     *
+     * Salt Edge v6 ignoruje `?identifier=` query na `GET /customers` (vrací celý seznam).
+     * Proto iterujeme přes stránky a hledáme lokálně. Limit 20 stránek = 2000 customers,
+     * což pro jednu app-instanci stačí.
      */
     private suspend fun findCustomerByIdentifier(identifier: String): String? {
-        val res = get("/customers?identifier=$identifier")
-        val arr = (res["data"] as? JsonArray) ?: return null
-        return arr.filterIsInstance<JsonObject>()
-            .firstOrNull { it["identifier"]?.jsonPrimitive?.contentOrNull == identifier }
-            ?.get("id")?.jsonPrimitive?.contentOrNull
+        var nextId: String? = null
+        repeat(20) {
+            val path = if (nextId != null) "/customers?from_id=$nextId" else "/customers"
+            val res = get(path)
+            val arr = res["data"] as? JsonArray ?: return null
+            val sample = arr.take(3).joinToString(", ") { it.toString().take(200) }
+            log.debug("Salt Edge GET $path → ${arr.size} customers, sample: $sample")
+
+            val match = arr.filterIsInstance<JsonObject>()
+                .firstOrNull { it["identifier"]?.jsonPrimitive?.contentOrNull == identifier }
+            if (match != null) return match["id"]?.jsonPrimitive?.contentOrNull
+
+            val nextIdRaw = (res["meta"] as? JsonObject)?.get("next_id")?.jsonPrimitive
+            nextId = nextIdRaw?.contentOrNull
+            if (nextId == null) return null
+        }
+        log.warn("Salt Edge findCustomerByIdentifier $identifier: vyčerpáno 20 stránek bez nálezu.")
+        return null
     }
 
     override suspend fun createConnectSession(
