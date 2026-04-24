@@ -73,9 +73,13 @@ class SaltEdgeProvider(private val config: SaltEdgeConfig) : BankingProvider {
         }
         // Idempotence: pokud Salt Edge vrátí 409 DuplicatedCustomer (customer už existuje
         // od předchozího pokusu), dohledej ho přes GET /customers?identifier=...
+        // Poznámka: v6 používá pole `customer_id` (ne `id`).
         return try {
             val res = post("/customers", body)
-            requireString(res, "data.id")
+            val data = res["data"] as? JsonObject ?: error("Chybí 'data' v odpovědi: $res")
+            data["customer_id"]?.jsonPrimitive?.contentOrNull
+                ?: data["id"]?.jsonPrimitive?.contentOrNull
+                ?: error("Chybí customer_id ani id v odpovědi: $data")
         } catch (e: SaltEdgeException) {
             if (e.status == HttpStatusCode.Conflict) {
                 log.info("Salt Edge customer $userId už existuje, dohledávám přes GET.")
@@ -106,7 +110,11 @@ class SaltEdgeProvider(private val config: SaltEdgeConfig) : BankingProvider {
 
             val match = arr.filterIsInstance<JsonObject>()
                 .firstOrNull { it["identifier"]?.jsonPrimitive?.contentOrNull == identifier }
-            if (match != null) return match["id"]?.jsonPrimitive?.contentOrNull
+            if (match != null) {
+                // v6: customer_id; v5 starší: id (fallback)
+                return match["customer_id"]?.jsonPrimitive?.contentOrNull
+                    ?: match["id"]?.jsonPrimitive?.contentOrNull
+            }
 
             val nextIdRaw = (res["meta"] as? JsonObject)?.get("next_id")?.jsonPrimitive
             nextId = nextIdRaw?.contentOrNull
@@ -153,7 +161,10 @@ class SaltEdgeProvider(private val config: SaltEdgeConfig) : BankingProvider {
         val data = res["data"] as? JsonObject
             ?: error("Salt Edge odpověď bez 'data': $res")
         return ConnectionPayload(
-            externalId = data["id"]?.jsonPrimitive?.contentOrNull ?: externalConnectionId,
+            // v6: connection_id; fallback na id pro starší verze
+            externalId = data["connection_id"]?.jsonPrimitive?.contentOrNull
+                ?: data["id"]?.jsonPrimitive?.contentOrNull
+                ?: externalConnectionId,
             providerCode = data["provider_code"]?.jsonPrimitive?.contentOrNull,
             providerName = data["provider_name"]?.jsonPrimitive?.contentOrNull,
             status = data["status"]?.jsonPrimitive?.contentOrNull ?: "unknown",
@@ -170,7 +181,8 @@ class SaltEdgeProvider(private val config: SaltEdgeConfig) : BankingProvider {
         return arr.filterIsInstance<JsonObject>().map { a ->
             val balance = a["balance"]?.jsonPrimitive?.doubleOrNull?.let { BigDecimal.valueOf(it) }
             AccountPayload(
-                externalId = a["id"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                externalId = a["account_id"]?.jsonPrimitive?.contentOrNull
+                    ?: a["id"]?.jsonPrimitive?.contentOrNull.orEmpty(),
                 name = a["name"]?.jsonPrimitive?.contentOrNull,
                 nature = a["nature"]?.jsonPrimitive?.contentOrNull,
                 currencyCode = a["currency_code"]?.jsonPrimitive?.contentOrNull ?: "CZK",
@@ -198,7 +210,8 @@ class SaltEdgeProvider(private val config: SaltEdgeConfig) : BankingProvider {
             val amount = t["amount"]?.jsonPrimitive?.doubleOrNull?.let { BigDecimal.valueOf(it) }
                 ?: BigDecimal.ZERO
             TransactionPayload(
-                externalId = t["id"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                externalId = t["transaction_id"]?.jsonPrimitive?.contentOrNull
+                    ?: t["id"]?.jsonPrimitive?.contentOrNull.orEmpty(),
                 amount = amount,
                 currencyCode = t["currency_code"]?.jsonPrimitive?.contentOrNull ?: "CZK",
                 description = t["description"]?.jsonPrimitive?.contentOrNull,
