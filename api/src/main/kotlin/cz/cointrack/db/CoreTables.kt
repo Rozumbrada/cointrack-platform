@@ -276,6 +276,37 @@ object InvestmentPositions : SyncableTable("investment_positions") {
     val notes           = text("notes").nullable()
 }
 
+// ─── Group entities (Sprint 5g.2.d) ────────────────────────────────
+
+object GroupMembers : SyncableTable("group_members") {
+    val profileId        = reference("profile_id", Profiles)
+    val name             = varchar("name", 128)
+    val color            = integer("color").default(-13022129)
+    /** null = guest, otherwise napojení na realný Cointrack ucet. */
+    val cointrackUserId  = reference("cointrack_user_id", Users).nullable()
+}
+
+object GroupExpenses : SyncableTable("group_expenses") {
+    val profileId                 = reference("profile_id", Profiles)
+    val description               = varchar("description", 512)
+    val amount                    = decimal("amount", 18, 2)
+    val currency                  = varchar("currency", 3).default("CZK")
+    /** sync_id platiciho clena — stabilni napric zarizeni. */
+    val paidByMemberSyncId        = uuid("paid_by_member_sync_id")
+    val defaultParticipantSyncIds = text("default_participant_sync_ids").default("[]")
+    val date                      = date("date")
+    val note                      = text("note").nullable()
+    val isSettlement              = bool("is_settlement").default(false)
+}
+
+object GroupExpenseItems : SyncableTable("group_expense_items") {
+    val expenseId           = reference("expense_id", GroupExpenses)
+    val name                = varchar("name", 256)
+    val amount              = decimal("amount", 18, 2)
+    val participantSyncIds  = text("participant_sync_ids").default("[]")
+    val position            = integer("position").default(0)
+}
+
 object FioAccounts : SyncableTable("fio_accounts") {
     val profileId       = reference("profile_id", Profiles)
     val name            = varchar("name", 256)

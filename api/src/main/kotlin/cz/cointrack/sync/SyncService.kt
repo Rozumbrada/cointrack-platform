@@ -37,6 +37,24 @@ class SyncService {
             .map { it[OrganizationMembers.organizationId].value }
 
     /**
+     * GROUP orgy kde je user ANY member (owner/admin/member) — ve skupinách všichni
+     * členové mají plny přístup (jinak by běžný member neviděl výdaje).
+     */
+    private fun Transaction.groupOrgsWhereMember(userId: UUID): List<UUID> {
+        val memberships = OrganizationMembers.selectAll()
+            .where { OrganizationMembers.userId eq userId }
+            .map { it[OrganizationMembers.organizationId].value }
+        if (memberships.isEmpty()) return emptyList()
+        return Organizations.selectAll()
+            .where {
+                (Organizations.id inList memberships) and
+                    (Organizations.type eq "GROUP") and
+                    Organizations.deletedAt.isNull()
+            }
+            .map { it[Organizations.id].value }
+    }
+
+    /**
      * IDs profilů, kde má user per-profile permission (view nebo edit).
      * Sprint 5f.
      */
@@ -53,33 +71,39 @@ class SyncService {
     /**
      * Profily které vidí user U:
      *   - vlastní (ownerUserId == U) — personal i org
-     *   - všechny v orgech, kde U je owner/admin
+     *   - všechny v B2B orgech, kde U je owner/admin
+     *   - všechny v GROUP orgech, kde U je ANY member (i jen role=member)
      *   - profily s per-profile permissions (view nebo edit) — Sprint 5f
      */
     private fun Transaction.accessibleProfileIds(userId: UUID): List<UUID> {
         val adminOrgs = orgsWhereAdmin(userId)
+        val groupOrgs = groupOrgsWhereMember(userId)
+        val allAccessibleOrgs = (adminOrgs + groupOrgs).distinct()
         val permissionProfiles = profilesWithPermission(userId, "view")
         return Profiles.selectAll()
             .where {
                 (Profiles.ownerUserId eq userId) or
-                    (if (adminOrgs.isNotEmpty()) Profiles.organizationId inList adminOrgs else Op.FALSE) or
+                    (if (allAccessibleOrgs.isNotEmpty()) Profiles.organizationId inList allAccessibleOrgs else Op.FALSE) or
                     (if (permissionProfiles.isNotEmpty()) Profiles.id inList permissionProfiles else Op.FALSE)
             }
             .map { it[Profiles.id].value }
     }
 
     /**
-     * Může user zapisovat do profilu (vytvořit/upravit/smazat entity na něj navázané)?
+     * Může user zapisovat do profilu?
      * Podmínky:
      *   - vlastní profil, nebo
-     *   - admin/owner orgu kam profil patří, nebo
+     *   - admin/owner B2B orgu kam profil patří, nebo
+     *   - ANY member GROUP orgu kam profil patří (ve skupinách všichni píšou), nebo
      *   - per-profile permission 'edit' (Sprint 5f)
      */
     private fun Transaction.canWriteProfile(userId: UUID, profileRow: ResultRow): Boolean {
         if (profileRow[Profiles.ownerUserId].value == userId) return true
         val orgId = profileRow[Profiles.organizationId]?.value
-        if (orgId != null && orgId in orgsWhereAdmin(userId)) return true
-        // Per-profile edit permission
+        if (orgId != null) {
+            if (orgId in orgsWhereAdmin(userId)) return true
+            if (orgId in groupOrgsWhereMember(userId)) return true
+        }
         val profileId = profileRow[Profiles.id].value
         return ProfilePermissions.selectAll()
             .where {
@@ -233,6 +257,29 @@ class SyncService {
                     .where { (FioAccounts.profileId inList userProfileIds) and (FioAccounts.updatedAt greater effectiveSince) }
                     .map { fioAccountToEntity(it, profileIdToSync, accountIdToSync) }
 
+            // ── Sprint 5g.2.d: skupinové entity ─────────────────────────
+            result["group_members"] = if (userProfileIds.isEmpty()) emptyList() else
+                GroupMembers.selectAll()
+                    .where { (GroupMembers.profileId inList userProfileIds) and (GroupMembers.updatedAt greater effectiveSince) }
+                    .map { groupMemberToEntity(it, profileIdToSync) }
+
+            result["group_expenses"] = if (userProfileIds.isEmpty()) emptyList() else
+                GroupExpenses.selectAll()
+                    .where { (GroupExpenses.profileId inList userProfileIds) and (GroupExpenses.updatedAt greater effectiveSince) }
+                    .map { groupExpenseToEntity(it, profileIdToSync) }
+
+            val groupExpenseIdsForItems = GroupExpenses.selectAll()
+                .where { GroupExpenses.profileId inList userProfileIds }
+                .associate { it[GroupExpenses.id].value to it[GroupExpenses.syncId] }
+
+            result["group_expense_items"] = if (userProfileIds.isEmpty()) emptyList() else
+                GroupExpenseItems.selectAll()
+                    .where {
+                        (GroupExpenseItems.expenseId inList groupExpenseIdsForItems.keys) and
+                            (GroupExpenseItems.updatedAt greater effectiveSince)
+                    }
+                    .map { groupExpenseItemToEntity(it, groupExpenseIdsForItems) }
+
             SyncPullResponse(serverTime.toString(), result)
         }
     }
@@ -262,11 +309,6 @@ class SyncService {
         SyncPushResponse(accepted, conflicts)
     }
 
-    private sealed class UpsertResult {
-        object Accepted : UpsertResult()
-        object Forbidden : UpsertResult()
-        data class Conflict(val serverEntity: SyncEntity) : UpsertResult()
-    }
 
     private fun Transaction.upsertEntity(userId: UUID, type: SyncEntityType, e: SyncEntity): UpsertResult {
         val syncId = UUID.fromString(e.syncId)
@@ -293,6 +335,9 @@ class SyncService {
             SyncEntityType.MERCHANT_RULES       -> upsertMerchantRule(userId, syncId, e, updatedAt, deletedAt)
             SyncEntityType.INVESTMENT_POSITIONS -> upsertInvestmentPosition(userId, syncId, e, updatedAt, deletedAt)
             SyncEntityType.FIO_ACCOUNTS         -> upsertFioAccount(userId, syncId, e, updatedAt, deletedAt)
+            SyncEntityType.GROUP_MEMBERS        -> upsertGroupMember(userId, syncId, e, updatedAt, deletedAt)
+            SyncEntityType.GROUP_EXPENSES       -> upsertGroupExpense(userId, syncId, e, updatedAt, deletedAt)
+            SyncEntityType.GROUP_EXPENSE_ITEMS  -> upsertGroupExpenseItem(userId, syncId, e, updatedAt, deletedAt)
         }
     }
 
@@ -1491,5 +1536,256 @@ private fun JsonObject.decimal(key: String): BigDecimal =
 private fun JsonObject.decimalOrNull(key: String): BigDecimal? = get(key)?.jsonPrimitive?.contentOrNull?.let { BigDecimal(it) }
 private fun JsonObject.decimalOr(key: String, default: BigDecimal): BigDecimal =
     get(key)?.jsonPrimitive?.contentOrNull?.let { BigDecimal(it) } ?: default
+
+// ═══════════════════════════════════════════════════════════════════
+// Sprint 5g.2.d — skupinove entity (group_members, group_expenses, items)
+// ═══════════════════════════════════════════════════════════════════
+
+private fun SyncService.groupMemberToEntity(r: ResultRow, profileIdToSync: Map<UUID, UUID>) = SyncEntity(
+    syncId = r[GroupMembers.syncId].toString(),
+    updatedAt = r[GroupMembers.updatedAt].toString(),
+    deletedAt = r[GroupMembers.deletedAt]?.toString(),
+    clientVersion = r[GroupMembers.clientVersion],
+    data = buildJsonObject {
+        put("profileId", (profileIdToSync[r[GroupMembers.profileId].value] ?: UUID.randomUUID()).toString())
+        put("name", r[GroupMembers.name])
+        put("color", r[GroupMembers.color])
+        r[GroupMembers.cointrackUserId]?.value?.let { put("cointrackUserId", it.toString()) }
+    },
+)
+
+private fun SyncService.groupExpenseToEntity(r: ResultRow, profileIdToSync: Map<UUID, UUID>) = SyncEntity(
+    syncId = r[GroupExpenses.syncId].toString(),
+    updatedAt = r[GroupExpenses.updatedAt].toString(),
+    deletedAt = r[GroupExpenses.deletedAt]?.toString(),
+    clientVersion = r[GroupExpenses.clientVersion],
+    data = buildJsonObject {
+        put("profileId", (profileIdToSync[r[GroupExpenses.profileId].value] ?: UUID.randomUUID()).toString())
+        put("description", r[GroupExpenses.description])
+        put("amount", r[GroupExpenses.amount].toPlainString())
+        put("currency", r[GroupExpenses.currency])
+        put("paidByMemberSyncId", r[GroupExpenses.paidByMemberSyncId].toString())
+        put("defaultParticipantSyncIds", r[GroupExpenses.defaultParticipantSyncIds])
+        put("date", r[GroupExpenses.date].toString())
+        r[GroupExpenses.note]?.let { put("note", it) }
+        put("isSettlement", r[GroupExpenses.isSettlement])
+    },
+)
+
+private fun SyncService.groupExpenseItemToEntity(r: ResultRow, expenseIdToSync: Map<UUID, UUID>) = SyncEntity(
+    syncId = r[GroupExpenseItems.syncId].toString(),
+    updatedAt = r[GroupExpenseItems.updatedAt].toString(),
+    deletedAt = r[GroupExpenseItems.deletedAt]?.toString(),
+    clientVersion = r[GroupExpenseItems.clientVersion],
+    data = buildJsonObject {
+        put("expenseId", (expenseIdToSync[r[GroupExpenseItems.expenseId].value] ?: UUID.randomUUID()).toString())
+        put("name", r[GroupExpenseItems.name])
+        put("amount", r[GroupExpenseItems.amount].toPlainString())
+        put("participantSyncIds", r[GroupExpenseItems.participantSyncIds])
+        put("position", r[GroupExpenseItems.position])
+    },
+)
+
+// ─── Upserts ─────────────────────────────────────────────────────
+
+private fun Transaction.upsertGroupMember(
+    userId: UUID, syncId: UUID, e: SyncEntity, updatedAt: Instant, deletedAt: Instant?
+): UpsertResult {
+    val profileSyncId = e.data.str("profileId")
+    val profileRow = Profiles.selectAll().where {
+        Profiles.syncId eq UUID.fromString(profileSyncId)
+    }.singleOrNull() ?: return UpsertResult.Forbidden
+
+    // Inline canWrite check (SyncService private method — use direct logic)
+    val canWrite = profileRow[Profiles.ownerUserId].value == userId ||
+        run {
+            val orgId = profileRow[Profiles.organizationId]?.value
+            if (orgId == null) false
+            else OrganizationMembers.selectAll().where {
+                (OrganizationMembers.organizationId eq orgId) and
+                    (OrganizationMembers.userId eq userId)
+            }.any()
+        }
+    if (!canWrite) return UpsertResult.Forbidden
+
+    val profileDbId = profileRow[Profiles.id].value
+    val existing = GroupMembers.selectAll().where { GroupMembers.syncId eq syncId }.singleOrNull()
+    if (existing != null) {
+        if (existing[GroupMembers.updatedAt] >= updatedAt) {
+            return UpsertResult.Conflict(existingGroupMemberEntity(existing))
+        }
+        GroupMembers.update({ GroupMembers.syncId eq syncId }) {
+            it[GroupMembers.name] = e.data.str("name")
+            it[GroupMembers.color] = e.data.get("color")?.jsonPrimitive?.intOrNull ?: -13022129
+            it[GroupMembers.cointrackUserId] = e.data.uuidOrNull("cointrackUserId")?.let { EntityID(it, Users) }
+            it[GroupMembers.clientVersion] = e.clientVersion
+            it[GroupMembers.updatedAt] = updatedAt
+            it[GroupMembers.deletedAt] = deletedAt
+        }
+    } else {
+        GroupMembers.insert {
+            it[GroupMembers.syncId] = syncId
+            it[GroupMembers.profileId] = EntityID(profileDbId, Profiles)
+            it[GroupMembers.name] = e.data.str("name")
+            it[GroupMembers.color] = e.data.get("color")?.jsonPrimitive?.intOrNull ?: -13022129
+            it[GroupMembers.cointrackUserId] = e.data.uuidOrNull("cointrackUserId")?.let { EntityID(it, Users) }
+            it[GroupMembers.clientVersion] = e.clientVersion
+            it[GroupMembers.createdAt] = updatedAt
+            it[GroupMembers.updatedAt] = updatedAt
+            it[GroupMembers.deletedAt] = deletedAt
+        }
+    }
+    return UpsertResult.Accepted
+}
+
+private fun Transaction.existingGroupMemberEntity(r: ResultRow): SyncEntity {
+    val profileSyncId = Profiles.selectAll().where { Profiles.id eq r[GroupMembers.profileId].value }
+        .singleOrNull()?.get(Profiles.syncId) ?: UUID.randomUUID()
+    return SyncEntity(
+        syncId = r[GroupMembers.syncId].toString(),
+        updatedAt = r[GroupMembers.updatedAt].toString(),
+        deletedAt = r[GroupMembers.deletedAt]?.toString(),
+        clientVersion = r[GroupMembers.clientVersion],
+        data = buildJsonObject {
+            put("profileId", profileSyncId.toString())
+            put("name", r[GroupMembers.name])
+            put("color", r[GroupMembers.color])
+            r[GroupMembers.cointrackUserId]?.value?.let { put("cointrackUserId", it.toString()) }
+        },
+    )
+}
+
+private fun Transaction.upsertGroupExpense(
+    userId: UUID, syncId: UUID, e: SyncEntity, updatedAt: Instant, deletedAt: Instant?
+): UpsertResult {
+    val profileSyncId = UUID.fromString(e.data.str("profileId"))
+    val profileRow = Profiles.selectAll().where { Profiles.syncId eq profileSyncId }.singleOrNull()
+        ?: return UpsertResult.Forbidden
+
+    val canWrite = profileRow[Profiles.ownerUserId].value == userId ||
+        run {
+            val orgId = profileRow[Profiles.organizationId]?.value ?: return@run false
+            OrganizationMembers.selectAll().where {
+                (OrganizationMembers.organizationId eq orgId) and (OrganizationMembers.userId eq userId)
+            }.any()
+        }
+    if (!canWrite) return UpsertResult.Forbidden
+
+    val profileDbId = profileRow[Profiles.id].value
+    val existing = GroupExpenses.selectAll().where { GroupExpenses.syncId eq syncId }.singleOrNull()
+    if (existing != null && existing[GroupExpenses.updatedAt] >= updatedAt) {
+        return UpsertResult.Conflict(existingGroupExpenseEntity(existing))
+    }
+    val apply: UpdateBuilder<*>.() -> Unit = {
+        this[GroupExpenses.description] = e.data.str("description")
+        this[GroupExpenses.amount] = e.data.decimal("amount")
+        this[GroupExpenses.currency] = e.data.strOr("currency", "CZK")
+        this[GroupExpenses.paidByMemberSyncId] = UUID.fromString(e.data.str("paidByMemberSyncId"))
+        this[GroupExpenses.defaultParticipantSyncIds] = e.data.strOr("defaultParticipantSyncIds", "[]")
+        this[GroupExpenses.date] = LocalDate.parse(e.data.str("date"))
+        this[GroupExpenses.note] = e.data.strOrNull("note")
+        this[GroupExpenses.isSettlement] = e.data.boolOr("isSettlement", false)
+        this[GroupExpenses.clientVersion] = e.clientVersion
+        this[GroupExpenses.updatedAt] = updatedAt
+        this[GroupExpenses.deletedAt] = deletedAt
+    }
+    if (existing != null) {
+        GroupExpenses.update({ GroupExpenses.syncId eq syncId }) { apply(it) }
+    } else {
+        GroupExpenses.insert {
+            it[GroupExpenses.syncId] = syncId
+            it[GroupExpenses.profileId] = EntityID(profileDbId, Profiles)
+            it[GroupExpenses.createdAt] = updatedAt
+            apply(it)
+        }
+    }
+    return UpsertResult.Accepted
+}
+
+private fun Transaction.existingGroupExpenseEntity(r: ResultRow): SyncEntity {
+    val profileSync = Profiles.selectAll().where { Profiles.id eq r[GroupExpenses.profileId].value }
+        .singleOrNull()?.get(Profiles.syncId) ?: UUID.randomUUID()
+    return SyncEntity(
+        syncId = r[GroupExpenses.syncId].toString(),
+        updatedAt = r[GroupExpenses.updatedAt].toString(),
+        deletedAt = r[GroupExpenses.deletedAt]?.toString(),
+        clientVersion = r[GroupExpenses.clientVersion],
+        data = buildJsonObject {
+            put("profileId", profileSync.toString())
+            put("description", r[GroupExpenses.description])
+            put("amount", r[GroupExpenses.amount].toPlainString())
+            put("currency", r[GroupExpenses.currency])
+            put("paidByMemberSyncId", r[GroupExpenses.paidByMemberSyncId].toString())
+            put("defaultParticipantSyncIds", r[GroupExpenses.defaultParticipantSyncIds])
+            put("date", r[GroupExpenses.date].toString())
+            r[GroupExpenses.note]?.let { put("note", it) }
+            put("isSettlement", r[GroupExpenses.isSettlement])
+        },
+    )
+}
+
+private fun Transaction.upsertGroupExpenseItem(
+    userId: UUID, syncId: UUID, e: SyncEntity, updatedAt: Instant, deletedAt: Instant?
+): UpsertResult {
+    val expenseSyncId = UUID.fromString(e.data.str("expenseId"))
+    val expenseRow = GroupExpenses.selectAll().where { GroupExpenses.syncId eq expenseSyncId }.singleOrNull()
+        ?: return UpsertResult.Forbidden
+
+    // Auth: user musí mít přístup k profilu expense
+    val profileRow = Profiles.selectAll().where { Profiles.id eq expenseRow[GroupExpenses.profileId].value }
+        .singleOrNull() ?: return UpsertResult.Forbidden
+    val canWrite = profileRow[Profiles.ownerUserId].value == userId ||
+        run {
+            val orgId = profileRow[Profiles.organizationId]?.value ?: return@run false
+            OrganizationMembers.selectAll().where {
+                (OrganizationMembers.organizationId eq orgId) and (OrganizationMembers.userId eq userId)
+            }.any()
+        }
+    if (!canWrite) return UpsertResult.Forbidden
+
+    val expenseDbId = expenseRow[GroupExpenses.id].value
+    val existing = GroupExpenseItems.selectAll().where { GroupExpenseItems.syncId eq syncId }.singleOrNull()
+    if (existing != null && existing[GroupExpenseItems.updatedAt] >= updatedAt) {
+        return UpsertResult.Conflict(SyncEntity(
+            syncId = existing[GroupExpenseItems.syncId].toString(),
+            updatedAt = existing[GroupExpenseItems.updatedAt].toString(),
+            deletedAt = existing[GroupExpenseItems.deletedAt]?.toString(),
+            clientVersion = existing[GroupExpenseItems.clientVersion],
+            data = buildJsonObject {
+                put("expenseId", expenseSyncId.toString())
+                put("name", existing[GroupExpenseItems.name])
+                put("amount", existing[GroupExpenseItems.amount].toPlainString())
+                put("participantSyncIds", existing[GroupExpenseItems.participantSyncIds])
+                put("position", existing[GroupExpenseItems.position])
+            },
+        ))
+    }
+    val apply: UpdateBuilder<*>.() -> Unit = {
+        this[GroupExpenseItems.name] = e.data.str("name")
+        this[GroupExpenseItems.amount] = e.data.decimal("amount")
+        this[GroupExpenseItems.participantSyncIds] = e.data.strOr("participantSyncIds", "[]")
+        this[GroupExpenseItems.position] = e.data.get("position")?.jsonPrimitive?.intOrNull ?: 0
+        this[GroupExpenseItems.clientVersion] = e.clientVersion
+        this[GroupExpenseItems.updatedAt] = updatedAt
+        this[GroupExpenseItems.deletedAt] = deletedAt
+    }
+    if (existing != null) {
+        GroupExpenseItems.update({ GroupExpenseItems.syncId eq syncId }) { apply(it) }
+    } else {
+        GroupExpenseItems.insert {
+            it[GroupExpenseItems.syncId] = syncId
+            it[GroupExpenseItems.expenseId] = EntityID(expenseDbId, GroupExpenses)
+            it[GroupExpenseItems.createdAt] = updatedAt
+            apply(it)
+        }
+    }
+    return UpsertResult.Accepted
+}
+
+internal sealed class UpsertResult {
+    object Accepted : UpsertResult()
+    object Forbidden : UpsertResult()
+    data class Conflict(val serverEntity: SyncEntity) : UpsertResult()
+}
 
 typealias UpdateBuilder<T> = org.jetbrains.exposed.sql.statements.UpdateBuilder<T>

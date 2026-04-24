@@ -25,9 +25,12 @@ enum class SyncEntityType(val key: String, val scope: Scope) {
     SHOPPING_ITEMS       ("shopping_items",       Scope.PROFILE),
     MERCHANT_RULES       ("merchant_rules",       Scope.PROFILE),
     INVESTMENT_POSITIONS ("investment_positions", Scope.PROFILE),
-    FIO_ACCOUNTS         ("fio_accounts",         Scope.PROFILE);
+    FIO_ACCOUNTS         ("fio_accounts",         Scope.PROFILE),
+    GROUP_MEMBERS        ("group_members",        Scope.PROFILE),
+    GROUP_EXPENSES       ("group_expenses",       Scope.PROFILE),
+    GROUP_EXPENSE_ITEMS  ("group_expense_items",  Scope.GROUP_EXPENSE);
 
-    enum class Scope { USER, PROFILE, RECEIPT, INVOICE }
+    enum class Scope { USER, PROFILE, RECEIPT, INVOICE, GROUP_EXPENSE }
 
     companion object {
         fun fromKey(key: String): SyncEntityType? = entries.firstOrNull { it.key == key }
