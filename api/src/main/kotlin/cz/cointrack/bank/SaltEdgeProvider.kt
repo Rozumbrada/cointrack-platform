@@ -130,13 +130,15 @@ class SaltEdgeProvider(private val config: SaltEdgeConfig) : BankingProvider {
         locale: String,
         returnUrl: String,
     ): ConnectSessionPayload {
+        // Salt Edge v6: endpoint /connections/connect (starý /connect_sessions/create je pryč),
+        // consent scopes přejmenované na "accounts" / "transactions" / "holder_info".
         val body = buildJsonObject {
             put("data", buildJsonObject {
                 put("customer_id", externalCustomerId)
                 put("consent", buildJsonObject {
                     putJsonArray("scopes") {
-                        add("account_details")
-                        add("transactions_details")
+                        add("accounts")
+                        add("transactions")
                     }
                 })
                 put("attempt", buildJsonObject {
@@ -150,7 +152,7 @@ class SaltEdgeProvider(private val config: SaltEdgeConfig) : BankingProvider {
                 if (providerCode != null) put("provider_code", providerCode)
             })
         }
-        val res = post("/connect_sessions/create", body)
+        val res = post("/connections/connect", body)
         val url = requireString(res, "data.connect_url")
         val expiresStr = requireString(res, "data.expires_at")
         return ConnectSessionPayload(url = url, expiresAt = parseInstant(expiresStr))
