@@ -149,6 +149,10 @@ class SaltEdgeProvider(private val config: SaltEdgeConfig) : BankingProvider {
                         add("transactions")
                     })
                 })
+                // v6 defaultně blokuje connect stejných credentials pod jedním customer_id
+                // ("DuplicatedCustomerCredentials"). Pro dev/test povolíme duplikáty,
+                // ať nemusí user čistit dashboard ručně. V produkci zvážit vypnutí.
+                put("allow_duplicates", true)
                 if (providerCode != null) put("provider_code", providerCode)
             })
         }
