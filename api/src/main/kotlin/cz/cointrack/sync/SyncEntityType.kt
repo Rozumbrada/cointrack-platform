@@ -15,7 +15,17 @@ enum class SyncEntityType(val key: String, val scope: Scope) {
     RECEIPT_ITEMS  ("receipt_items", Scope.RECEIPT),
     INVOICES       ("invoices",      Scope.PROFILE),
     INVOICE_ITEMS  ("invoice_items", Scope.INVOICE),
-    LOYALTY_CARDS  ("loyalty_cards", Scope.PROFILE);
+    LOYALTY_CARDS  ("loyalty_cards", Scope.PROFILE),
+    BUDGETS              ("budgets",              Scope.PROFILE),
+    PLANNED_PAYMENTS     ("planned_payments",     Scope.PROFILE),
+    DEBTS                ("debts",                Scope.PROFILE),
+    GOALS                ("goals",                Scope.PROFILE),
+    WARRANTIES           ("warranties",           Scope.PROFILE),
+    SHOPPING_LISTS       ("shopping_lists",       Scope.PROFILE),
+    SHOPPING_ITEMS       ("shopping_items",       Scope.PROFILE),
+    MERCHANT_RULES       ("merchant_rules",       Scope.PROFILE),
+    INVESTMENT_POSITIONS ("investment_positions", Scope.PROFILE),
+    FIO_ACCOUNTS         ("fio_accounts",         Scope.PROFILE);
 
     enum class Scope { USER, PROFILE, RECEIPT, INVOICE }
 

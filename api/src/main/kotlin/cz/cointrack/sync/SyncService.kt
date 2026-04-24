@@ -110,6 +110,62 @@ class SyncService {
                     .where { (LoyaltyCards.profileId inList userProfileIds) and (LoyaltyCards.updatedAt greater effectiveSince) }
                     .map { loyaltyCardToEntity(it, profileIdToSync) }
 
+            // ── Sprint 5c.5 entities ───────────────────────────────────
+            result["budgets"] = if (userProfileIds.isEmpty()) emptyList() else
+                Budgets.selectAll()
+                    .where { (Budgets.profileId inList userProfileIds) and (Budgets.updatedAt greater effectiveSince) }
+                    .map { budgetToEntity(it, profileIdToSync, categoryIdToSync) }
+
+            result["planned_payments"] = if (userProfileIds.isEmpty()) emptyList() else
+                PlannedPayments.selectAll()
+                    .where { (PlannedPayments.profileId inList userProfileIds) and (PlannedPayments.updatedAt greater effectiveSince) }
+                    .map { plannedPaymentToEntity(it, profileIdToSync, accountIdToSync, categoryIdToSync) }
+
+            result["debts"] = if (userProfileIds.isEmpty()) emptyList() else
+                Debts.selectAll()
+                    .where { (Debts.profileId inList userProfileIds) and (Debts.updatedAt greater effectiveSince) }
+                    .map { debtToEntity(it, profileIdToSync) }
+
+            result["goals"] = if (userProfileIds.isEmpty()) emptyList() else
+                Goals.selectAll()
+                    .where { (Goals.profileId inList userProfileIds) and (Goals.updatedAt greater effectiveSince) }
+                    .map { goalToEntity(it, profileIdToSync) }
+
+            result["warranties"] = if (userProfileIds.isEmpty()) emptyList() else
+                Warranties.selectAll()
+                    .where { (Warranties.profileId inList userProfileIds) and (Warranties.updatedAt greater effectiveSince) }
+                    .map { warrantyToEntity(it, profileIdToSync) }
+
+            val shoppingListIdToSync = if (userProfileIds.isEmpty()) emptyMap() else
+                ShoppingLists.selectAll()
+                    .where { ShoppingLists.profileId inList userProfileIds }
+                    .associate { it[ShoppingLists.id].value to it[ShoppingLists.syncId] }
+
+            result["shopping_lists"] = if (userProfileIds.isEmpty()) emptyList() else
+                ShoppingLists.selectAll()
+                    .where { (ShoppingLists.profileId inList userProfileIds) and (ShoppingLists.updatedAt greater effectiveSince) }
+                    .map { shoppingListToEntity(it, profileIdToSync) }
+
+            result["shopping_items"] = if (userProfileIds.isEmpty()) emptyList() else
+                (ShoppingItems innerJoin ShoppingLists).selectAll()
+                    .where { (ShoppingLists.profileId inList userProfileIds) and (ShoppingItems.updatedAt greater effectiveSince) }
+                    .map { shoppingItemToEntity(it, shoppingListIdToSync) }
+
+            result["merchant_rules"] = if (userProfileIds.isEmpty()) emptyList() else
+                MerchantRules.selectAll()
+                    .where { (MerchantRules.profileId inList userProfileIds) and (MerchantRules.updatedAt greater effectiveSince) }
+                    .map { merchantRuleToEntity(it, profileIdToSync, categoryIdToSync) }
+
+            result["investment_positions"] = if (userProfileIds.isEmpty()) emptyList() else
+                InvestmentPositions.selectAll()
+                    .where { (InvestmentPositions.profileId inList userProfileIds) and (InvestmentPositions.updatedAt greater effectiveSince) }
+                    .map { investmentPositionToEntity(it, profileIdToSync, accountIdToSync) }
+
+            result["fio_accounts"] = if (userProfileIds.isEmpty()) emptyList() else
+                FioAccounts.selectAll()
+                    .where { (FioAccounts.profileId inList userProfileIds) and (FioAccounts.updatedAt greater effectiveSince) }
+                    .map { fioAccountToEntity(it, profileIdToSync, accountIdToSync) }
+
             SyncPullResponse(serverTime.toString(), result)
         }
     }
@@ -160,6 +216,16 @@ class SyncService {
             SyncEntityType.RECEIPT_ITEMS -> upsertReceiptItem(userId, syncId, e, updatedAt, deletedAt)
             SyncEntityType.INVOICE_ITEMS -> upsertInvoiceItem(userId, syncId, e, updatedAt, deletedAt)
             SyncEntityType.LOYALTY_CARDS -> upsertLoyaltyCard(userId, syncId, e, updatedAt, deletedAt)
+            SyncEntityType.BUDGETS              -> upsertBudget(userId, syncId, e, updatedAt, deletedAt)
+            SyncEntityType.PLANNED_PAYMENTS     -> upsertPlannedPayment(userId, syncId, e, updatedAt, deletedAt)
+            SyncEntityType.DEBTS                -> upsertDebt(userId, syncId, e, updatedAt, deletedAt)
+            SyncEntityType.GOALS                -> upsertGoal(userId, syncId, e, updatedAt, deletedAt)
+            SyncEntityType.WARRANTIES           -> upsertWarranty(userId, syncId, e, updatedAt, deletedAt)
+            SyncEntityType.SHOPPING_LISTS       -> upsertShoppingList(userId, syncId, e, updatedAt, deletedAt)
+            SyncEntityType.SHOPPING_ITEMS       -> upsertShoppingItem(userId, syncId, e, updatedAt, deletedAt)
+            SyncEntityType.MERCHANT_RULES       -> upsertMerchantRule(userId, syncId, e, updatedAt, deletedAt)
+            SyncEntityType.INVESTMENT_POSITIONS -> upsertInvestmentPosition(userId, syncId, e, updatedAt, deletedAt)
+            SyncEntityType.FIO_ACCOUNTS         -> upsertFioAccount(userId, syncId, e, updatedAt, deletedAt)
         }
     }
 
@@ -838,6 +904,469 @@ class SyncService {
             r[LoyaltyCards.logoUrl]?.let { put("logoUrl", it) }
             r[LoyaltyCards.frontImageKey]?.let { put("frontImageKey", it) }
             r[LoyaltyCards.backImageKey]?.let { put("backImageKey", it) }
+        },
+    )
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Sprint 5c.5 — Budgets / PlannedPayments / Debts / Goals / Warranties
+    // / ShoppingLists+Items / MerchantRules / Investments / FioAccounts
+    // ═══════════════════════════════════════════════════════════════════
+
+    private fun Transaction.upsertBudget(userId: UUID, syncId: UUID, e: SyncEntity, updatedAt: Instant, deletedAt: Instant?): UpsertResult {
+        val profileDbId = resolveProfileDbId(e.data.str("profileId"), userId) ?: return UpsertResult.Forbidden
+        val categoryDbId = resolveCategoryDbId(e.data.strOrNull("categoryId"))
+        val existing = Budgets.selectAll().where { Budgets.syncId eq syncId }.singleOrNull()
+        if (existing != null) {
+            if (existing[Budgets.updatedAt] >= updatedAt) return UpsertResult.Conflict(budgetToEntity(existing, emptyMap(), emptyMap()))
+            Budgets.update({ Budgets.syncId eq syncId }) { applyBudgetFields(it, e.data, e.clientVersion, updatedAt, deletedAt, profileDbId, categoryDbId, isInsert = false) }
+        } else {
+            Budgets.insert {
+                it[Budgets.syncId] = syncId
+                it[Budgets.createdAt] = updatedAt
+                applyBudgetFields(it, e.data, e.clientVersion, updatedAt, deletedAt, profileDbId, categoryDbId, isInsert = true)
+            }
+        }
+        return UpsertResult.Accepted
+    }
+
+    private fun applyBudgetFields(s: UpdateBuilder<*>, d: JsonObject, cv: Long, u: Instant, del: Instant?, pid: UUID, cid: UUID?, isInsert: Boolean) {
+        if (isInsert) s[Budgets.profileId] = EntityID(pid, Profiles)
+        s[Budgets.categoryId] = cid?.let { EntityID(it, Categories) }
+        s[Budgets.name] = d.str("name")
+        s[Budgets.limitAmount] = d.decimalOr("limit", BigDecimal.ZERO)
+        s[Budgets.period] = d.strOr("period", "MONTHLY")
+        s[Budgets.currency] = d.strOr("currency", "CZK")
+        s[Budgets.clientVersion] = cv; s[Budgets.updatedAt] = u; s[Budgets.deletedAt] = del
+    }
+
+    private fun Transaction.upsertPlannedPayment(userId: UUID, syncId: UUID, e: SyncEntity, updatedAt: Instant, deletedAt: Instant?): UpsertResult {
+        val profileDbId = resolveProfileDbId(e.data.str("profileId"), userId) ?: return UpsertResult.Forbidden
+        val accountDbId = resolveAccountDbId(e.data.strOrNull("accountId")) ?: return UpsertResult.Forbidden
+        val categoryDbId = resolveCategoryDbId(e.data.strOrNull("categoryId"))
+        val existing = PlannedPayments.selectAll().where { PlannedPayments.syncId eq syncId }.singleOrNull()
+        if (existing != null) {
+            if (existing[PlannedPayments.updatedAt] >= updatedAt) return UpsertResult.Conflict(plannedPaymentToEntity(existing, emptyMap(), emptyMap(), emptyMap()))
+            PlannedPayments.update({ PlannedPayments.syncId eq syncId }) { applyPlannedPaymentFields(it, e.data, e.clientVersion, updatedAt, deletedAt, profileDbId, accountDbId, categoryDbId, isInsert = false) }
+        } else {
+            PlannedPayments.insert {
+                it[PlannedPayments.syncId] = syncId
+                it[PlannedPayments.createdAt] = updatedAt
+                applyPlannedPaymentFields(it, e.data, e.clientVersion, updatedAt, deletedAt, profileDbId, accountDbId, categoryDbId, isInsert = true)
+            }
+        }
+        return UpsertResult.Accepted
+    }
+
+    private fun applyPlannedPaymentFields(s: UpdateBuilder<*>, d: JsonObject, cv: Long, u: Instant, del: Instant?, pid: UUID, aid: UUID, cid: UUID?, isInsert: Boolean) {
+        if (isInsert) {
+            s[PlannedPayments.profileId] = EntityID(pid, Profiles)
+            s[PlannedPayments.accountId] = EntityID(aid, Accounts)
+        }
+        s[PlannedPayments.categoryId] = cid?.let { EntityID(it, Categories) }
+        s[PlannedPayments.name] = d.str("name")
+        s[PlannedPayments.amount] = d.decimalOr("amount", BigDecimal.ZERO)
+        s[PlannedPayments.currency] = d.strOr("currency", "CZK")
+        s[PlannedPayments.type] = d.strOr("type", "EXPENSE")
+        s[PlannedPayments.period] = d.strOr("period", "MONTHLY")
+        s[PlannedPayments.nextDate] = LocalDate.parse(d.strOr("nextDate", LocalDate.now().toString()))
+        s[PlannedPayments.note] = d.strOr("note", "")
+        s[PlannedPayments.isActive] = d.boolOr("isActive", true)
+        s[PlannedPayments.clientVersion] = cv; s[PlannedPayments.updatedAt] = u; s[PlannedPayments.deletedAt] = del
+    }
+
+    private fun Transaction.upsertDebt(userId: UUID, syncId: UUID, e: SyncEntity, updatedAt: Instant, deletedAt: Instant?): UpsertResult {
+        val profileDbId = resolveProfileDbId(e.data.str("profileId"), userId) ?: return UpsertResult.Forbidden
+        val existing = Debts.selectAll().where { Debts.syncId eq syncId }.singleOrNull()
+        if (existing != null) {
+            if (existing[Debts.updatedAt] >= updatedAt) return UpsertResult.Conflict(debtToEntity(existing, emptyMap()))
+            Debts.update({ Debts.syncId eq syncId }) { applyDebtFields(it, e.data, e.clientVersion, updatedAt, deletedAt, profileDbId, isInsert = false) }
+        } else {
+            Debts.insert {
+                it[Debts.syncId] = syncId
+                it[Debts.createdAt] = updatedAt
+                applyDebtFields(it, e.data, e.clientVersion, updatedAt, deletedAt, profileDbId, isInsert = true)
+            }
+        }
+        return UpsertResult.Accepted
+    }
+
+    private fun applyDebtFields(s: UpdateBuilder<*>, d: JsonObject, cv: Long, u: Instant, del: Instant?, pid: UUID, isInsert: Boolean) {
+        if (isInsert) s[Debts.profileId] = EntityID(pid, Profiles)
+        s[Debts.personName] = d.str("personName")
+        s[Debts.amount] = d.decimalOr("amount", BigDecimal.ZERO)
+        s[Debts.currency] = d.strOr("currency", "CZK")
+        s[Debts.type] = d.strOr("type", "BORROWED")
+        s[Debts.description] = d.strOr("description", "")
+        s[Debts.dueDate] = d.strOrNull("dueDate")?.let { LocalDate.parse(it) }
+        s[Debts.isPaid] = d.boolOr("isPaid", false)
+        s[Debts.createdDate] = LocalDate.parse(d.strOr("createdDate", LocalDate.now().toString()))
+        s[Debts.clientVersion] = cv; s[Debts.updatedAt] = u; s[Debts.deletedAt] = del
+    }
+
+    private fun Transaction.upsertGoal(userId: UUID, syncId: UUID, e: SyncEntity, updatedAt: Instant, deletedAt: Instant?): UpsertResult {
+        val profileDbId = resolveProfileDbId(e.data.str("profileId"), userId) ?: return UpsertResult.Forbidden
+        val existing = Goals.selectAll().where { Goals.syncId eq syncId }.singleOrNull()
+        if (existing != null) {
+            if (existing[Goals.updatedAt] >= updatedAt) return UpsertResult.Conflict(goalToEntity(existing, emptyMap()))
+            Goals.update({ Goals.syncId eq syncId }) { applyGoalFields(it, e.data, e.clientVersion, updatedAt, deletedAt, profileDbId, isInsert = false) }
+        } else {
+            Goals.insert {
+                it[Goals.syncId] = syncId
+                it[Goals.createdAt] = updatedAt
+                applyGoalFields(it, e.data, e.clientVersion, updatedAt, deletedAt, profileDbId, isInsert = true)
+            }
+        }
+        return UpsertResult.Accepted
+    }
+
+    private fun applyGoalFields(s: UpdateBuilder<*>, d: JsonObject, cv: Long, u: Instant, del: Instant?, pid: UUID, isInsert: Boolean) {
+        if (isInsert) s[Goals.profileId] = EntityID(pid, Profiles)
+        s[Goals.name] = d.str("name")
+        s[Goals.targetAmount] = d.decimalOr("targetAmount", BigDecimal.ZERO)
+        s[Goals.currentAmount] = d.decimalOr("currentAmount", BigDecimal.ZERO)
+        s[Goals.currency] = d.strOr("currency", "CZK")
+        s[Goals.color] = d.intOrNull("color")
+        s[Goals.deadline] = d.strOrNull("deadline")?.let { LocalDate.parse(it) }
+        s[Goals.note] = d.strOr("note", "")
+        s[Goals.clientVersion] = cv; s[Goals.updatedAt] = u; s[Goals.deletedAt] = del
+    }
+
+    private fun Transaction.upsertWarranty(userId: UUID, syncId: UUID, e: SyncEntity, updatedAt: Instant, deletedAt: Instant?): UpsertResult {
+        val profileDbId = resolveProfileDbId(e.data.str("profileId"), userId) ?: return UpsertResult.Forbidden
+        val existing = Warranties.selectAll().where { Warranties.syncId eq syncId }.singleOrNull()
+        if (existing != null) {
+            if (existing[Warranties.updatedAt] >= updatedAt) return UpsertResult.Conflict(warrantyToEntity(existing, emptyMap()))
+            Warranties.update({ Warranties.syncId eq syncId }) { applyWarrantyFields(it, e.data, e.clientVersion, updatedAt, deletedAt, profileDbId, isInsert = false) }
+        } else {
+            Warranties.insert {
+                it[Warranties.syncId] = syncId
+                it[Warranties.createdAt] = updatedAt
+                applyWarrantyFields(it, e.data, e.clientVersion, updatedAt, deletedAt, profileDbId, isInsert = true)
+            }
+        }
+        return UpsertResult.Accepted
+    }
+
+    private fun applyWarrantyFields(s: UpdateBuilder<*>, d: JsonObject, cv: Long, u: Instant, del: Instant?, pid: UUID, isInsert: Boolean) {
+        if (isInsert) s[Warranties.profileId] = EntityID(pid, Profiles)
+        s[Warranties.productName] = d.str("productName")
+        s[Warranties.shop] = d.strOr("shop", "")
+        s[Warranties.purchaseDate] = LocalDate.parse(d.strOr("purchaseDate", LocalDate.now().toString()))
+        s[Warranties.warrantyYears] = d.intOr("warrantyYears", 2)
+        s[Warranties.price] = d.decimalOrNull("price")
+        s[Warranties.currency] = d.strOr("currency", "CZK")
+        s[Warranties.note] = d.strOr("note", "")
+        s[Warranties.receiptImageKey] = d.strOrNull("receiptImageKey")
+        s[Warranties.clientVersion] = cv; s[Warranties.updatedAt] = u; s[Warranties.deletedAt] = del
+    }
+
+    private fun Transaction.upsertShoppingList(userId: UUID, syncId: UUID, e: SyncEntity, updatedAt: Instant, deletedAt: Instant?): UpsertResult {
+        val profileDbId = resolveProfileDbId(e.data.str("profileId"), userId) ?: return UpsertResult.Forbidden
+        val existing = ShoppingLists.selectAll().where { ShoppingLists.syncId eq syncId }.singleOrNull()
+        if (existing != null) {
+            if (existing[ShoppingLists.updatedAt] >= updatedAt) return UpsertResult.Conflict(shoppingListToEntity(existing, emptyMap()))
+            ShoppingLists.update({ ShoppingLists.syncId eq syncId }) { applyShoppingListFields(it, e.data, e.clientVersion, updatedAt, deletedAt, profileDbId, isInsert = false) }
+        } else {
+            ShoppingLists.insert {
+                it[ShoppingLists.syncId] = syncId
+                it[ShoppingLists.createdAt] = updatedAt
+                applyShoppingListFields(it, e.data, e.clientVersion, updatedAt, deletedAt, profileDbId, isInsert = true)
+            }
+        }
+        return UpsertResult.Accepted
+    }
+
+    private fun applyShoppingListFields(s: UpdateBuilder<*>, d: JsonObject, cv: Long, u: Instant, del: Instant?, pid: UUID, isInsert: Boolean) {
+        if (isInsert) s[ShoppingLists.profileId] = EntityID(pid, Profiles)
+        s[ShoppingLists.name] = d.str("name")
+        s[ShoppingLists.color] = d.intOr("color", 0)
+        s[ShoppingLists.clientVersion] = cv; s[ShoppingLists.updatedAt] = u; s[ShoppingLists.deletedAt] = del
+    }
+
+    private fun Transaction.upsertShoppingItem(userId: UUID, syncId: UUID, e: SyncEntity, updatedAt: Instant, deletedAt: Instant?): UpsertResult {
+        val listSyncStr = e.data.str("listId")
+        val listSync = runCatching { UUID.fromString(listSyncStr) }.getOrNull() ?: return UpsertResult.Forbidden
+        val listRow = ShoppingLists.selectAll().where { ShoppingLists.syncId eq listSync }.singleOrNull() ?: return UpsertResult.Forbidden
+        val profile = Profiles.selectAll().where { Profiles.id eq listRow[ShoppingLists.profileId].value }.singleOrNull() ?: return UpsertResult.Forbidden
+        if (profile[Profiles.ownerUserId].value != userId) return UpsertResult.Forbidden
+        val listDbId = listRow[ShoppingLists.id].value
+
+        val existing = ShoppingItems.selectAll().where { ShoppingItems.syncId eq syncId }.singleOrNull()
+        if (existing != null) {
+            if (existing[ShoppingItems.updatedAt] >= updatedAt) return UpsertResult.Conflict(shoppingItemToEntity(existing, mapOf(listDbId to listSync)))
+            ShoppingItems.update({ ShoppingItems.syncId eq syncId }) { applyShoppingItemFields(it, e.data, e.clientVersion, updatedAt, deletedAt, listDbId, isInsert = false) }
+        } else {
+            ShoppingItems.insert {
+                it[ShoppingItems.syncId] = syncId
+                it[ShoppingItems.createdAt] = updatedAt
+                applyShoppingItemFields(it, e.data, e.clientVersion, updatedAt, deletedAt, listDbId, isInsert = true)
+            }
+        }
+        return UpsertResult.Accepted
+    }
+
+    private fun applyShoppingItemFields(s: UpdateBuilder<*>, d: JsonObject, cv: Long, u: Instant, del: Instant?, lid: UUID, isInsert: Boolean) {
+        if (isInsert) s[ShoppingItems.listId] = EntityID(lid, ShoppingLists)
+        s[ShoppingItems.name] = d.str("name")
+        s[ShoppingItems.quantity] = d.strOr("quantity", "1")
+        s[ShoppingItems.price] = d.decimalOrNull("price")
+        s[ShoppingItems.isChecked] = d.boolOr("isChecked", false)
+        s[ShoppingItems.clientVersion] = cv; s[ShoppingItems.updatedAt] = u; s[ShoppingItems.deletedAt] = del
+    }
+
+    private fun Transaction.upsertMerchantRule(userId: UUID, syncId: UUID, e: SyncEntity, updatedAt: Instant, deletedAt: Instant?): UpsertResult {
+        val profileDbId = resolveProfileDbId(e.data.str("profileId"), userId) ?: return UpsertResult.Forbidden
+        val categoryDbId = resolveCategoryDbId(e.data.strOrNull("categoryId")) ?: return UpsertResult.Forbidden
+        val existing = MerchantRules.selectAll().where { MerchantRules.syncId eq syncId }.singleOrNull()
+        if (existing != null) {
+            if (existing[MerchantRules.updatedAt] >= updatedAt) return UpsertResult.Conflict(merchantRuleToEntity(existing, emptyMap(), emptyMap()))
+            MerchantRules.update({ MerchantRules.syncId eq syncId }) { applyMerchantRuleFields(it, e.data, e.clientVersion, updatedAt, deletedAt, profileDbId, categoryDbId, isInsert = false) }
+        } else {
+            MerchantRules.insert {
+                it[MerchantRules.syncId] = syncId
+                it[MerchantRules.createdAt] = updatedAt
+                applyMerchantRuleFields(it, e.data, e.clientVersion, updatedAt, deletedAt, profileDbId, categoryDbId, isInsert = true)
+            }
+        }
+        return UpsertResult.Accepted
+    }
+
+    private fun applyMerchantRuleFields(s: UpdateBuilder<*>, d: JsonObject, cv: Long, u: Instant, del: Instant?, pid: UUID, cid: UUID, isInsert: Boolean) {
+        if (isInsert) {
+            s[MerchantRules.profileId] = EntityID(pid, Profiles)
+            s[MerchantRules.categoryId] = EntityID(cid, Categories)
+        }
+        s[MerchantRules.keyword] = d.str("keyword")
+        s[MerchantRules.createdAtStr] = d.strOr("createdAt", "")
+        s[MerchantRules.clientVersion] = cv; s[MerchantRules.updatedAt] = u; s[MerchantRules.deletedAt] = del
+    }
+
+    private fun Transaction.upsertInvestmentPosition(userId: UUID, syncId: UUID, e: SyncEntity, updatedAt: Instant, deletedAt: Instant?): UpsertResult {
+        val profileDbId = resolveProfileDbId(e.data.str("profileId"), userId) ?: return UpsertResult.Forbidden
+        val accountDbId = resolveAccountDbId(e.data.strOrNull("accountId")) ?: return UpsertResult.Forbidden
+        val existing = InvestmentPositions.selectAll().where { InvestmentPositions.syncId eq syncId }.singleOrNull()
+        if (existing != null) {
+            if (existing[InvestmentPositions.updatedAt] >= updatedAt) return UpsertResult.Conflict(investmentPositionToEntity(existing, emptyMap(), emptyMap()))
+            InvestmentPositions.update({ InvestmentPositions.syncId eq syncId }) { applyInvestmentFields(it, e.data, e.clientVersion, updatedAt, deletedAt, profileDbId, accountDbId, isInsert = false) }
+        } else {
+            InvestmentPositions.insert {
+                it[InvestmentPositions.syncId] = syncId
+                it[InvestmentPositions.createdAt] = updatedAt
+                applyInvestmentFields(it, e.data, e.clientVersion, updatedAt, deletedAt, profileDbId, accountDbId, isInsert = true)
+            }
+        }
+        return UpsertResult.Accepted
+    }
+
+    private fun applyInvestmentFields(s: UpdateBuilder<*>, d: JsonObject, cv: Long, u: Instant, del: Instant?, pid: UUID, aid: UUID, isInsert: Boolean) {
+        if (isInsert) {
+            s[InvestmentPositions.profileId] = EntityID(pid, Profiles)
+            s[InvestmentPositions.accountId] = EntityID(aid, Accounts)
+        }
+        s[InvestmentPositions.symbol] = d.str("symbol")
+        s[InvestmentPositions.name] = d.str("name")
+        s[InvestmentPositions.quantity] = d.decimalOr("quantity", BigDecimal.ZERO)
+        s[InvestmentPositions.buyPrice] = d.decimalOr("buyPrice", BigDecimal.ZERO)
+        s[InvestmentPositions.buyCurrency] = d.strOr("buyCurrency", "CZK")
+        s[InvestmentPositions.buyDate] = d.strOr("buyDate", "")
+        s[InvestmentPositions.platform] = d.strOr("platform", "")
+        s[InvestmentPositions.isOpen] = d.boolOr("isOpen", true)
+        s[InvestmentPositions.sellPrice] = d.decimalOrNull("sellPrice")
+        s[InvestmentPositions.sellDate] = d.strOrNull("sellDate")
+        s[InvestmentPositions.yahooSymbol] = d.strOrNull("yahooSymbol")
+        s[InvestmentPositions.notes] = d.strOrNull("notes")
+        s[InvestmentPositions.clientVersion] = cv; s[InvestmentPositions.updatedAt] = u; s[InvestmentPositions.deletedAt] = del
+    }
+
+    private fun Transaction.upsertFioAccount(userId: UUID, syncId: UUID, e: SyncEntity, updatedAt: Instant, deletedAt: Instant?): UpsertResult {
+        val profileDbId = resolveProfileDbId(e.data.str("profileId"), userId) ?: return UpsertResult.Forbidden
+        val linkedAccountDbId = resolveAccountDbId(e.data.strOrNull("linkedAccountId"))
+        val existing = FioAccounts.selectAll().where { FioAccounts.syncId eq syncId }.singleOrNull()
+        if (existing != null) {
+            if (existing[FioAccounts.updatedAt] >= updatedAt) return UpsertResult.Conflict(fioAccountToEntity(existing, emptyMap(), emptyMap()))
+            FioAccounts.update({ FioAccounts.syncId eq syncId }) { applyFioAccountFields(it, e.data, e.clientVersion, updatedAt, deletedAt, profileDbId, linkedAccountDbId, isInsert = false) }
+        } else {
+            FioAccounts.insert {
+                it[FioAccounts.syncId] = syncId
+                it[FioAccounts.createdAt] = updatedAt
+                applyFioAccountFields(it, e.data, e.clientVersion, updatedAt, deletedAt, profileDbId, linkedAccountDbId, isInsert = true)
+            }
+        }
+        return UpsertResult.Accepted
+    }
+
+    private fun applyFioAccountFields(s: UpdateBuilder<*>, d: JsonObject, cv: Long, u: Instant, del: Instant?, pid: UUID, lid: UUID?, isInsert: Boolean) {
+        if (isInsert) s[FioAccounts.profileId] = EntityID(pid, Profiles)
+        s[FioAccounts.name] = d.str("name")
+        s[FioAccounts.linkedAccountId] = lid?.let { EntityID(it, Accounts) }
+        s[FioAccounts.lastSync] = d.strOrNull("lastSync")
+        s[FioAccounts.isEnabled] = d.boolOr("isEnabled", true)
+        s[FioAccounts.clientVersion] = cv; s[FioAccounts.updatedAt] = u; s[FioAccounts.deletedAt] = del
+    }
+
+    // ─── Mappers: ResultRow → SyncEntity ─────────────────────────────
+
+    private fun budgetToEntity(r: ResultRow, profileIdToSync: Map<UUID, UUID>, categoryIdToSync: Map<UUID, UUID>) = SyncEntity(
+        syncId = r[Budgets.syncId].toString(),
+        updatedAt = r[Budgets.updatedAt].toString(),
+        deletedAt = r[Budgets.deletedAt]?.toString(),
+        clientVersion = r[Budgets.clientVersion],
+        data = buildJsonObject {
+            put("profileId", (profileIdToSync[r[Budgets.profileId].value] ?: r[Budgets.profileId].value).toString())
+            r[Budgets.categoryId]?.let { put("categoryId", (categoryIdToSync[it.value] ?: it.value).toString()) }
+            put("name", r[Budgets.name])
+            put("limit", r[Budgets.limitAmount].toPlainString())
+            put("period", r[Budgets.period])
+            put("currency", r[Budgets.currency])
+        },
+    )
+
+    private fun plannedPaymentToEntity(r: ResultRow, profileIdToSync: Map<UUID, UUID>, accountIdToSync: Map<UUID, UUID>, categoryIdToSync: Map<UUID, UUID>) = SyncEntity(
+        syncId = r[PlannedPayments.syncId].toString(),
+        updatedAt = r[PlannedPayments.updatedAt].toString(),
+        deletedAt = r[PlannedPayments.deletedAt]?.toString(),
+        clientVersion = r[PlannedPayments.clientVersion],
+        data = buildJsonObject {
+            put("profileId", (profileIdToSync[r[PlannedPayments.profileId].value] ?: r[PlannedPayments.profileId].value).toString())
+            put("accountId", (accountIdToSync[r[PlannedPayments.accountId].value] ?: r[PlannedPayments.accountId].value).toString())
+            r[PlannedPayments.categoryId]?.let { put("categoryId", (categoryIdToSync[it.value] ?: it.value).toString()) }
+            put("name", r[PlannedPayments.name])
+            put("amount", r[PlannedPayments.amount].toPlainString())
+            put("currency", r[PlannedPayments.currency])
+            put("type", r[PlannedPayments.type])
+            put("period", r[PlannedPayments.period])
+            put("nextDate", r[PlannedPayments.nextDate].toString())
+            put("note", r[PlannedPayments.note])
+            put("isActive", r[PlannedPayments.isActive])
+        },
+    )
+
+    private fun debtToEntity(r: ResultRow, profileIdToSync: Map<UUID, UUID>) = SyncEntity(
+        syncId = r[Debts.syncId].toString(),
+        updatedAt = r[Debts.updatedAt].toString(),
+        deletedAt = r[Debts.deletedAt]?.toString(),
+        clientVersion = r[Debts.clientVersion],
+        data = buildJsonObject {
+            put("profileId", (profileIdToSync[r[Debts.profileId].value] ?: r[Debts.profileId].value).toString())
+            put("personName", r[Debts.personName])
+            put("amount", r[Debts.amount].toPlainString())
+            put("currency", r[Debts.currency])
+            put("type", r[Debts.type])
+            put("description", r[Debts.description])
+            r[Debts.dueDate]?.let { put("dueDate", it.toString()) }
+            put("isPaid", r[Debts.isPaid])
+            put("createdDate", r[Debts.createdDate].toString())
+        },
+    )
+
+    private fun goalToEntity(r: ResultRow, profileIdToSync: Map<UUID, UUID>) = SyncEntity(
+        syncId = r[Goals.syncId].toString(),
+        updatedAt = r[Goals.updatedAt].toString(),
+        deletedAt = r[Goals.deletedAt]?.toString(),
+        clientVersion = r[Goals.clientVersion],
+        data = buildJsonObject {
+            put("profileId", (profileIdToSync[r[Goals.profileId].value] ?: r[Goals.profileId].value).toString())
+            put("name", r[Goals.name])
+            put("targetAmount", r[Goals.targetAmount].toPlainString())
+            put("currentAmount", r[Goals.currentAmount].toPlainString())
+            put("currency", r[Goals.currency])
+            r[Goals.color]?.let { put("color", it) }
+            r[Goals.deadline]?.let { put("deadline", it.toString()) }
+            put("note", r[Goals.note])
+        },
+    )
+
+    private fun warrantyToEntity(r: ResultRow, profileIdToSync: Map<UUID, UUID>) = SyncEntity(
+        syncId = r[Warranties.syncId].toString(),
+        updatedAt = r[Warranties.updatedAt].toString(),
+        deletedAt = r[Warranties.deletedAt]?.toString(),
+        clientVersion = r[Warranties.clientVersion],
+        data = buildJsonObject {
+            put("profileId", (profileIdToSync[r[Warranties.profileId].value] ?: r[Warranties.profileId].value).toString())
+            put("productName", r[Warranties.productName])
+            put("shop", r[Warranties.shop])
+            put("purchaseDate", r[Warranties.purchaseDate].toString())
+            put("warrantyYears", r[Warranties.warrantyYears])
+            r[Warranties.price]?.let { put("price", it.toPlainString()) }
+            put("currency", r[Warranties.currency])
+            put("note", r[Warranties.note])
+            r[Warranties.receiptImageKey]?.let { put("receiptImageKey", it) }
+        },
+    )
+
+    private fun shoppingListToEntity(r: ResultRow, profileIdToSync: Map<UUID, UUID>) = SyncEntity(
+        syncId = r[ShoppingLists.syncId].toString(),
+        updatedAt = r[ShoppingLists.updatedAt].toString(),
+        deletedAt = r[ShoppingLists.deletedAt]?.toString(),
+        clientVersion = r[ShoppingLists.clientVersion],
+        data = buildJsonObject {
+            put("profileId", (profileIdToSync[r[ShoppingLists.profileId].value] ?: r[ShoppingLists.profileId].value).toString())
+            put("name", r[ShoppingLists.name])
+            put("color", r[ShoppingLists.color])
+        },
+    )
+
+    private fun shoppingItemToEntity(r: ResultRow, listIdToSync: Map<UUID, UUID>) = SyncEntity(
+        syncId = r[ShoppingItems.syncId].toString(),
+        updatedAt = r[ShoppingItems.updatedAt].toString(),
+        deletedAt = r[ShoppingItems.deletedAt]?.toString(),
+        clientVersion = r[ShoppingItems.clientVersion],
+        data = buildJsonObject {
+            put("listId", (listIdToSync[r[ShoppingItems.listId].value] ?: r[ShoppingItems.listId].value).toString())
+            put("name", r[ShoppingItems.name])
+            put("quantity", r[ShoppingItems.quantity])
+            r[ShoppingItems.price]?.let { put("price", it.toPlainString()) }
+            put("isChecked", r[ShoppingItems.isChecked])
+        },
+    )
+
+    private fun merchantRuleToEntity(r: ResultRow, profileIdToSync: Map<UUID, UUID>, categoryIdToSync: Map<UUID, UUID>) = SyncEntity(
+        syncId = r[MerchantRules.syncId].toString(),
+        updatedAt = r[MerchantRules.updatedAt].toString(),
+        deletedAt = r[MerchantRules.deletedAt]?.toString(),
+        clientVersion = r[MerchantRules.clientVersion],
+        data = buildJsonObject {
+            put("profileId", (profileIdToSync[r[MerchantRules.profileId].value] ?: r[MerchantRules.profileId].value).toString())
+            put("categoryId", (categoryIdToSync[r[MerchantRules.categoryId].value] ?: r[MerchantRules.categoryId].value).toString())
+            put("keyword", r[MerchantRules.keyword])
+            put("createdAt", r[MerchantRules.createdAtStr])
+        },
+    )
+
+    private fun investmentPositionToEntity(r: ResultRow, profileIdToSync: Map<UUID, UUID>, accountIdToSync: Map<UUID, UUID>) = SyncEntity(
+        syncId = r[InvestmentPositions.syncId].toString(),
+        updatedAt = r[InvestmentPositions.updatedAt].toString(),
+        deletedAt = r[InvestmentPositions.deletedAt]?.toString(),
+        clientVersion = r[InvestmentPositions.clientVersion],
+        data = buildJsonObject {
+            put("profileId", (profileIdToSync[r[InvestmentPositions.profileId].value] ?: r[InvestmentPositions.profileId].value).toString())
+            put("accountId", (accountIdToSync[r[InvestmentPositions.accountId].value] ?: r[InvestmentPositions.accountId].value).toString())
+            put("symbol", r[InvestmentPositions.symbol])
+            put("name", r[InvestmentPositions.name])
+            put("quantity", r[InvestmentPositions.quantity].toPlainString())
+            put("buyPrice", r[InvestmentPositions.buyPrice].toPlainString())
+            put("buyCurrency", r[InvestmentPositions.buyCurrency])
+            put("buyDate", r[InvestmentPositions.buyDate])
+            put("platform", r[InvestmentPositions.platform])
+            put("isOpen", r[InvestmentPositions.isOpen])
+            r[InvestmentPositions.sellPrice]?.let { put("sellPrice", it.toPlainString()) }
+            r[InvestmentPositions.sellDate]?.let { put("sellDate", it) }
+            r[InvestmentPositions.yahooSymbol]?.let { put("yahooSymbol", it) }
+            r[InvestmentPositions.notes]?.let { put("notes", it) }
+        },
+    )
+
+    private fun fioAccountToEntity(r: ResultRow, profileIdToSync: Map<UUID, UUID>, accountIdToSync: Map<UUID, UUID>) = SyncEntity(
+        syncId = r[FioAccounts.syncId].toString(),
+        updatedAt = r[FioAccounts.updatedAt].toString(),
+        deletedAt = r[FioAccounts.deletedAt]?.toString(),
+        clientVersion = r[FioAccounts.clientVersion],
+        data = buildJsonObject {
+            put("profileId", (profileIdToSync[r[FioAccounts.profileId].value] ?: r[FioAccounts.profileId].value).toString())
+            put("name", r[FioAccounts.name])
+            r[FioAccounts.linkedAccountId]?.let { put("linkedAccountId", (accountIdToSync[it.value] ?: it.value).toString()) }
+            r[FioAccounts.lastSync]?.let { put("lastSync", it) }
+            put("isEnabled", r[FioAccounts.isEnabled])
         },
     )
 }

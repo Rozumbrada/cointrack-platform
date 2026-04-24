@@ -77,6 +77,7 @@ private val MIGRATIONS: List<Pair<String, String>> = listOf(
     "1.0" to "/db/migration/V1.0__initial_auth.sql",
     "2.0" to "/db/migration/V2.0__core_entities.sql",
     "3.0" to "/db/migration/V3.0__loyalty_cards.sql",
+    "4.0" to "/db/migration/V4.0__remaining_entities.sql",
 )
 
 private fun runMigrations(dataSource: DataSource) {

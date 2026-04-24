@@ -177,6 +177,113 @@ object LoyaltyCards : SyncableTable("loyalty_cards") {
     val backImageKey    = text("back_image_key").nullable()
 }
 
+// ─── Sprint 5c.5 entities ──────────────────────────────────────────
+
+object Budgets : SyncableTable("budgets") {
+    val profileId       = reference("profile_id", Profiles)
+    val categoryId      = reference("category_id", Categories).nullable()
+    val name            = varchar("name", 256)
+    val limitAmount     = decimal("limit", 18, 2)   // "limit" je rezervované slovo — column name jinak
+    val period          = varchar("period", 16).default("MONTHLY")
+    val currency        = varchar("currency", 3).default("CZK")
+}
+
+object PlannedPayments : SyncableTable("planned_payments") {
+    val profileId       = reference("profile_id", Profiles)
+    val accountId       = reference("account_id", Accounts)
+    val categoryId      = reference("category_id", Categories).nullable()
+    val name            = varchar("name", 256)
+    val amount          = decimal("amount", 18, 2)
+    val currency        = varchar("currency", 3).default("CZK")
+    val type            = varchar("type", 16).default("EXPENSE")
+    val period          = varchar("period", 16).default("MONTHLY")
+    val nextDate        = date("next_date")
+    val note            = text("note").default("")
+    val isActive        = bool("is_active").default(true)
+}
+
+object Debts : SyncableTable("debts") {
+    val profileId       = reference("profile_id", Profiles)
+    val personName      = varchar("person_name", 256)
+    val amount          = decimal("amount", 18, 2)
+    val currency        = varchar("currency", 3).default("CZK")
+    val type            = varchar("type", 16).default("BORROWED")
+    val description     = text("description").default("")
+    val dueDate         = date("due_date").nullable()
+    val isPaid          = bool("is_paid").default(false)
+    val createdDate     = date("created_date")
+}
+
+object Goals : SyncableTable("goals") {
+    val profileId       = reference("profile_id", Profiles)
+    val name            = varchar("name", 256)
+    val targetAmount    = decimal("target_amount", 18, 2)
+    val currentAmount   = decimal("current_amount", 18, 2).default(java.math.BigDecimal.ZERO)
+    val currency        = varchar("currency", 3).default("CZK")
+    val color           = integer("color").nullable()
+    val deadline        = date("deadline").nullable()
+    val note            = text("note").default("")
+}
+
+object Warranties : SyncableTable("warranties") {
+    val profileId        = reference("profile_id", Profiles)
+    val productName      = varchar("product_name", 256)
+    val shop             = varchar("shop", 256).default("")
+    val purchaseDate     = date("purchase_date")
+    val warrantyYears    = integer("warranty_years").default(2)
+    val price            = decimal("price", 18, 2).nullable()
+    val currency         = varchar("currency", 3).default("CZK")
+    val note             = text("note").default("")
+    val receiptImageKey  = text("receipt_image_key").nullable()
+}
+
+object ShoppingLists : SyncableTable("shopping_lists") {
+    val profileId       = reference("profile_id", Profiles)
+    val name            = varchar("name", 256)
+    val color           = integer("color").default(0)
+}
+
+object ShoppingItems : SyncableTable("shopping_items") {
+    val listId          = reference("list_id", ShoppingLists)
+    val name            = varchar("name", 256)
+    val quantity        = varchar("quantity", 32).default("1")
+    val price           = decimal("price", 18, 2).nullable()
+    val isChecked       = bool("is_checked").default(false)
+}
+
+object MerchantRules : SyncableTable("merchant_rules") {
+    val profileId       = reference("profile_id", Profiles)
+    val categoryId      = reference("category_id", Categories)
+    val keyword         = varchar("keyword", 256)
+    val createdAtStr    = text("created_at_str").default("")
+}
+
+object InvestmentPositions : SyncableTable("investment_positions") {
+    val profileId       = reference("profile_id", Profiles)
+    val accountId       = reference("account_id", Accounts)
+    val symbol          = varchar("symbol", 32)
+    val name            = varchar("name", 256)
+    val quantity        = decimal("quantity", 18, 6)
+    val buyPrice        = decimal("buy_price", 18, 4)
+    val buyCurrency     = varchar("buy_currency", 8)
+    val buyDate         = varchar("buy_date", 16)
+    val platform        = varchar("platform", 64)
+    val isOpen          = bool("is_open").default(true)
+    val sellPrice       = decimal("sell_price", 18, 4).nullable()
+    val sellDate        = varchar("sell_date", 16).nullable()
+    val yahooSymbol     = varchar("yahoo_symbol", 32).nullable()
+    val notes           = text("notes").nullable()
+}
+
+object FioAccounts : SyncableTable("fio_accounts") {
+    val profileId       = reference("profile_id", Profiles)
+    val name            = varchar("name", 256)
+    val linkedAccountId = reference("linked_account_id", Accounts).nullable()
+    val lastSync        = text("last_sync").nullable()
+    val isEnabled       = bool("is_enabled").default(true)
+    // token NE-synced
+}
+
 // ─── Files metadata ────────────────────────────────────────────────
 object Files : UUIDTable("files") {
     val ownerUserId  = reference("owner_user_id", Users)
