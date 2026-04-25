@@ -43,3 +43,19 @@ export function getCurrentProfileId(): string | null {
 export function setCurrentProfileId(syncId: string | null) {
   setCurrentProfileSyncId(syncId);
 }
+
+// ─── Default profile (client-side preference) ──────────────────
+
+const DEFAULT_KEY = "cointrack_defaultProfileSyncId";
+
+export function getDefaultProfileSyncId(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(DEFAULT_KEY);
+}
+
+export function setDefaultProfileSyncId(syncId: string | null) {
+  if (typeof window === "undefined") return;
+  if (syncId == null) localStorage.removeItem(DEFAULT_KEY);
+  else localStorage.setItem(DEFAULT_KEY, syncId);
+  window.dispatchEvent(new CustomEvent("cointrack:default-profile-changed"));
+}

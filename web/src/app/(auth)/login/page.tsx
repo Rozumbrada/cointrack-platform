@@ -24,7 +24,7 @@ export default function LoginPage() {
         localStorage.setItem("accessToken", res.accessToken);
         localStorage.setItem("refreshToken", res.refreshToken);
       }
-      router.push("/app/dashboard");
+      router.push("/app/profiles");
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
       else setError("Nepodařilo se přihlásit. Zkus to znovu.");
