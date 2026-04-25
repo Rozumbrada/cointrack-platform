@@ -3,6 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { sync, SyncEntity } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
+import {
+  Period,
+  PeriodSelector,
+  periodRange,
+} from "@/components/app/PeriodSelector";
 
 interface InvoiceData {
   invoiceNumber?: string;
@@ -25,6 +30,12 @@ export default function InvoicesPage() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"ALL" | "RECEIVED" | "ISSUED">("ALL");
+  const [paidFilter, setPaidFilter] = useState<"ALL" | "PAID" | "UNPAID">("ALL");
+  const [period, setPeriod] = useState<Period>("all");
+  const [customRange, setCustomRange] = useState<{ from: string; to: string }>({
+    from: "",
+    to: "",
+  });
 
   useEffect(() => {
     (async () => {
@@ -39,6 +50,8 @@ export default function InvoicesPage() {
     })();
   }, []);
 
+  const range = useMemo(() => periodRange(period, customRange), [period, customRange]);
+
   const filtered = useMemo(() => {
     return [...invoices]
       .filter((e) => !e.deletedAt)
@@ -46,6 +59,18 @@ export default function InvoicesPage() {
       .filter((r) => {
         if (filter === "RECEIVED") return r.data.isExpense;
         if (filter === "ISSUED") return !r.data.isExpense;
+        return true;
+      })
+      .filter((r) => {
+        if (paidFilter === "ALL") return true;
+        const isPaid = r.data.paid || !!r.data.linkedTransactionId;
+        return paidFilter === "PAID" ? isPaid : !isPaid;
+      })
+      .filter((r) => {
+        const d = r.data.issueDate;
+        if (!d) return !range.from && !range.to;
+        if (range.from && d < range.from) return false;
+        if (range.to && d > range.to) return false;
         return true;
       })
       .filter((r) => {
@@ -58,22 +83,30 @@ export default function InvoicesPage() {
         );
       })
       .sort((a, b) => (b.data.issueDate ?? "").localeCompare(a.data.issueDate ?? ""));
-  }, [invoices, query, filter]);
+  }, [invoices, query, filter, paidFilter, range]);
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-ink-900">Faktury</h1>
-        <p className="text-sm text-ink-600 mt-1">Přijaté a vystavené faktury.</p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-semibold text-ink-900">Faktury</h1>
+          <p className="text-sm text-ink-600 mt-1">Přijaté a vystavené faktury.</p>
+        </div>
+        <PeriodSelector
+          period={period}
+          onChange={setPeriod}
+          custom={customRange}
+          onCustomChange={setCustomRange}
+        />
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
         <input
           type="text"
           placeholder="Hledat číslo faktury / partner…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="flex-1 h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+          className="flex-1 min-w-[14rem] h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
         />
         <div className="flex rounded-lg border border-ink-300 bg-white overflow-hidden text-sm">
           {(["ALL", "RECEIVED", "ISSUED"] as const).map((f) => (
@@ -85,6 +118,19 @@ export default function InvoicesPage() {
               }`}
             >
               {f === "ALL" ? "Vše" : f === "RECEIVED" ? "Přijaté" : "Vystavené"}
+            </button>
+          ))}
+        </div>
+        <div className="flex rounded-lg border border-ink-300 bg-white overflow-hidden text-sm">
+          {(["ALL", "PAID", "UNPAID"] as const).map((f) => (
+            <button
+              key={f}
+              onClick={() => setPaidFilter(f)}
+              className={`px-4 py-2 ${
+                paidFilter === f ? "bg-brand-50 text-brand-700" : "text-ink-700 hover:bg-ink-50"
+              }`}
+            >
+              {f === "ALL" ? "Vše" : f === "PAID" ? "Uhrazené" : "Neuhrazené"}
             </button>
           ))}
         </div>

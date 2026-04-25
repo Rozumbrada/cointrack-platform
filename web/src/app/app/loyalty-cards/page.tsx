@@ -208,7 +208,8 @@ function Barcode({ value, format }: { value: string; format: string }) {
     EAN_8: "EAN8",
   };
   const code = codeMap[format] ?? "Code128";
-  const url = `https://barcode.tec-it.com/barcode.ashx?data=${encodeURIComponent(value)}&code=${code}&dpi=150&imagetype=Svg&rotation=0`;
+  // SVG je u tec-it placený, PNG je zdarma. Vykreslujeme přes 2x dpi pro retina.
+  const url = `https://barcode.tec-it.com/barcode.ashx?data=${encodeURIComponent(value)}&code=${code}&dpi=200&imagetype=Png&rotation=0`;
 
   return (
     <div className="bg-white rounded-lg p-4 border border-ink-200 grid place-items-center min-h-[140px]">
