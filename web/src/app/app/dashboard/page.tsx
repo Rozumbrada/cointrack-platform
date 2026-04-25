@@ -31,15 +31,22 @@ export default function DashboardPage() {
     [txEntities],
   );
 
-  // Celkový zůstatek per měna — počítáno z initialBalance + sum(transakcí na účtu)
+  // Celkový zůstatek per měna — počítáno z initialBalance + sum(transakcí na účtu).
+  // Ignoruj měny s nulovým součtem (vyhne se zmatení v UI když máš dávno smazané účty
+  // různých měn, ale aktuální stav je 0).
   const totalBalance = useMemo(() => {
     const totals: Record<string, number> = {};
+    const hasAny: Record<string, boolean> = {};
     for (const acc of accountEntities) {
       if (acc.data.excludedFromTotal) continue;
       const live = computeAccountBalance(acc.data, txEntities, acc.syncId);
       totals[acc.data.currency] = (totals[acc.data.currency] ?? 0) + live;
+      hasAny[acc.data.currency] = true;
     }
-    return totals;
+    // Skryj měny, kde součet je 0 a neexistuje žádný účet (artefakt smazaných dat)
+    return Object.fromEntries(
+      Object.entries(totals).filter(([cur, amount]) => hasAny[cur] && Math.abs(amount) > 0.005),
+    );
   }, [accountEntities, txEntities]);
 
   // Měsíční příjmy/výdaje
