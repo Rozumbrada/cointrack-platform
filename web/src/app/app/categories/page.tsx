@@ -1,22 +1,50 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { sync } from "@/lib/api";
+import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
 import { ServerCategory, ServerTransaction, toUiTransaction } from "@/lib/sync-types";
 
+type CategoryRow = { syncId: string; data: ServerCategory };
+
+const PRESET_ICONS = [
+  "category", "shopping_cart", "restaurant", "fastfood", "local_cafe",
+  "directions_car", "local_gas_station", "flight", "train", "directions_bus",
+  "home", "bolt", "water_drop", "wifi", "build",
+  "favorite", "fitness_center", "spa", "medical_services", "school",
+  "movie", "sports_esports", "music_note", "card_giftcard", "pets",
+  "shopping_bag", "checkroom", "devices", "computer", "smartphone",
+  "payments", "savings", "account_balance", "receipt_long", "request_quote",
+  "work", "business", "volunteer_activism", "celebration", "child_care",
+];
+
+const PRESET_COLORS: Array<{ label: string; value: number }> = [
+  { label: "Šedá",     value: 0xff9e9e9e },
+  { label: "Červená",  value: 0xffef4444 },
+  { label: "Oranžová", value: 0xfff59e0b },
+  { label: "Žlutá",    value: 0xffeab308 },
+  { label: "Zelená",   value: 0xff10b981 },
+  { label: "Tyrkysová",value: 0xff14b8a6 },
+  { label: "Modrá",    value: 0xff3b82f6 },
+  { label: "Indigo",   value: 0xff6366f1 },
+  { label: "Fialová",  value: 0xff8b5cf6 },
+  { label: "Růžová",   value: 0xffec4899 },
+];
+
 export default function CategoriesPage() {
-  const { loading, error, entitiesByProfile, diagnose, profileSyncId } = useSyncData();
+  const { loading, error, entitiesByProfile, diagnose, profileSyncId, reload } = useSyncData();
   const categoryEntities = entitiesByProfile<ServerCategory>("categories");
   const txEntities = entitiesByProfile<ServerTransaction>("transactions");
   const catDiag = diagnose("categories");
 
-  // Map UI tx s typem
+  const [editing, setEditing] = useState<{ row: CategoryRow | null; type: "INCOME" | "EXPENSE" } | null>(null);
+
   const uiTxs = useMemo(
     () => txEntities.map((e) => toUiTransaction(e.syncId, e.data)),
     [txEntities],
   );
 
-  // Sumy podle category syncId za aktuální měsíc
   const sums = useMemo(() => {
     const monthKey = new Date().toISOString().slice(0, 7);
     const m = new Map<string, { count: number; amount: number }>();
@@ -46,13 +74,54 @@ export default function CategoriesPage() {
     [categoryEntities],
   );
 
+  async function onDelete(row: CategoryRow) {
+    if (!confirm(`Smazat kategorii "${row.data.name}"?`)) return;
+    const now = new Date().toISOString();
+    try {
+      await withAuth((t) =>
+        sync.push(t, {
+          entities: {
+            categories: [
+              {
+                syncId: row.syncId,
+                updatedAt: now,
+                deletedAt: now,
+                clientVersion: 1,
+                data: row.data as unknown as Record<string, unknown>,
+              },
+            ],
+          },
+        }),
+      );
+      reload();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-ink-900">Kategorie</h1>
-        <p className="text-sm text-ink-600 mt-1">
-          Kategorie pro příjmy a výdaje. Čísla ukazují aktuální měsíc.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-ink-900">Kategorie</h1>
+          <p className="text-sm text-ink-600 mt-1">
+            Kategorie pro příjmy a výdaje. Čísla ukazují aktuální měsíc.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setEditing({ row: null, type: "EXPENSE" })}
+            className="h-9 px-3 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium"
+          >
+            + Výdaj
+          </button>
+          <button
+            onClick={() => setEditing({ row: null, type: "INCOME" })}
+            className="h-9 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium"
+          >
+            + Příjem
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -74,7 +143,7 @@ export default function CategoriesPage() {
             </div>
             <p className="text-sm text-ink-600 mt-2">
               {catDiag.total === 0
-                ? "Vytvoř první kategorii v mobilní aplikaci a sesynchronizuj cloud."
+                ? "Klikni na „+ Výdaj“ nebo „+ Příjem“ vpravo nahoře."
                 : `Máš ${catDiag.total} kategorií celkem, ale žádná není přiřazená k aktuálnímu profilu.`}
             </p>
           </div>
@@ -89,22 +158,42 @@ export default function CategoriesPage() {
                   profily kategorií: {Array.from(catDiag.otherProfiles).slice(0, 5).join(", ")}
                 </div>
               )}
-              <div className="text-amber-700 pt-1">
-                Možná řešení:
-                <ul className="list-disc list-inside mt-1">
-                  <li>Přepni profil v sidebaru</li>
-                  <li>V mobilu vytvoř kategorii v aktuálním profilu</li>
-                  <li>Pokud kategorie patří ke smazanému profilu, byl bug — uděláme bulk re-link později</li>
-                </ul>
-              </div>
             </div>
           )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <CategorySection title="Výdaje" items={expense} sums={sums} colorClass="text-red-700" />
-          <CategorySection title="Příjmy" items={income} sums={sums} colorClass="text-emerald-700" />
+          <CategorySection
+            title="Výdaje"
+            items={expense}
+            sums={sums}
+            colorClass="text-red-700"
+            onEdit={(row) => setEditing({ row, type: "EXPENSE" })}
+            onDelete={onDelete}
+          />
+          <CategorySection
+            title="Příjmy"
+            items={income}
+            sums={sums}
+            colorClass="text-emerald-700"
+            onEdit={(row) => setEditing({ row, type: "INCOME" })}
+            onDelete={onDelete}
+          />
         </div>
+      )}
+
+      {editing && (
+        <CategoryEditor
+          initial={editing.row}
+          type={editing.type}
+          profileSyncId={profileSyncId}
+          maxPosition={Math.max(0, ...categoryEntities.map((c) => c.data.position ?? 0))}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            reload();
+          }}
+        />
       )}
     </div>
   );
@@ -115,11 +204,15 @@ function CategorySection({
   items,
   sums,
   colorClass,
+  onEdit,
+  onDelete,
 }: {
   title: string;
-  items: Array<{ syncId: string; data: ServerCategory }>;
+  items: CategoryRow[];
   sums: Map<string, { count: number; amount: number }>;
   colorClass: string;
+  onEdit: (row: CategoryRow) => void;
+  onDelete: (row: CategoryRow) => void;
 }) {
   return (
     <section className="bg-white rounded-2xl border border-ink-200">
@@ -133,12 +226,12 @@ function CategorySection({
           {items.map((c) => {
             const s = sums.get(c.syncId);
             return (
-              <li key={c.syncId} className="px-5 py-3 flex items-center gap-3">
+              <li key={c.syncId} className="px-5 py-3 flex items-center gap-3 group">
                 <div
-                  className="w-8 h-8 rounded-full grid place-items-center text-sm"
+                  className="w-9 h-9 rounded-full grid place-items-center shrink-0"
                   style={{ backgroundColor: colorFromInt(c.data.color) }}
                 >
-                  {c.data.icon || "📂"}
+                  <CategoryIcon name={c.data.icon} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-ink-900 truncate">
@@ -155,6 +248,22 @@ function CategorySection({
                     {fmt(s.amount, "CZK")}
                   </div>
                 )}
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={() => onEdit(c)}
+                    className="w-7 h-7 grid place-items-center rounded hover:bg-ink-100 text-ink-500 hover:text-ink-700"
+                    title="Upravit"
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    onClick={() => onDelete(c)}
+                    className="w-7 h-7 grid place-items-center rounded hover:bg-red-50 text-red-500 hover:text-red-700"
+                    title="Smazat"
+                  >
+                    🗑
+                  </button>
+                </div>
               </li>
             );
           })}
@@ -164,13 +273,183 @@ function CategorySection({
   );
 }
 
-function colorFromInt(c?: number): string {
+function CategoryEditor({
+  initial,
+  type,
+  profileSyncId,
+  maxPosition,
+  onClose,
+  onSaved,
+}: {
+  initial: CategoryRow | null;
+  type: "INCOME" | "EXPENSE";
+  profileSyncId: string | null;
+  maxPosition: number;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(initial?.data.name ?? "");
+  const [icon, setIcon] = useState(initial?.data.icon ?? "category");
+  const [color, setColor] = useState<number>(initial?.data.color ?? PRESET_COLORS[0].value);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function onSave() {
+    if (!profileSyncId) {
+      setErr("Není vybraný profil.");
+      return;
+    }
+    if (!name.trim()) {
+      setErr("Název je povinný.");
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    try {
+      const now = new Date().toISOString();
+      const syncId = initial?.syncId ?? crypto.randomUUID();
+      const data: ServerCategory & Record<string, unknown> = {
+        profileId: profileSyncId,
+        name: name.trim(),
+        type: type.toLowerCase(),
+        color,
+        icon,
+        position: initial?.data.position ?? maxPosition + 1,
+      };
+      await withAuth((t) =>
+        sync.push(t, {
+          entities: {
+            categories: [
+              {
+                syncId,
+                updatedAt: now,
+                clientVersion: (initial ? 1 : 1),
+                data: data as unknown as Record<string, unknown>,
+              },
+            ],
+          },
+        }),
+      );
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4" onClick={onClose}>
+      <div
+        className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-ink-900">
+            {initial ? "Upravit kategorii" : `Nová kategorie (${type === "EXPENSE" ? "výdaj" : "příjem"})`}
+          </h2>
+          <button onClick={onClose} className="text-ink-400 hover:text-ink-600 text-xl leading-none">
+            ×
+          </button>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div
+            className="w-12 h-12 rounded-full grid place-items-center shrink-0"
+            style={{ backgroundColor: colorFromInt(color) }}
+          >
+            <CategoryIcon name={icon} large />
+          </div>
+          <input
+            type="text"
+            placeholder="Název kategorie"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="flex-1 h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+            autoFocus
+          />
+        </div>
+
+        <div>
+          <div className="text-xs font-medium text-ink-600 mb-2">Barva</div>
+          <div className="flex flex-wrap gap-2">
+            {PRESET_COLORS.map((c) => (
+              <button
+                key={c.value}
+                onClick={() => setColor(c.value)}
+                title={c.label}
+                className={`w-8 h-8 rounded-full border-2 ${color === c.value ? "border-ink-900" : "border-transparent"}`}
+                style={{ backgroundColor: colorFromInt(c.value, 0.6) }}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="text-xs font-medium text-ink-600 mb-2">Ikona</div>
+          <div className="grid grid-cols-8 gap-1 max-h-48 overflow-y-auto p-1 border border-ink-200 rounded-lg">
+            {PRESET_ICONS.map((name) => (
+              <button
+                key={name}
+                onClick={() => setIcon(name)}
+                title={name}
+                className={`aspect-square grid place-items-center rounded hover:bg-ink-100 ${icon === name ? "bg-brand-50 ring-2 ring-brand-500" : ""}`}
+              >
+                <CategoryIcon name={name} />
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {err && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-2 text-xs text-red-800">
+            {err}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <button
+            onClick={onClose}
+            className="h-9 px-4 rounded-lg border border-ink-300 text-sm text-ink-700 hover:bg-ink-50"
+          >
+            Zrušit
+          </button>
+          <button
+            onClick={onSave}
+            disabled={saving}
+            className="h-9 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-50"
+          >
+            {saving ? "Ukládám…" : "Uložit"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CategoryIcon({ name, large = false }: { name?: string; large?: boolean }) {
+  const cls = large ? "text-2xl" : "text-lg";
+  if (!name) return <span className={cls}>📂</span>;
+  // Pokud to vypadá jako Material Icons identifier (obsahuje jen [a-z_0-9]),
+  // renderuj přes Material Icons font; jinak nech být (emoji apod.).
+  const isMaterial = /^[a-z0-9_]+$/.test(name);
+  if (isMaterial) {
+    return (
+      <span className={`material-icons text-ink-700 ${large ? "text-[28px]" : "text-[20px]"}`}>
+        {name}
+      </span>
+    );
+  }
+  return <span className={cls}>{name}</span>;
+}
+
+function colorFromInt(c?: number, alpha = 0.2): string {
   if (!c) return "#E5E7EB";
   const n = c >>> 0;
   const r = (n >> 16) & 0xff;
   const g = (n >> 8) & 0xff;
   const b = n & 0xff;
-  return `rgba(${r}, ${g}, ${b}, 0.2)`;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 function fmt(amount: number, currency: string): string {
