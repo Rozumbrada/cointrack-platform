@@ -14,6 +14,7 @@ import {
 } from "@/lib/sync-types";
 import { CategoryIcon, colorFromInt } from "@/components/app/CategoryIcon";
 import { CategoryPicker } from "@/components/app/CategoryPicker";
+import { ExpenseDonut, categoryColor } from "@/components/app/ExpenseDonut";
 
 export default function DashboardPage() {
   const { loading, error, entitiesByProfile, reload } = useSyncData();
@@ -128,7 +129,6 @@ export default function DashboardPage() {
     return result;
   }, [uiTxs]);
 
-  const maxExpenseCat = topExpenseCats[0]?.amount ?? 1;
   const maxTrend = Math.max(...trend.flatMap((m) => [m.income, m.expense]), 1);
 
   async function setCategory(txSyncId: string, newCatSyncId: string | null) {
@@ -252,46 +252,61 @@ export default function DashboardPage() {
         </section>
       </div>
 
-      {/* Top výdaje */}
+      {/* Donut + top výdaje */}
       <section className="bg-white rounded-2xl border border-ink-200 p-5">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-ink-900">Top výdaje (tento měsíc)</h2>
+          <h2 className="font-semibold text-ink-900">Výdaje podle kategorií ({monthLabel()})</h2>
           <Link href="/app/statistics" className="text-sm text-brand-600 hover:text-brand-700">
             Detail →
           </Link>
         </div>
-        {topExpenseCats.length === 0 ? (
+        {topExpenseCats.length === 0 || monthlyStats.expense === 0 ? (
           <div className="py-6 text-center text-ink-500 text-sm">
             Žádné výdaje tento měsíc.
           </div>
         ) : (
-          <div className="space-y-3">
-            {topExpenseCats.map((row) => (
-              <div key={String(row.cid)}>
-                <div className="flex items-center justify-between text-sm mb-1">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div
-                      className="w-6 h-6 rounded-full grid place-items-center shrink-0"
-                      style={{ backgroundColor: colorFromInt(row.category?.color) }}
-                    >
-                      <CategoryIcon name={row.category?.icon} size="sm" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-center">
+            <div className="flex justify-center">
+              <ExpenseDonut
+                segments={topExpenseCats.map((c) => ({
+                  cid: String(c.cid),
+                  amount: c.amount,
+                  category: c.category,
+                }))}
+                total={monthlyStats.expense}
+                size={200}
+                stroke={36}
+              />
+            </div>
+            <div className="space-y-3">
+              {topExpenseCats.map((row) => {
+                const pct = (row.amount / monthlyStats.expense) * 100;
+                return (
+                  <div key={String(row.cid)}>
+                    <div className="flex items-center justify-between text-sm mb-1 gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div
+                          className="w-3 h-3 rounded-sm shrink-0"
+                          style={{
+                            backgroundColor: categoryColor(row.category, String(row.cid)),
+                          }}
+                        />
+                        {row.category?.icon && <CategoryIcon name={row.category.icon} size="sm" />}
+                        <span className="text-ink-900 truncate">
+                          {row.category?.name || "Bez kategorie"}
+                        </span>
+                      </div>
+                      <div className="tabular-nums font-medium text-ink-900 shrink-0">
+                        {fmt(row.amount, "CZK")}
+                      </div>
                     </div>
-                    <span className="text-ink-900 truncate">
-                      {row.category?.name || "Bez kategorie"}
-                    </span>
+                    <div className="text-[10px] text-ink-500 tabular-nums text-right">
+                      {pct.toFixed(0)} %
+                    </div>
                   </div>
-                  <div className="tabular-nums font-medium text-ink-900">
-                    {fmt(row.amount, "CZK")}
-                  </div>
-                </div>
-                <div className="h-2 rounded-full bg-ink-100 overflow-hidden">
-                  <div
-                    className="h-full bg-red-500"
-                    style={{ width: `${(row.amount / maxExpenseCat) * 100}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+                );
+              })}
+            </div>
           </div>
         )}
       </section>

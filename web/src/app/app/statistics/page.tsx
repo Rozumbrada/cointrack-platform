@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useSyncData } from "@/lib/sync-hook";
 import {
@@ -13,6 +14,8 @@ import {
   PeriodSelector,
   periodRange,
 } from "@/components/app/PeriodSelector";
+import { CategoryIcon } from "@/components/app/CategoryIcon";
+import { ExpenseDonut, categoryColor } from "@/components/app/ExpenseDonut";
 
 export default function StatisticsPage() {
   const { loading, error, entitiesByProfile } = useSyncData();
@@ -22,6 +25,7 @@ export default function StatisticsPage() {
     to: "",
   });
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set());
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
 
   const txEntities = entitiesByProfile<ServerTransaction>("transactions");
   const categoryEntities = entitiesByProfile<ServerCategory>("categories");
@@ -101,7 +105,7 @@ export default function StatisticsPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-ink-900">Statistiky</h1>
+          <h1 className="text-2xl font-semibold text-ink-900">Statistiky a grafy</h1>
           <p className="text-sm text-ink-600 mt-1">
             Přehled výdajů podle kategorií + trend v čase.
           </p>
@@ -138,41 +142,93 @@ export default function StatisticsPage() {
           ) : (
             <>
               <div className="flex justify-center mb-4">
-                <DonutChart segments={visibleCategoryStats.slice(0, 8)} total={totalVisibleExpense} />
+                <ExpenseDonut segments={visibleCategoryStats.slice(0, 8)} total={totalVisibleExpense} />
               </div>
-              <ul className="space-y-2 max-h-80 overflow-y-auto">
+              <ul className="space-y-1 max-h-96 overflow-y-auto">
                 {categoryStats.map((c) => {
                   const isHidden = hiddenCategories.has(c.cid);
+                  const isExpanded = expandedCategory === c.cid;
                   const pct = totalVisibleExpense > 0 && !isHidden
                     ? (c.amount / totalVisibleExpense) * 100
                     : 0;
+                  const catTxs = isExpanded
+                    ? inPeriod
+                        .filter(
+                          (tx) =>
+                            tx.type === "EXPENSE" &&
+                            (tx.categorySyncId ?? "__uncategorized__") === c.cid,
+                        )
+                        .sort((a, b) => b.date.localeCompare(a.date))
+                    : [];
                   return (
-                    <li
-                      key={c.cid}
-                      className={`flex items-center gap-3 text-sm cursor-pointer ${
-                        isHidden ? "opacity-40" : ""
-                      }`}
-                      onClick={() => toggleCategory(c.cid)}
-                    >
+                    <li key={c.cid}>
                       <div
-                        className="w-3 h-3 rounded-sm shrink-0"
-                        style={{
-                          backgroundColor: categoryColor(c.category, c.cid),
-                        }}
-                      />
-                      <div className="flex-1 min-w-0 truncate">
-                        {c.category?.icon ? `${c.category.icon} ` : ""}
-                        {c.category?.name ?? "Bez kategorie"}
+                        className={`flex items-center gap-3 text-sm cursor-pointer rounded-md px-2 py-1.5 hover:bg-ink-50 ${
+                          isHidden ? "opacity-40" : ""
+                        } ${isExpanded ? "bg-ink-50" : ""}`}
+                        onClick={() =>
+                          setExpandedCategory(isExpanded ? null : c.cid)
+                        }
+                      >
+                        <span className={`text-ink-400 text-xs w-3 ${isExpanded ? "" : "-rotate-90"}`}>
+                          ▾
+                        </span>
+                        <div
+                          className="w-3 h-3 rounded-sm shrink-0"
+                          style={{
+                            backgroundColor: categoryColor(c.category, c.cid),
+                          }}
+                        />
+                        {c.category?.icon && (
+                          <CategoryIcon name={c.category.icon} size="sm" />
+                        )}
+                        <div className="flex-1 min-w-0 truncate">
+                          {c.category?.name ?? "Bez kategorie"}
+                        </div>
+                        <div className="text-xs text-ink-500 tabular-nums">
+                          {pct.toFixed(0)} %
+                        </div>
+                        <div className="font-medium tabular-nums w-24 text-right">
+                          {fmt(c.amount, "CZK")}
+                        </div>
+                        <button
+                          className="text-ink-400 hover:text-ink-700"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleCategory(c.cid);
+                          }}
+                          title={isHidden ? "Zobrazit v grafu" : "Skrýt z grafu"}
+                        >
+                          {isHidden ? "👁" : "🚫"}
+                        </button>
                       </div>
-                      <div className="text-xs text-ink-500 tabular-nums">
-                        {pct.toFixed(0)} %
-                      </div>
-                      <div className="font-medium tabular-nums w-24 text-right">
-                        {fmt(c.amount, "CZK")}
-                      </div>
-                      <button className="text-ink-400 hover:text-ink-700">
-                        {isHidden ? "👁" : "🚫"}
-                      </button>
+                      {isExpanded && (
+                        <div className="ml-6 mt-1 mb-2 border-l-2 border-ink-200 pl-3 space-y-1">
+                          {catTxs.length === 0 ? (
+                            <div className="text-xs text-ink-500 py-2">
+                              Žádné transakce.
+                            </div>
+                          ) : (
+                            catTxs.map((tx) => (
+                              <Link
+                                key={tx.syncId}
+                                href={`/app/transactions/${tx.syncId}`}
+                                className="flex items-center gap-2 text-xs py-1.5 hover:bg-ink-100 rounded px-2 -ml-2"
+                              >
+                                <span className="text-ink-500 tabular-nums shrink-0">
+                                  {formatDate(tx.date)}
+                                </span>
+                                <span className="flex-1 min-w-0 truncate text-ink-900">
+                                  {tx.description || tx.merchant || "(bez popisu)"}
+                                </span>
+                                <span className="font-medium tabular-nums">
+                                  {fmt(tx.amount, tx.currency)}
+                                </span>
+                              </Link>
+                            ))
+                          )}
+                        </div>
+                      )}
                     </li>
                   );
                 })}
@@ -259,69 +315,6 @@ function Tile({
   );
 }
 
-function DonutChart({
-  segments,
-  total,
-}: {
-  segments: Array<{ cid: string; amount: number; category?: ServerCategory }>;
-  total: number;
-}) {
-  if (total === 0 || segments.length === 0) return null;
-  const size = 180;
-  const stroke = 32;
-  const radius = (size - stroke) / 2;
-  const circ = 2 * Math.PI * radius;
-  let offset = 0;
-
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        fill="none"
-        stroke="#f1f5f9"
-        strokeWidth={stroke}
-      />
-      {segments.map((s) => {
-        const len = (s.amount / total) * circ;
-        const dasharray = `${len} ${circ - len}`;
-        const dashoffset = -offset;
-        offset += len;
-        return (
-          <circle
-            key={s.cid}
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            fill="none"
-            stroke={categoryColor(s.category, s.cid)}
-            strokeWidth={stroke}
-            strokeDasharray={dasharray}
-            strokeDashoffset={dashoffset}
-            transform={`rotate(-90 ${size / 2} ${size / 2})`}
-          />
-        );
-      })}
-      <text
-        x={size / 2}
-        y={size / 2 - 4}
-        textAnchor="middle"
-        className="text-xs fill-ink-500"
-      >
-        Celkem
-      </text>
-      <text
-        x={size / 2}
-        y={size / 2 + 14}
-        textAnchor="middle"
-        className="text-sm font-semibold fill-ink-900"
-      >
-        {fmt(total, "CZK")}
-      </text>
-    </svg>
-  );
-}
 
 // ─── Trend computation ────────────────────────────────────────────────
 
@@ -412,24 +405,22 @@ function buildTrend(txs: UiTransaction[], period: Period): TrendBucket[] {
   return result;
 }
 
-function categoryColor(cat: ServerCategory | undefined, fallbackKey: string): string {
-  if (cat?.color) {
-    const n = (cat.color >>> 0);
-    const r = (n >> 16) & 0xff;
-    const g = (n >> 8) & 0xff;
-    const b = n & 0xff;
-    return `rgb(${r}, ${g}, ${b})`;
-  }
-  // Stabilní fallback color z hash klíče
-  const hash = Array.from(fallbackKey).reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 0);
-  const hue = Math.abs(hash) % 360;
-  return `hsl(${hue}, 60%, 55%)`;
-}
-
 function fmt(amount: number, currency: string): string {
   return new Intl.NumberFormat("cs-CZ", {
     style: "currency",
     currency,
     maximumFractionDigits: 0,
   }).format(amount);
+}
+
+function formatDate(iso: string): string {
+  if (!iso) return "—";
+  try {
+    return new Intl.DateTimeFormat("cs-CZ", {
+      day: "numeric",
+      month: "numeric",
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
 }

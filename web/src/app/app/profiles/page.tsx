@@ -266,7 +266,10 @@ function ProfileCard({
   const bg = profileColor(data.color);
 
   return (
-    <div className="group bg-white rounded-2xl border border-ink-200 hover:border-brand-300 hover:shadow-md transition-all p-5 flex items-start gap-4">
+    <div
+      onClick={onSelect}
+      className="group bg-white rounded-2xl border border-ink-200 hover:border-brand-300 hover:shadow-md transition-all p-5 flex items-start gap-4 cursor-pointer"
+    >
       <div className="flex items-start gap-3 flex-1 min-w-0">
         <div
           className="w-12 h-12 rounded-xl grid place-items-center text-lg font-semibold shrink-0"
@@ -275,17 +278,14 @@ function ProfileCard({
           {initial}
         </div>
         <div className="min-w-0 flex-1">
-          <button
-            onClick={onSelect}
-            className="font-medium text-ink-900 truncate flex items-center gap-2 hover:text-brand-600 hover:underline focus:outline-none focus:text-brand-700 text-left"
-          >
+          <div className="font-medium text-ink-900 truncate flex items-center gap-2">
             {data.name}
             {isDefault && (
               <span title="Výchozí profil" className="text-amber-500">
                 ★
               </span>
             )}
-          </button>
+          </div>
           <div className="text-[11px] uppercase tracking-wide text-ink-500 mt-0.5">
             {labelType(data.type)}
             {data.defaultCurrency && (
@@ -303,7 +303,10 @@ function ProfileCard({
 
       <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <button
-          onClick={onToggleDefault}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleDefault();
+          }}
           className={`w-8 h-8 grid place-items-center rounded-lg hover:bg-ink-100 ${
             isDefault ? "text-amber-500" : "text-ink-400"
           }`}
@@ -320,7 +323,10 @@ function ProfileCard({
           ✎
         </Link>
         <button
-          onClick={onDelete}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
           className="w-8 h-8 grid place-items-center rounded-lg hover:bg-red-50 text-red-500"
           title="Smazat"
         >

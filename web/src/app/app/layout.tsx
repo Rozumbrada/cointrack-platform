@@ -68,7 +68,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/app/accounts", label: "Účty" },
     { href: "/app/transactions", label: "Transakce" },
     { href: "/app/categories", label: "Kategorie" },
-    { href: "/app/statistics", label: "Statistiky" },
+    { href: "/app/statistics", label: "Statistiky a grafy" },
     { href: "/app/receipts", label: "Účtenky", section: "Doklady" },
     { href: "/app/invoices", label: "Faktury" },
     { href: "/app/warranties", label: "Záruky" },
