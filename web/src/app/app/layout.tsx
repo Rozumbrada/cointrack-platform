@@ -17,6 +17,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [user, setUser] = useState<UserDto | null>(null);
   const [loading, setLoading] = useState(true);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Zavřít drawer při změně cesty
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     const token = getAccessToken();
@@ -178,51 +184,96 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* Main content — vlevo */}
       <main className="flex-1 min-w-0">
-        <header className="md:hidden h-14 bg-white border-b border-ink-200 flex items-center justify-between px-4">
+        <header className="md:hidden h-14 bg-white border-b border-ink-200 flex items-center justify-between px-4 sticky top-0 z-30">
           <Link href="/app/dashboard" className="font-semibold text-ink-900">
             Cointrack
           </Link>
           <button
-            onClick={onLogout}
-            className="text-sm text-ink-700"
-            aria-label="Odhlásit"
+            onClick={() => setDrawerOpen(true)}
+            className="w-9 h-9 grid place-items-center rounded-lg hover:bg-ink-100"
+            aria-label="Otevřít menu"
           >
-            Odhlásit
+            <span className="block w-5 space-y-[5px]">
+              <span className="block h-0.5 bg-ink-700 rounded" />
+              <span className="block h-0.5 bg-ink-700 rounded" />
+              <span className="block h-0.5 bg-ink-700 rounded" />
+            </span>
           </button>
         </header>
 
-        {/* Mobile nav — horizontální scroll */}
-        <div className="md:hidden bg-white border-b border-ink-200 overflow-x-auto">
-          <div className="flex gap-1 px-3 py-2 whitespace-nowrap">
-            <Link
-              href="/app/profiles"
-              className="rounded-lg px-3 py-1.5 text-sm font-medium text-brand-700 bg-brand-50"
-            >
-              Profily
-            </Link>
-            {nav.map((item) => {
-              const active =
-                pathname === item.href ||
-                (item.href !== "/app/dashboard" && pathname?.startsWith(item.href));
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-                    active
-                      ? "bg-brand-50 text-brand-700"
-                      : "text-ink-700 hover:bg-ink-100"
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-
         <div className="max-w-6xl mx-auto p-4 md:p-8">{children}</div>
       </main>
+
+      {/* Mobile drawer — slide-in zprava */}
+      {drawerOpen && (
+        <>
+          <div
+            className="md:hidden fixed inset-0 z-40 bg-black/40"
+            onClick={() => setDrawerOpen(false)}
+          />
+          <aside className="md:hidden fixed top-0 right-0 z-50 h-screen w-72 bg-white shadow-xl flex flex-col animate-[slideIn_0.2s_ease-out]">
+            <div className="h-14 flex items-center justify-between px-4 border-b border-ink-200">
+              <span className="font-semibold text-ink-900">Menu</span>
+              <button
+                onClick={() => setDrawerOpen(false)}
+                className="text-ink-400 hover:text-ink-600 text-2xl leading-none w-8 h-8 grid place-items-center"
+                aria-label="Zavřít"
+              >
+                ×
+              </button>
+            </div>
+            <div className="px-3 pt-3">
+              <ProfileSwitcher />
+              <Link
+                href="/app/profiles"
+                className="block mt-2 text-xs text-brand-600 hover:text-brand-700 px-2"
+              >
+                Spravovat profily →
+              </Link>
+            </div>
+            <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
+              {nav.map((item) => {
+                const active =
+                  pathname === item.href ||
+                  (item.href !== "/app/dashboard" && pathname?.startsWith(item.href));
+                return (
+                  <div key={item.href}>
+                    {item.section && (
+                      <div className="mt-4 mb-1 px-3 text-[10px] font-semibold uppercase tracking-wide text-ink-500">
+                        {item.section}
+                      </div>
+                    )}
+                    <Link
+                      href={item.href}
+                      className={`block rounded-lg px-3 py-2 text-sm font-medium ${
+                        active
+                          ? "bg-brand-50 text-brand-700"
+                          : "text-ink-700 hover:bg-ink-100"
+                      }`}
+                    >
+                      {item.label}
+                    </Link>
+                  </div>
+                );
+              })}
+            </nav>
+            <div className="p-3 border-t border-ink-200">
+              <div className="px-3 py-2 text-xs text-ink-600">
+                <div className="truncate font-medium text-ink-900">
+                  {user?.displayName || user?.email}
+                </div>
+                <div className="truncate">{user?.email}</div>
+              </div>
+              <button
+                onClick={onLogout}
+                className="w-full text-left rounded-lg px-3 py-2 text-sm text-ink-700 hover:bg-ink-100"
+              >
+                Odhlásit
+              </button>
+            </div>
+          </aside>
+        </>
+      )}
 
       <QuickActionFab />
     </div>
