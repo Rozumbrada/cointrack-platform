@@ -45,32 +45,39 @@ export default function CategoriesPage() {
     [txEntities],
   );
 
+  /**
+   * Pro každou kategorii spočítáme zvlášť příjmy a výdaje za aktuální měsíc.
+   * Stejná kategorie může mít jak income tak expense transakce — neřídíme se
+   * podle category.type, ale podle směru konkrétní transakce.
+   */
   const sums = useMemo(() => {
     const monthKey = new Date().toISOString().slice(0, 7);
-    const m = new Map<string, { count: number; amount: number }>();
+    const m = new Map<
+      string,
+      { incomeCount: number; incomeAmount: number; expenseCount: number; expenseAmount: number }
+    >();
     for (const tx of uiTxs) {
       if (tx.type !== "EXPENSE" && tx.type !== "INCOME") continue;
       if (!tx.date?.startsWith(monthKey)) continue;
       const cid = tx.categorySyncId;
       if (!cid) continue;
-      const prev = m.get(cid) ?? { count: 0, amount: 0 };
-      m.set(cid, { count: prev.count + 1, amount: prev.amount + tx.amount });
+      const prev = m.get(cid) ?? {
+        incomeCount: 0, incomeAmount: 0, expenseCount: 0, expenseAmount: 0,
+      };
+      if (tx.type === "INCOME") {
+        prev.incomeCount += 1;
+        prev.incomeAmount += tx.amount;
+      } else {
+        prev.expenseCount += 1;
+        prev.expenseAmount += tx.amount;
+      }
+      m.set(cid, prev);
     }
     return m;
   }, [uiTxs]);
 
-  const expense = useMemo(
-    () =>
-      categoryEntities
-        .filter((c) => c.data.type?.toUpperCase() === "EXPENSE")
-        .sort((a, b) => a.data.name.localeCompare(b.data.name)),
-    [categoryEntities],
-  );
-  const income = useMemo(
-    () =>
-      categoryEntities
-        .filter((c) => c.data.type?.toUpperCase() === "INCOME")
-        .sort((a, b) => a.data.name.localeCompare(b.data.name)),
+  const sortedCategories = useMemo(
+    () => [...categoryEntities].sort((a, b) => a.data.name.localeCompare(b.data.name)),
     [categoryEntities],
   );
 
@@ -105,23 +112,15 @@ export default function CategoriesPage() {
         <div>
           <h1 className="text-2xl font-semibold text-ink-900">Kategorie</h1>
           <p className="text-sm text-ink-600 mt-1">
-            Kategorie pro příjmy a výdaje. Čísla ukazují aktuální měsíc.
+            Stejnou kategorii lze použít na příjem i výdaj — řídí se to směrem transakce.
           </p>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setEditing({ row: null, type: "EXPENSE" })}
-            className="h-9 px-3 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium"
-          >
-            + Výdaj
-          </button>
-          <button
-            onClick={() => setEditing({ row: null, type: "INCOME" })}
-            className="h-9 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium"
-          >
-            + Příjem
-          </button>
-        </div>
+        <button
+          onClick={() => setEditing({ row: null, type: "EXPENSE" })}
+          className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
+        >
+          + Nová kategorie
+        </button>
       </div>
 
       {error && (
@@ -143,7 +142,7 @@ export default function CategoriesPage() {
             </div>
             <p className="text-sm text-ink-600 mt-2">
               {catDiag.total === 0
-                ? "Klikni na „+ Výdaj“ nebo „+ Příjem“ vpravo nahoře."
+                ? "Klikni na „+ Nová kategorie“ vpravo nahoře."
                 : `Máš ${catDiag.total} kategorií celkem, ale žádná není přiřazená k aktuálnímu profilu.`}
             </p>
           </div>
@@ -162,24 +161,17 @@ export default function CategoriesPage() {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <CategorySection
-            title="Výdaje"
-            items={expense}
-            sums={sums}
-            colorClass="text-red-700"
-            onEdit={(row) => setEditing({ row, type: "EXPENSE" })}
-            onDelete={onDelete}
-          />
-          <CategorySection
-            title="Příjmy"
-            items={income}
-            sums={sums}
-            colorClass="text-emerald-700"
-            onEdit={(row) => setEditing({ row, type: "INCOME" })}
-            onDelete={onDelete}
-          />
-        </div>
+        <CategoryList
+          items={sortedCategories}
+          sums={sums}
+          onEdit={(row) =>
+            setEditing({
+              row,
+              type: row.data.type?.toUpperCase() === "INCOME" ? "INCOME" : "EXPENSE",
+            })
+          }
+          onDelete={onDelete}
+        />
       )}
 
       {editing && (
@@ -199,76 +191,92 @@ export default function CategoriesPage() {
   );
 }
 
-function CategorySection({
-  title,
+type CategoryStat = {
+  incomeCount: number;
+  incomeAmount: number;
+  expenseCount: number;
+  expenseAmount: number;
+};
+
+function CategoryList({
   items,
   sums,
-  colorClass,
   onEdit,
   onDelete,
 }: {
-  title: string;
   items: CategoryRow[];
-  sums: Map<string, { count: number; amount: number }>;
-  colorClass: string;
+  sums: Map<string, CategoryStat>;
   onEdit: (row: CategoryRow) => void;
   onDelete: (row: CategoryRow) => void;
 }) {
   return (
-    <section className="bg-white rounded-2xl border border-ink-200">
-      <div className="px-5 py-3 border-b border-ink-200">
-        <h2 className="font-semibold text-ink-900">{title}</h2>
-      </div>
-      {items.length === 0 ? (
-        <div className="p-6 text-center text-ink-500 text-sm">Žádné kategorie.</div>
-      ) : (
-        <ul className="divide-y divide-ink-100">
-          {items.map((c) => {
-            const s = sums.get(c.syncId);
-            return (
-              <li key={c.syncId} className="px-5 py-3 flex items-center gap-3 group">
-                <div
-                  className="w-9 h-9 rounded-full grid place-items-center shrink-0"
-                  style={{ backgroundColor: colorFromInt(c.data.color) }}
-                >
-                  <CategoryIcon name={c.data.icon} />
+    <section className="bg-white rounded-2xl border border-ink-200 overflow-hidden">
+      <ul className="divide-y divide-ink-100">
+        {items.map((c) => {
+          const s = sums.get(c.syncId);
+          const totalCount = (s?.incomeCount ?? 0) + (s?.expenseCount ?? 0);
+          const primaryType = c.data.type?.toUpperCase();
+          return (
+            <li key={c.syncId} className="px-5 py-3 flex items-center gap-3 group">
+              <div
+                className="w-9 h-9 rounded-full grid place-items-center shrink-0"
+                style={{ backgroundColor: colorFromInt(c.data.color) }}
+              >
+                <CategoryIcon name={c.data.icon} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-ink-900 truncate flex items-center gap-2">
+                  {c.data.name}
+                  {primaryType && (
+                    <span
+                      className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                        primaryType === "INCOME"
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-red-50 text-red-700"
+                      }`}
+                    >
+                      {primaryType === "INCOME" ? "primárně příjem" : "primárně výdaj"}
+                    </span>
+                  )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-ink-900 truncate">
-                    {c.data.name}
-                  </div>
-                  {s && (
-                    <div className="text-xs text-ink-500">
-                      {s.count}× tento měsíc
+                <div className="text-xs text-ink-500 mt-0.5">
+                  {totalCount === 0 ? "Bez transakcí tento měsíc" : `${totalCount}× tento měsíc`}
+                </div>
+              </div>
+              {s && (s.incomeCount > 0 || s.expenseCount > 0) && (
+                <div className="text-right text-xs space-y-0.5">
+                  {s.incomeCount > 0 && (
+                    <div className="text-emerald-700 font-medium tabular-nums">
+                      +{fmt(s.incomeAmount, "CZK")}
+                    </div>
+                  )}
+                  {s.expenseCount > 0 && (
+                    <div className="text-red-700 font-medium tabular-nums">
+                      −{fmt(s.expenseAmount, "CZK")}
                     </div>
                   )}
                 </div>
-                {s && (
-                  <div className={`text-sm font-semibold tabular-nums ${colorClass}`}>
-                    {fmt(s.amount, "CZK")}
-                  </div>
-                )}
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={() => onEdit(c)}
-                    className="w-7 h-7 grid place-items-center rounded hover:bg-ink-100 text-ink-500 hover:text-ink-700"
-                    title="Upravit"
-                  >
-                    ✏️
-                  </button>
-                  <button
-                    onClick={() => onDelete(c)}
-                    className="w-7 h-7 grid place-items-center rounded hover:bg-red-50 text-red-500 hover:text-red-700"
-                    title="Smazat"
-                  >
-                    🗑
-                  </button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+              )}
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={() => onEdit(c)}
+                  className="w-7 h-7 grid place-items-center rounded hover:bg-ink-100 text-ink-500 hover:text-ink-700"
+                  title="Upravit"
+                >
+                  ✏️
+                </button>
+                <button
+                  onClick={() => onDelete(c)}
+                  className="w-7 h-7 grid place-items-center rounded hover:bg-red-50 text-red-500 hover:text-red-700"
+                  title="Smazat"
+                >
+                  🗑
+                </button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
     </section>
   );
 }
@@ -291,6 +299,9 @@ function CategoryEditor({
   const [name, setName] = useState(initial?.data.name ?? "");
   const [icon, setIcon] = useState(initial?.data.icon ?? "category");
   const [color, setColor] = useState<number>(initial?.data.color ?? PRESET_COLORS[0].value);
+  const [primaryType, setPrimaryType] = useState<"EXPENSE" | "INCOME">(
+    initial?.data.type?.toUpperCase() === "INCOME" ? "INCOME" : (type ?? "EXPENSE"),
+  );
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -311,7 +322,7 @@ function CategoryEditor({
       const data: ServerCategory & Record<string, unknown> = {
         profileId: profileSyncId,
         name: name.trim(),
-        type: type.toLowerCase(),
+        type: primaryType.toLowerCase(),
         color,
         icon,
         position: initial?.data.position ?? maxPosition + 1,
@@ -346,11 +357,30 @@ function CategoryEditor({
       >
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-ink-900">
-            {initial ? "Upravit kategorii" : `Nová kategorie (${type === "EXPENSE" ? "výdaj" : "příjem"})`}
+            {initial ? "Upravit kategorii" : "Nová kategorie"}
           </h2>
           <button onClick={onClose} className="text-ink-400 hover:text-ink-600 text-xl leading-none">
             ×
           </button>
+        </div>
+
+        <div className="flex rounded-lg border border-ink-300 overflow-hidden text-sm">
+          {(["EXPENSE", "INCOME"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setPrimaryType(t)}
+              className={`flex-1 py-2 ${
+                primaryType === t
+                  ? t === "EXPENSE"
+                    ? "bg-red-50 text-red-700 font-medium"
+                    : "bg-emerald-50 text-emerald-700 font-medium"
+                  : "text-ink-700 hover:bg-ink-50"
+              }`}
+            >
+              {t === "EXPENSE" ? "Primárně výdaj" : "Primárně příjem"}
+            </button>
+          ))}
         </div>
 
         <div className="flex items-center gap-3">

@@ -19,9 +19,9 @@ export function CategoryPicker({
 }) {
   const filtered = useMemo(() => {
     if (txType === "TRANSFER") return [];
-    return [...allCategories]
-      .filter((c) => c.data.type?.toUpperCase() === txType)
-      .sort((a, b) => a.data.name.localeCompare(b.data.name));
+    // Kategorie se nefiltrují podle typu — stejná kategorie může pokrýt
+    // jak příjem tak výdaj. Primární typ (badge) je pouze label.
+    return [...allCategories].sort((a, b) => a.data.name.localeCompare(b.data.name));
   }, [allCategories, txType]);
 
   return (

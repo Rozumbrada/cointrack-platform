@@ -267,10 +267,7 @@ function ProfileCard({
 
   return (
     <div className="group bg-white rounded-2xl border border-ink-200 hover:border-brand-300 hover:shadow-md transition-all p-5 flex items-start gap-4">
-      <button
-        onClick={onSelect}
-        className="flex items-start gap-3 flex-1 text-left min-w-0"
-      >
+      <div className="flex items-start gap-3 flex-1 min-w-0">
         <div
           className="w-12 h-12 rounded-xl grid place-items-center text-lg font-semibold shrink-0"
           style={{ backgroundColor: bg, color: "#fff" }}
@@ -278,14 +275,17 @@ function ProfileCard({
           {initial}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="font-medium text-ink-900 truncate flex items-center gap-2">
+          <button
+            onClick={onSelect}
+            className="font-medium text-ink-900 truncate flex items-center gap-2 hover:text-brand-600 hover:underline focus:outline-none focus:text-brand-700 text-left"
+          >
             {data.name}
             {isDefault && (
               <span title="Výchozí profil" className="text-amber-500">
                 ★
               </span>
             )}
-          </div>
+          </button>
           <div className="text-[11px] uppercase tracking-wide text-ink-500 mt-0.5">
             {labelType(data.type)}
             {data.defaultCurrency && (
@@ -299,7 +299,7 @@ function ProfileCard({
             </div>
           )}
         </div>
-      </button>
+      </div>
 
       <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <button

@@ -114,8 +114,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // Standardní layout s nav menu vpravo
   return (
     <div className="min-h-screen bg-ink-50 flex flex-row-reverse">
-      {/* Sidebar — vpravo */}
-      <aside className="w-64 bg-white border-l border-ink-200 hidden md:flex flex-col">
+      {/* Sidebar — vpravo, sticky aby zůstal viditelný při scrollu obsahu */}
+      <aside className="w-64 bg-white border-l border-ink-200 hidden md:flex flex-col sticky top-0 h-screen self-start">
         <div className="h-16 flex items-center justify-between px-6 border-b border-ink-200">
           <Link href="/app/dashboard" className="font-semibold text-ink-900 text-lg">
             Cointrack

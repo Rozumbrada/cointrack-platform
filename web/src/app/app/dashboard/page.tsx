@@ -175,76 +175,43 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* KPI tiles */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Tile label="Celkový zůstatek">
-          <div className="space-y-0.5">
-            {Object.entries(totalBalance).length === 0 ? (
-              <div className="text-ink-500 text-sm">—</div>
-            ) : (
-              Object.entries(totalBalance).map(([cur, amount]) => (
-                <div key={cur} className="text-2xl font-semibold text-ink-900">
-                  {fmt(amount, cur)}
-                </div>
-              ))
-            )}
-          </div>
-        </Tile>
-        <Tile label="Příjmy tento měsíc">
-          <div className="text-2xl font-semibold text-emerald-700">
-            +{fmt(monthlyStats.income, "CZK")}
-          </div>
-        </Tile>
-        <Tile label="Výdaje tento měsíc">
-          <div className="text-2xl font-semibold text-red-700">
-            −{fmt(monthlyStats.expense, "CZK")}
-          </div>
-        </Tile>
-      </div>
-
-      {/* Grafy */}
+      {/* KPI + 6-měsíční trend bok po boku */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <section className="bg-white rounded-2xl border border-ink-200 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-ink-900">Top výdaje (tento měsíc)</h2>
-            <Link href="/app/statistics" className="text-sm text-brand-600 hover:text-brand-700">
-              Detail →
-            </Link>
+        <section className="bg-white rounded-2xl border border-ink-200 p-5 space-y-4">
+          <div>
+            <div className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-1">
+              Celkový zůstatek
+            </div>
+            <div className="space-y-0.5">
+              {Object.entries(totalBalance).length === 0 ? (
+                <div className="text-ink-500 text-sm">—</div>
+              ) : (
+                Object.entries(totalBalance).map(([cur, amount]) => (
+                  <div key={cur} className="text-3xl font-semibold text-ink-900 tabular-nums">
+                    {fmt(amount, cur)}
+                  </div>
+                ))
+              )}
+            </div>
           </div>
-          {topExpenseCats.length === 0 ? (
-            <div className="py-6 text-center text-ink-500 text-sm">
-              Žádné výdaje tento měsíc.
+          <div className="grid grid-cols-2 gap-3 pt-3 border-t border-ink-100">
+            <div>
+              <div className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-1">
+                Příjmy ({monthLabel()})
+              </div>
+              <div className="text-xl font-semibold text-emerald-700 tabular-nums">
+                +{fmt(monthlyStats.income, "CZK")}
+              </div>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {topExpenseCats.map((row) => (
-                <div key={String(row.cid)}>
-                  <div className="flex items-center justify-between text-sm mb-1">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div
-                        className="w-6 h-6 rounded-full grid place-items-center shrink-0"
-                        style={{ backgroundColor: colorFromInt(row.category?.color) }}
-                      >
-                        <CategoryIcon name={row.category?.icon} size="sm" />
-                      </div>
-                      <span className="text-ink-900 truncate">
-                        {row.category?.name || "Bez kategorie"}
-                      </span>
-                    </div>
-                    <div className="tabular-nums font-medium text-ink-900">
-                      {fmt(row.amount, "CZK")}
-                    </div>
-                  </div>
-                  <div className="h-2 rounded-full bg-ink-100 overflow-hidden">
-                    <div
-                      className="h-full bg-red-500"
-                      style={{ width: `${(row.amount / maxExpenseCat) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
+            <div>
+              <div className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-1">
+                Výdaje ({monthLabel()})
+              </div>
+              <div className="text-xl font-semibold text-red-700 tabular-nums">
+                −{fmt(monthlyStats.expense, "CZK")}
+              </div>
             </div>
-          )}
+          </div>
         </section>
 
         <section className="bg-white rounded-2xl border border-ink-200 p-5">
@@ -284,6 +251,50 @@ export default function DashboardPage() {
           </div>
         </section>
       </div>
+
+      {/* Top výdaje */}
+      <section className="bg-white rounded-2xl border border-ink-200 p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold text-ink-900">Top výdaje (tento měsíc)</h2>
+          <Link href="/app/statistics" className="text-sm text-brand-600 hover:text-brand-700">
+            Detail →
+          </Link>
+        </div>
+        {topExpenseCats.length === 0 ? (
+          <div className="py-6 text-center text-ink-500 text-sm">
+            Žádné výdaje tento měsíc.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {topExpenseCats.map((row) => (
+              <div key={String(row.cid)}>
+                <div className="flex items-center justify-between text-sm mb-1">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div
+                      className="w-6 h-6 rounded-full grid place-items-center shrink-0"
+                      style={{ backgroundColor: colorFromInt(row.category?.color) }}
+                    >
+                      <CategoryIcon name={row.category?.icon} size="sm" />
+                    </div>
+                    <span className="text-ink-900 truncate">
+                      {row.category?.name || "Bez kategorie"}
+                    </span>
+                  </div>
+                  <div className="tabular-nums font-medium text-ink-900">
+                    {fmt(row.amount, "CZK")}
+                  </div>
+                </div>
+                <div className="h-2 rounded-full bg-ink-100 overflow-hidden">
+                  <div
+                    className="h-full bg-red-500"
+                    style={{ width: `${(row.amount / maxExpenseCat) * 100}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* Recent transactions */}
       <section className="bg-white rounded-2xl border border-ink-200">
@@ -384,15 +395,8 @@ export default function DashboardPage() {
   );
 }
 
-function Tile({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-white rounded-2xl border border-ink-200 p-5">
-      <div className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-1">
-        {label}
-      </div>
-      {children}
-    </div>
-  );
+function monthLabel(): string {
+  return new Intl.DateTimeFormat("cs-CZ", { month: "long" }).format(new Date());
 }
 
 function Loading() {
