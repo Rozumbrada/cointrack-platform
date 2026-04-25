@@ -353,10 +353,12 @@ function labelType(t?: string): string {
   switch (t) {
     case "BUSINESS":
       return "firemní";
+    case "ORGANIZATION":
+      return "organizace";
     case "GROUP":
       return "skupinový";
     case "PERSONAL":
-      return "osobní";
+      return "hlavní";
     default:
       return t ?? "—";
   }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { sync } from "@/lib/api";
+import { api, sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 
 const COLORS = [
@@ -12,10 +12,14 @@ const COLORS = [
 ];
 
 const TYPES = [
-  { value: "PERSONAL", label: "Osobní", desc: "Pro tvé osobní finance" },
-  { value: "BUSINESS", label: "Firemní", desc: "OSVČ / s.r.o. — IČO, DPH" },
-  { value: "GROUP", label: "Skupinový", desc: "Sdílené výdaje mezi členy skupiny" },
+  { value: "PERSONAL", label: "Hlavní", desc: "Tvůj osobní profil — můžeš vyplnit i firemní údaje (IČO/DIČ)" },
+  { value: "BUSINESS", label: "Firemní", desc: "OSVČ / s.r.o. — stejné údaje jako hlavní" },
+  { value: "ORGANIZATION", label: "Organizace", desc: "Sdílený profil pro tým — pozvánky a role členů" },
+  { value: "GROUP", label: "Skupinový", desc: "Sdílené výdaje mezi členy skupiny (dovolená, spolubydlení)" },
 ];
+
+/** Typy, u kterých se zobrazují firemní údaje (IČO, DIČ, název firmy, plátce DPH). */
+const BUSINESS_FIELD_TYPES = new Set(["PERSONAL", "BUSINESS", "ORGANIZATION"]);
 
 interface ProfileFormProps {
   mode: "create" | "edit";
@@ -95,6 +99,35 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
     try {
       const now = new Date().toISOString();
       const targetSyncId = isEdit ? syncId! : crypto.randomUUID();
+
+      // Pokud se zakládá ORGANIZATION, nejprve vytvořit organizaci přes REST,
+      // a teprve pak profil s odkazem na ni přes organizationId.
+      let organizationId = originalData?.organizationId;
+      if (!isEdit && type === "ORGANIZATION") {
+        try {
+          const orgRes = await withAuth((t) =>
+            api<{ id: string }>("/api/v1/org", {
+              method: "POST",
+              token: t,
+              body: {
+                name: name.trim(),
+                type: "B2B",
+                currency: defaultCurrency,
+                inviteEmails: [],
+              },
+            }),
+          );
+          organizationId = orgRes.id;
+        } catch (e) {
+          setError(
+            "Nepodařilo se vytvořit organizaci: " +
+              (e instanceof Error ? e.message : String(e)),
+          );
+          setSaving(false);
+          return;
+        }
+      }
+
       const data: ProfileData = {
         ...(originalData ?? {}),  // zachování dalších polí (např. cointrackUserId)
         name: name.trim(),
@@ -105,6 +138,7 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
         isVatPayer,
         companyName: companyName || undefined,
         defaultCurrency,
+        organizationId,
       };
 
       await withAuth((t) =>
@@ -122,7 +156,12 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
         }),
       );
 
-      router.push("/app/profiles");
+      // Po vytvoření organizace nasměruj na její správu (členové, pozvánky)
+      if (!isEdit && type === "ORGANIZATION") {
+        router.push("/app/organizations");
+      } else {
+        router.push("/app/profiles");
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setSaving(false);
@@ -223,52 +262,74 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
           </select>
         </Field>
 
-        {/* Business pole jen pro BUSINESS typ */}
-        {type === "BUSINESS" && (
-          <>
-            <div className="border-t border-ink-200 pt-5">
-              <h3 className="text-sm font-medium text-ink-900 mb-3">Firemní údaje</h3>
-              <div className="space-y-4">
-                <Field label="Název firmy">
+        {/* Firemní údaje — pro PERSONAL, BUSINESS i ORGANIZATION (vše kromě GROUP) */}
+        {BUSINESS_FIELD_TYPES.has(type) && (
+          <div className="border-t border-ink-200 pt-5">
+            <h3 className="text-sm font-medium text-ink-900 mb-3">
+              {type === "PERSONAL" ? "Volitelné firemní údaje" : "Firemní údaje"}
+            </h3>
+            <div className="space-y-4">
+              <Field label="Název firmy">
+                <input
+                  type="text"
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  placeholder="např. Cointrack s.r.o."
+                  className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900"
+                />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="IČO">
                   <input
                     type="text"
-                    value={companyName}
-                    onChange={(e) => setCompanyName(e.target.value)}
-                    placeholder="např. Cointrack s.r.o."
+                    value={ico}
+                    onChange={(e) => setIco(e.target.value)}
+                    placeholder="12345678"
+                    className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900 tabular-nums"
+                  />
+                </Field>
+                <Field label="DIČ">
+                  <input
+                    type="text"
+                    value={dic}
+                    onChange={(e) => setDic(e.target.value)}
+                    placeholder="CZ12345678"
                     className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900"
                   />
                 </Field>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="IČO">
-                    <input
-                      type="text"
-                      value={ico}
-                      onChange={(e) => setIco(e.target.value)}
-                      placeholder="12345678"
-                      className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900 tabular-nums"
-                    />
-                  </Field>
-                  <Field label="DIČ">
-                    <input
-                      type="text"
-                      value={dic}
-                      onChange={(e) => setDic(e.target.value)}
-                      placeholder="CZ12345678"
-                      className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900"
-                    />
-                  </Field>
-                </div>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isVatPayer}
-                    onChange={(e) => setIsVatPayer(e.target.checked)}
-                  />
-                  <span className="text-sm text-ink-900">Plátce DPH</span>
-                </label>
               </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isVatPayer}
+                  onChange={(e) => setIsVatPayer(e.target.checked)}
+                />
+                <span className="text-sm text-ink-900">Plátce DPH</span>
+              </label>
             </div>
-          </>
+          </div>
+        )}
+
+        {/* Org-only info — pozvánky a role členů se spravují na /app/organizations */}
+        {type === "ORGANIZATION" && (
+          <div className="border-t border-ink-200 pt-5">
+            <div className="bg-brand-50 border border-brand-200 rounded-lg p-3 text-sm text-brand-800 space-y-1">
+              <div className="font-medium">Pozvánky a role členů</div>
+              <p className="text-xs">
+                {isEdit
+                  ? `Členy a pozvánky spravuj na stránce „Organizace a skupiny“.`
+                  : "Po vytvoření organizace tě přesměrujeme do správy, kde můžeš pozvat členy a nastavit role."}
+              </p>
+              {isEdit && (
+                <Link
+                  href="/app/organizations"
+                  className="inline-block mt-1 text-xs underline hover:no-underline"
+                >
+                  Spravovat členy →
+                </Link>
+              )}
+            </div>
+          </div>
         )}
 
         <div className="flex gap-3 pt-2">
