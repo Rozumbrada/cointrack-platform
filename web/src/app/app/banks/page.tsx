@@ -128,11 +128,11 @@ export default function BanksPage() {
       {loading ? (
         <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>
       ) : connections.length === 0 ? (
-        <EmptyBanks />
+        <EmptyBanksV8 />
       ) : (
         <div className="space-y-4">
           {connections.map((c) => (
-            <BankCard
+            <BankCardV8
               key={c.id}
               conn={c}
               profiles={profiles}
@@ -153,7 +153,7 @@ export default function BanksPage() {
   );
 }
 
-function EmptyBanks() {
+function EmptyBanksV8() {
   return (
     <div className="bg-white rounded-2xl border border-ink-200 p-12 text-center">
       <div className="text-4xl mb-3">🏦</div>
@@ -165,7 +165,7 @@ function EmptyBanks() {
   );
 }
 
-function BankCard({
+function BankCardV8({
   conn,
   profiles,
   onReconnect,
@@ -247,7 +247,7 @@ function BankCard({
       {conn.accounts.length > 0 && (
         <div className="border-t border-ink-100 divide-y divide-ink-100">
           {conn.accounts.map((a) => (
-            <AccountRow
+            <AccountRowV8
               key={a.id}
               account={a}
               profiles={profiles}
@@ -261,7 +261,7 @@ function BankCard({
   );
 }
 
-function AccountRow({
+function AccountRowV8({
   account,
   profiles,
   onAssign,
