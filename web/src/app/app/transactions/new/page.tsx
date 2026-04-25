@@ -5,59 +5,51 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
-import { getCurrentProfileId } from "@/lib/profile-store";
 import { useSyncData } from "@/lib/sync-hook";
-
-interface AccountData {
-  id?: number;
-  name: string;
-  currency: string;
-}
-
-interface CategoryData {
-  id?: number;
-  name: string;
-  icon?: string;
-  type: "INCOME" | "EXPENSE";
-}
+import { ServerAccount, ServerCategory, ServerTransaction } from "@/lib/sync-types";
 
 export default function NewTransactionPage() {
   const router = useRouter();
-  const { entitiesByProfile } = useSyncData();
-  const accounts = entitiesByProfile<AccountData>("accounts");
-  const categories = entitiesByProfile<CategoryData>("categories");
+  const { entitiesByProfile, profileSyncId } = useSyncData();
+  const accounts = entitiesByProfile<ServerAccount>("accounts");
+  const categories = entitiesByProfile<ServerCategory>("categories");
 
-  const [type, setType] = useState<"INCOME" | "EXPENSE">("EXPENSE");
+  const [type, setType] = useState<"INCOME" | "EXPENSE" | "TRANSFER">("EXPENSE");
   const [amount, setAmount] = useState("");
   const [accountId, setAccountId] = useState<string>("");
   const [categoryId, setCategoryId] = useState<string>("");
-  const [note, setNote] = useState("");
+  const [description, setDescription] = useState("");
+  const [merchant, setMerchant] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Auto-select první účet / kategorie když se načtou
-  if (!accountId && accounts.length > 0 && accounts[0].data.id != null) {
-    setAccountId(String(accounts[0].data.id));
+  // Auto-select prvního účtu když se načtou
+  if (!accountId && accounts.length > 0) {
+    setAccountId(accounts[0].syncId);
   }
 
   const filteredCategories = useMemo(
-    () => categories.filter((c) => c.data.type === type),
+    () =>
+      type === "TRANSFER"
+        ? []
+        : categories
+            .filter((c) => c.data.type?.toUpperCase() === type)
+            .sort((a, b) => a.data.name.localeCompare(b.data.name)),
     [categories, type],
   );
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const profileSyncId = getCurrentProfileId();   // UUID string
-    const accId = Number.parseInt(accountId, 10);
+
     const amt = Number.parseFloat(amount.replace(",", "."));
 
     if (!profileSyncId) {
       setError("Není vybraný profil.");
       return;
     }
-    if (!accId || Number.isNaN(accId)) {
+    if (!accountId) {
       setError("Vyber účet.");
       return;
     }
@@ -66,39 +58,42 @@ export default function NewTransactionPage() {
       return;
     }
 
-    const account = accounts.find((a) => a.data.id === accId);
+    const account = accounts.find((a) => a.syncId === accountId);
     const currency = account?.data.currency ?? "CZK";
 
     setSaving(true);
     try {
-      const syncId = crypto.randomUUID();
+      const newSyncId = crypto.randomUUID();
       const now = new Date().toISOString();
-      const dateTime = `${date}T${now.slice(11, 19)}`;
+      const signedAmount = type === "EXPENSE" ? -Math.abs(amt) : Math.abs(amt);
+
+      const data: ServerTransaction = {
+        profileId: profileSyncId,
+        accountId,
+        categoryId: type === "TRANSFER" ? undefined : categoryId || undefined,
+        amount: signedAmount.toFixed(2),
+        currency,
+        description: description || undefined,
+        merchant: merchant || undefined,
+        date,
+        isTransfer: type === "TRANSFER",
+      };
 
       await withAuth((t) =>
         sync.push(t, {
           entities: {
             transactions: [
               {
-                syncId,
+                syncId: newSyncId,
                 updatedAt: now,
                 clientVersion: 1,
-                data: {
-                  type,
-                  amount: amt,
-                  currency,
-                  accountId: accId,
-                  categoryId: categoryId ? Number.parseInt(categoryId, 10) : null,
-                  note,
-                  dateTime,
-                  profileId: profileSyncId,  // UUID string, backend dedup expects string
-                },
+                data: data as unknown as Record<string, unknown>,
               },
             ],
           },
         }),
       );
-      router.push("/app/transactions");
+      router.push(`/app/transactions/${newSyncId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setSaving(false);
@@ -124,9 +119,8 @@ export default function NewTransactionPage() {
       )}
 
       <form onSubmit={onSubmit} className="bg-white rounded-2xl border border-ink-200 p-6 space-y-4">
-        {/* Typ */}
         <div className="flex rounded-lg border border-ink-300 overflow-hidden">
-          {(["EXPENSE", "INCOME"] as const).map((t) => (
+          {(["EXPENSE", "INCOME", "TRANSFER"] as const).map((t) => (
             <button
               key={t}
               type="button"
@@ -135,16 +129,17 @@ export default function NewTransactionPage() {
                 type === t
                   ? t === "EXPENSE"
                     ? "bg-red-50 text-red-700"
-                    : "bg-emerald-50 text-emerald-700"
+                    : t === "INCOME"
+                      ? "bg-emerald-50 text-emerald-700"
+                      : "bg-ink-100 text-ink-700"
                   : "text-ink-700 hover:bg-ink-50"
               }`}
             >
-              {t === "EXPENSE" ? "Výdaj" : "Příjem"}
+              {t === "EXPENSE" ? "Výdaj" : t === "INCOME" ? "Příjem" : "Převod"}
             </button>
           ))}
         </div>
 
-        {/* Částka */}
         <Field label="Částka">
           <input
             type="text"
@@ -157,7 +152,6 @@ export default function NewTransactionPage() {
           />
         </Field>
 
-        {/* Účet */}
         <Field label="Účet">
           <select
             value={accountId}
@@ -166,31 +160,30 @@ export default function NewTransactionPage() {
           >
             {accounts.length === 0 && <option value="">Nejsou účty</option>}
             {accounts.map((a) => (
-              <option key={a.syncId} value={String(a.data.id ?? "")}>
+              <option key={a.syncId} value={a.syncId}>
                 {a.data.name} ({a.data.currency})
               </option>
             ))}
           </select>
         </Field>
 
-        {/* Kategorie */}
-        <Field label="Kategorie (volitelné)">
-          <select
-            value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-            className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900"
-          >
-            <option value="">Bez kategorie</option>
-            {filteredCategories.map((c) => (
-              <option key={c.syncId} value={String(c.data.id ?? "")}>
-                {c.data.icon ? `${c.data.icon} ` : ""}
-                {c.data.name}
-              </option>
-            ))}
-          </select>
-        </Field>
+        {type !== "TRANSFER" && (
+          <Field label="Kategorie (volitelné)">
+            <select
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
+              className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900"
+            >
+              <option value="">Bez kategorie</option>
+              {filteredCategories.map((c) => (
+                <option key={c.syncId} value={c.syncId}>
+                  {c.data.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
 
-        {/* Datum */}
         <Field label="Datum">
           <input
             type="date"
@@ -200,12 +193,21 @@ export default function NewTransactionPage() {
           />
         </Field>
 
-        {/* Poznámka */}
+        <Field label="Obchodník (volitelné)">
+          <input
+            type="text"
+            value={merchant}
+            onChange={(e) => setMerchant(e.target.value)}
+            placeholder="Albert, Lidl, …"
+            className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+          />
+        </Field>
+
         <Field label="Poznámka">
           <input
             type="text"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
             placeholder="např. Oběd v Makru"
             className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
           />

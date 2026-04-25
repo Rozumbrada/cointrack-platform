@@ -10,6 +10,7 @@ import {
   ServerTransaction,
   toUiTransaction,
 } from "@/lib/sync-types";
+import { CategoryIcon, colorFromInt } from "@/components/app/CategoryIcon";
 
 export default function TransactionsPage() {
   const { loading, error, entitiesByProfile, diagnose, profileSyncId, reload } = useSyncData();
@@ -222,19 +223,28 @@ export default function TransactionsPage() {
                       className="w-4 h-4 cursor-pointer shrink-0"
                     />
                     <Link
-                      href={`/app/transactions/${tx.syncId}/edit`}
+                      href={`/app/transactions/${tx.syncId}`}
                       className="flex-1 flex items-center gap-3 min-w-0"
                     >
                       <div
-                        className={`w-8 h-8 rounded-full grid place-items-center text-sm shrink-0 ${
-                          tx.type === "INCOME"
-                            ? "bg-emerald-100 text-emerald-700"
-                            : tx.type === "EXPENSE"
-                              ? "bg-red-100 text-red-700"
-                              : "bg-ink-100 text-ink-600"
-                        }`}
+                        className="w-9 h-9 rounded-full grid place-items-center shrink-0"
+                        style={{
+                          backgroundColor: cat
+                            ? colorFromInt(cat.color)
+                            : tx.type === "INCOME"
+                              ? "rgba(16, 185, 129, 0.15)"
+                              : tx.type === "EXPENSE"
+                                ? "rgba(239, 68, 68, 0.15)"
+                                : "rgba(99, 102, 241, 0.15)",
+                        }}
                       >
-                        {tx.type === "INCOME" ? "↓" : tx.type === "EXPENSE" ? "↑" : "⇄"}
+                        {cat ? (
+                          <CategoryIcon name={cat.icon} />
+                        ) : (
+                          <span className="text-sm">
+                            {tx.type === "INCOME" ? "↓" : tx.type === "EXPENSE" ? "↑" : "⇄"}
+                          </span>
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-ink-900 truncate">
@@ -242,11 +252,7 @@ export default function TransactionsPage() {
                         </div>
                         <div className="text-xs text-ink-500 flex items-center gap-2">
                           <span>{formatDate(tx.date)}</span>
-                          {cat && (
-                            <span className="text-ink-400">
-                              · {cat.icon ?? ""} {cat.name}
-                            </span>
-                          )}
+                          {cat && <span className="text-ink-400 truncate">· {cat.name}</span>}
                         </div>
                       </div>
                       <div className={`text-sm font-semibold tabular-nums ${amountColor}`}>

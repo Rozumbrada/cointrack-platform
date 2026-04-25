@@ -6,30 +6,14 @@ import Link from "next/link";
 import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
+import {
+  ServerAccount,
+  ServerCategory,
+  ServerTransaction,
+  computeTxType,
+} from "@/lib/sync-types";
 
-interface AccountData {
-  id?: number;
-  name: string;
-  currency: string;
-}
-
-interface CategoryData {
-  id?: number;
-  name: string;
-  icon?: string;
-  type: "INCOME" | "EXPENSE";
-}
-
-interface TxData {
-  type: "INCOME" | "EXPENSE" | "TRANSFER";
-  amount: number;
-  currency: string;
-  accountId: number;
-  categoryId?: number | null;
-  note: string;
-  dateTime: string;
-  profileId?: string | number;
-}
+type TxType = "INCOME" | "EXPENSE" | "TRANSFER";
 
 export default function EditTransactionPage() {
   const router = useRouter();
@@ -37,17 +21,18 @@ export default function EditTransactionPage() {
   const syncId = params.syncId;
 
   const { loading, entitiesByProfile } = useSyncData();
-  const accounts = entitiesByProfile<AccountData>("accounts");
-  const categories = entitiesByProfile<CategoryData>("categories");
-  const transactions = entitiesByProfile<TxData>("transactions");
+  const accounts = entitiesByProfile<ServerAccount>("accounts");
+  const categories = entitiesByProfile<ServerCategory>("categories");
+  const transactions = entitiesByProfile<ServerTransaction>("transactions");
 
   const tx = transactions.find((t) => t.syncId === syncId);
 
-  const [type, setType] = useState<"INCOME" | "EXPENSE" | "TRANSFER">("EXPENSE");
+  const [type, setType] = useState<TxType>("EXPENSE");
   const [amount, setAmount] = useState("");
   const [accountId, setAccountId] = useState<string>("");
   const [categoryId, setCategoryId] = useState<string>("");
-  const [note, setNote] = useState("");
+  const [description, setDescription] = useState("");
+  const [merchant, setMerchant] = useState("");
   const [date, setDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,18 +40,26 @@ export default function EditTransactionPage() {
 
   useEffect(() => {
     if (tx && !hydrated) {
-      setType(tx.data.type);
-      setAmount(String(tx.data.amount));
-      setAccountId(String(tx.data.accountId));
-      setCategoryId(tx.data.categoryId != null ? String(tx.data.categoryId) : "");
-      setNote(tx.data.note || "");
-      setDate((tx.data.dateTime ?? "").slice(0, 10));
+      const t = computeTxType(tx.data);
+      const signed = parseFloat(tx.data.amount) || 0;
+      setType(t);
+      setAmount(String(Math.abs(signed)));
+      setAccountId(tx.data.accountId ?? "");
+      setCategoryId(tx.data.categoryId ?? "");
+      setDescription(tx.data.description ?? "");
+      setMerchant(tx.data.merchant ?? "");
+      setDate(tx.data.date ?? "");
       setHydrated(true);
     }
   }, [tx, hydrated]);
 
   const filteredCategories = useMemo(
-    () => categories.filter((c) => c.data.type === type),
+    () =>
+      type === "TRANSFER"
+        ? []
+        : categories
+            .filter((c) => c.data.type?.toUpperCase() === type)
+            .sort((a, b) => a.data.name.localeCompare(b.data.name)),
     [categories, type],
   );
 
@@ -74,17 +67,35 @@ export default function EditTransactionPage() {
     e.preventDefault();
     if (!tx) return;
     setError(null);
-    const accId = Number.parseInt(accountId, 10);
+
     const amt = Number.parseFloat(amount.replace(",", "."));
-    if (!accId || !amt || amt <= 0) {
-      setError("Vyplň účet a platnou částku.");
+    if (!accountId) {
+      setError("Vyber účet.");
+      return;
+    }
+    if (!amt || Number.isNaN(amt) || amt <= 0) {
+      setError("Zadej platnou částku.");
+      return;
+    }
+    if (!date) {
+      setError("Zadej datum.");
       return;
     }
 
     setSaving(true);
     try {
       const now = new Date().toISOString();
-      const dateTime = `${date}T${(tx.data.dateTime ?? now).slice(11, 19) || "12:00:00"}`;
+      const signedAmount = type === "EXPENSE" ? -Math.abs(amt) : Math.abs(amt);
+      const merged: ServerTransaction = {
+        ...tx.data,
+        accountId,
+        categoryId: type === "TRANSFER" ? undefined : categoryId || undefined,
+        amount: signedAmount.toFixed(2),
+        description: description || undefined,
+        merchant: merchant || undefined,
+        date,
+        isTransfer: type === "TRANSFER",
+      };
       await withAuth((t) =>
         sync.push(t, {
           entities: {
@@ -93,21 +104,13 @@ export default function EditTransactionPage() {
                 syncId: tx.syncId,
                 updatedAt: now,
                 clientVersion: 1,
-                data: {
-                  ...tx.data,
-                  type,
-                  amount: amt,
-                  accountId: accId,
-                  categoryId: categoryId ? Number.parseInt(categoryId, 10) : null,
-                  note,
-                  dateTime,
-                },
+                data: merged as unknown as Record<string, unknown>,
               },
             ],
           },
         }),
       );
-      router.push("/app/transactions");
+      router.push(`/app/transactions/${tx.syncId}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setSaving(false);
@@ -152,7 +155,7 @@ export default function EditTransactionPage() {
         </Link>
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">
           Transakci <code>{syncId}</code> jsem nenašel. Možná byla smazaná nebo patří do jiného
-          profilu — přepni v levém sidebaru a zkus znovu.
+          profilu — přepni v sidebaru a zkus znovu.
         </div>
       </div>
     );
@@ -161,8 +164,11 @@ export default function EditTransactionPage() {
   return (
     <div className="max-w-xl space-y-6">
       <div>
-        <Link href="/app/transactions" className="text-sm text-brand-600 hover:text-brand-700">
-          ← Zpět na transakce
+        <Link
+          href={`/app/transactions/${tx.syncId}`}
+          className="text-sm text-brand-600 hover:text-brand-700"
+        >
+          ← Zpět na detail
         </Link>
         <h1 className="text-2xl font-semibold text-ink-900 mt-2">Upravit transakci</h1>
       </div>
@@ -211,28 +217,31 @@ export default function EditTransactionPage() {
             onChange={(e) => setAccountId(e.target.value)}
             className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900"
           >
+            <option value="">— vyber účet —</option>
             {accounts.map((a) => (
-              <option key={a.syncId} value={String(a.data.id ?? "")}>
+              <option key={a.syncId} value={a.syncId}>
                 {a.data.name} ({a.data.currency})
               </option>
             ))}
           </select>
         </Field>
 
-        <Field label="Kategorie">
-          <select
-            value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-            className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900"
-          >
-            <option value="">Bez kategorie</option>
-            {filteredCategories.map((c) => (
-              <option key={c.syncId} value={String(c.data.id ?? "")}>
-                {c.data.icon ? `${c.data.icon} ` : ""}{c.data.name}
-              </option>
-            ))}
-          </select>
-        </Field>
+        {type !== "TRANSFER" && (
+          <Field label="Kategorie">
+            <select
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
+              className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900"
+            >
+              <option value="">Bez kategorie</option>
+              {filteredCategories.map((c) => (
+                <option key={c.syncId} value={c.syncId}>
+                  {c.data.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
 
         <Field label="Datum">
           <input
@@ -243,11 +252,21 @@ export default function EditTransactionPage() {
           />
         </Field>
 
+        <Field label="Obchodník">
+          <input
+            type="text"
+            value={merchant}
+            onChange={(e) => setMerchant(e.target.value)}
+            placeholder="Albert, Lidl, …"
+            className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+          />
+        </Field>
+
         <Field label="Poznámka">
           <input
             type="text"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
             className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
           />
         </Field>
@@ -262,7 +281,7 @@ export default function EditTransactionPage() {
             Smazat
           </button>
           <Link
-            href="/app/transactions"
+            href={`/app/transactions/${tx.syncId}`}
             className="flex-1 h-11 rounded-lg border border-ink-300 bg-white hover:bg-ink-50 grid place-items-center text-sm font-medium text-ink-900"
           >
             Zrušit
