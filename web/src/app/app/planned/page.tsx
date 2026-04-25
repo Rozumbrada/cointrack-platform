@@ -7,7 +7,8 @@ interface PlannedData {
   name: string;
   amount: number;
   currency: string;
-  type: "INCOME" | "EXPENSE";
+  /** Server posílá lowercase ("expense"/"income"). Vždy normalizuj přes toUpperCase() při porovnávání. */
+  type: string;
   nextDate: string;
   period: string;
   accountId?: number;
@@ -55,12 +56,12 @@ export default function PlannedPage() {
               <li key={p.syncId} className="px-6 py-4 flex items-center gap-3">
                 <div
                   className={`w-8 h-8 rounded-full grid place-items-center text-sm ${
-                    p.data.type === "INCOME"
+                    p.data.type?.toUpperCase() === "INCOME"
                       ? "bg-emerald-100 text-emerald-700"
                       : "bg-red-100 text-red-700"
                   }`}
                 >
-                  {p.data.type === "INCOME" ? "↓" : "↑"}
+                  {p.data.type?.toUpperCase() === "INCOME" ? "↓" : "↑"}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-ink-900 truncate flex items-center gap-2">
@@ -77,10 +78,10 @@ export default function PlannedPage() {
                 </div>
                 <div
                   className={`text-sm font-semibold tabular-nums ${
-                    p.data.type === "INCOME" ? "text-emerald-700" : "text-ink-900"
+                    p.data.type?.toUpperCase() === "INCOME" ? "text-emerald-700" : "text-ink-900"
                   }`}
                 >
-                  {p.data.type === "INCOME" ? "+" : "−"}
+                  {p.data.type?.toUpperCase() === "INCOME" ? "+" : "−"}
                   {fmt(p.data.amount, p.data.currency)}
                 </div>
               </li>

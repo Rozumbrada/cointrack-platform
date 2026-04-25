@@ -44,7 +44,8 @@ export interface ServerCategory {
   profileId: string;
   name: string;
   nameEn?: string;
-  type: "INCOME" | "EXPENSE";
+  /** Server posílá lowercase ("expense"/"income"). Vždy normalizuj přes toUpperCase() při porovnávání. */
+  type: string;
   color?: number;
   icon?: string;
   position?: number;
