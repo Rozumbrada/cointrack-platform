@@ -42,6 +42,10 @@ publicApiUrl: "$PUBLIC_API_URL:http://localhost:8080"
 banking:
   provider: "$BANKING_PROVIDER:fio_only"
 
+gemini:
+  apiKey: "$GEMINI_API_KEY:"
+  baseUrl: "$GEMINI_BASE_URL:https://generativelanguage.googleapis.com/v1beta"
+
 saltedge:
   appId: "$SALT_EDGE_APP_ID:"
   secret: "$SALT_EDGE_SECRET:"

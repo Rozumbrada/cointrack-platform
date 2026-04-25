@@ -114,6 +114,8 @@ services:
       EMAIL_FROM: ${EMAIL_FROM}
       PUBLIC_WEB_URL: ${PUBLIC_WEB_URL}
       PUBLIC_API_URL: ${PUBLIC_API_URL}
+      # AI (Gemini OCR + categorization, key na serveru)
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       # Banking (Sprint 6)
       BANKING_PROVIDER: ${BANKING_PROVIDER:-fio_only}
       SALT_EDGE_APP_ID: ${SALT_EDGE_APP_ID:-}

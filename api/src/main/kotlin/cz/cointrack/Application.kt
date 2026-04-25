@@ -4,6 +4,9 @@ import cz.cointrack.auth.AuthService
 import cz.cointrack.auth.JwtConfig
 import cz.cointrack.auth.JwtService
 import cz.cointrack.auth.authRoutes
+import cz.cointrack.ai.GeminiConfig
+import cz.cointrack.ai.GeminiProxyService
+import cz.cointrack.ai.geminiRoutes
 import cz.cointrack.bank.BankService
 import cz.cointrack.bank.SaltEdgeConfig
 import cz.cointrack.bank.SaltEdgeProvider
@@ -74,6 +77,9 @@ fun Application.module() {
     // Banking — pro teď jen Salt Edge. Pokud není nakonfigurovaný, bankService je null.
     val bankService: BankService? = loadBankService()
 
+    // Gemini AI proxy (key v env, klienti volají bez vlastního klíče)
+    val geminiService = loadGeminiProxy()
+
     configureSecurity(jwtService, jwtConfig)
 
     val version = "0.1.0"
@@ -101,6 +107,7 @@ fun Application.module() {
             permissionRoutes(permissionService)
             accountantRoutes(accountantService)
             if (bankService != null) bankRoutes(bankService)
+            geminiRoutes(geminiService)
 
             // TODO (Sprint 8): billing endpoints
         }
@@ -154,6 +161,19 @@ private fun Application.loadBankService(): BankService? {
         bankingProvider = SaltEdgeProvider(cfg),
         returnUrl = cfg.returnUrl,
     )
+}
+
+private fun Application.loadGeminiProxy(): GeminiProxyService {
+    val cfg = environment.config.config("gemini")
+    val apiKey = cfg.propertyOrNull("apiKey")?.getString().orEmpty()
+    val baseUrl = cfg.propertyOrNull("baseUrl")?.getString()
+        ?: "https://generativelanguage.googleapis.com/v1beta"
+    if (apiKey.isBlank()) {
+        log.warn("GEMINI_API_KEY není nastavený — AI endpointy vrátí 503.")
+    } else {
+        log.info("Gemini AI proxy aktivován (baseUrl=$baseUrl).")
+    }
+    return GeminiProxyService(GeminiConfig(apiKey = apiKey, baseUrl = baseUrl))
 }
 
 private fun Application.loadStorageConfig(): StorageConfig {
