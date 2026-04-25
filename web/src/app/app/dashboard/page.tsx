@@ -3,104 +3,94 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { useSyncData } from "@/lib/sync-hook";
-
-interface AccountData {
-  name: string;
-  type: string;
-  balance: number;
-  currency: string;
-  includeInTotal: boolean;
-  profileId?: number;
-}
-
-interface TransactionData {
-  type: "INCOME" | "EXPENSE" | "TRANSFER";
-  amount: number;
-  currency: string;
-  accountId: number;
-  categoryId?: number;
-  note: string;
-  dateTime: string;
-  profileId?: number;
-}
-
-interface CategoryData {
-  id?: number;
-  name: string;
-  icon?: string;
-  type: "INCOME" | "EXPENSE";
-}
+import {
+  ServerAccount,
+  ServerCategory,
+  ServerTransaction,
+  computeAccountBalance,
+  toUiTransaction,
+} from "@/lib/sync-types";
 
 export default function DashboardPage() {
   const { loading, error, entitiesByProfile } = useSyncData();
 
-  const accounts = entitiesByProfile<AccountData>("accounts");
-  const transactions = entitiesByProfile<TransactionData>("transactions");
-  const categories = entitiesByProfile<CategoryData>("categories");
+  const accountEntities = entitiesByProfile<ServerAccount>("accounts");
+  const txEntities = entitiesByProfile<ServerTransaction>("transactions");
+  const categoryEntities = entitiesByProfile<ServerCategory>("categories");
 
+  // Map kategorie syncId → kategorie data
   const catMap = useMemo(() => {
-    const m = new Map<number, CategoryData>();
-    categories.forEach((c) => c.data.id && m.set(c.data.id, c.data));
+    const m = new Map<string, ServerCategory>();
+    categoryEntities.forEach((c) => m.set(c.syncId, c.data));
     return m;
-  }, [categories]);
+  }, [categoryEntities]);
 
+  // UI transactions s odvozeným typem
+  const uiTxs = useMemo(
+    () => txEntities.map((e) => toUiTransaction(e.syncId, e.data)),
+    [txEntities],
+  );
+
+  // Celkový zůstatek per měna — počítáno z initialBalance + sum(transakcí na účtu)
   const totalBalance = useMemo(() => {
     const totals: Record<string, number> = {};
-    for (const a of accounts) {
-      if (!a.data.includeInTotal) continue;
-      totals[a.data.currency] = (totals[a.data.currency] ?? 0) + a.data.balance;
+    for (const acc of accountEntities) {
+      if (acc.data.excludedFromTotal) continue;
+      const live = computeAccountBalance(acc.data, txEntities, acc.syncId);
+      totals[acc.data.currency] = (totals[acc.data.currency] ?? 0) + live;
     }
     return totals;
-  }, [accounts]);
+  }, [accountEntities, txEntities]);
 
+  // Měsíční příjmy/výdaje
   const monthlyStats = useMemo(() => {
-    const now = new Date();
-    const monthKey = now.toISOString().slice(0, 7);
+    const monthKey = new Date().toISOString().slice(0, 7);
     let income = 0;
     let expense = 0;
-    for (const t of transactions) {
-      if (!t.data.dateTime?.startsWith(monthKey)) continue;
-      if (t.data.type === "INCOME") income += t.data.amount;
-      else if (t.data.type === "EXPENSE") expense += t.data.amount;
+    for (const tx of uiTxs) {
+      if (!tx.date?.startsWith(monthKey)) continue;
+      if (tx.type === "INCOME") income += tx.amount;
+      else if (tx.type === "EXPENSE") expense += tx.amount;
     }
     return { income, expense };
-  }, [transactions]);
+  }, [uiTxs]);
 
+  // Posledních 10 transakcí
   const recent = useMemo(() => {
-    return [...transactions]
-      .sort((a, b) => (b.data.dateTime ?? "").localeCompare(a.data.dateTime ?? ""))
+    return [...uiTxs]
+      .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
       .slice(0, 10);
-  }, [transactions]);
+  }, [uiTxs]);
 
-  // Top kategorie výdajů tento měsíc
+  // Top 5 kategorií výdajů tento měsíc
   const topExpenseCats = useMemo(() => {
     const monthKey = new Date().toISOString().slice(0, 7);
-    const sums = new Map<number | null, number>();
-    for (const t of transactions) {
-      if (t.data.type !== "EXPENSE") continue;
-      if (!t.data.dateTime?.startsWith(monthKey)) continue;
-      const cid = t.data.categoryId ?? null;
-      sums.set(cid, (sums.get(cid) ?? 0) + t.data.amount);
+    const sums = new Map<string | null, number>();
+    for (const tx of uiTxs) {
+      if (tx.type !== "EXPENSE") continue;
+      if (!tx.date?.startsWith(monthKey)) continue;
+      const cid = tx.categorySyncId ?? null;
+      sums.set(cid, (sums.get(cid) ?? 0) + tx.amount);
     }
     return Array.from(sums.entries())
       .map(([cid, amount]) => ({
         cid,
         amount,
-        category: cid != null ? catMap.get(cid) : undefined,
+        category: cid ? catMap.get(cid) : undefined,
       }))
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 5);
-  }, [transactions, catMap]);
+  }, [uiTxs, catMap]);
 
-  // 6-měsíční trend (income/expense)
+  // 6-měsíční trend
   const trend = useMemo(() => {
     const byMonth = new Map<string, { income: number; expense: number }>();
-    for (const t of transactions) {
-      if (!t.data.dateTime) continue;
-      const ym = t.data.dateTime.slice(0, 7);
+    for (const tx of uiTxs) {
+      if (!tx.date) continue;
+      const ym = tx.date.slice(0, 7);
       const b = byMonth.get(ym) ?? { income: 0, expense: 0 };
-      if (t.data.type === "INCOME") b.income += t.data.amount;
-      else if (t.data.type === "EXPENSE") b.expense += t.data.amount;
+      if (tx.type === "INCOME") b.income += tx.amount;
+      else if (tx.type === "EXPENSE") b.expense += tx.amount;
       byMonth.set(ym, b);
     }
     const result: Array<{ month: string; income: number; expense: number }> = [];
@@ -112,7 +102,7 @@ export default function DashboardPage() {
       result.push({ month: ym, ...b });
     }
     return result;
-  }, [transactions]);
+  }, [uiTxs]);
 
   const maxExpenseCat = topExpenseCats[0]?.amount ?? 1;
   const maxTrend = Math.max(...trend.flatMap((m) => [m.income, m.expense]), 1);
@@ -121,7 +111,7 @@ export default function DashboardPage() {
   if (error) return <ErrorState message={error} />;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-ink-900">Přehled</h1>
         <p className="text-sm text-ink-600 mt-1">
@@ -156,9 +146,8 @@ export default function DashboardPage() {
         </Tile>
       </div>
 
-      {/* Top kategorie výdajů + 6-měsíční trend (vedle sebe na desktopu) */}
+      {/* Grafy */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Top kategorie výdajů */}
         <section className="bg-white rounded-2xl border border-ink-200 p-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-ink-900">Top výdaje (tento měsíc)</h2>
@@ -197,7 +186,6 @@ export default function DashboardPage() {
           )}
         </section>
 
-        {/* Trend graf */}
         <section className="bg-white rounded-2xl border border-ink-200 p-5">
           <h2 className="font-semibold text-ink-900 mb-4">6-měsíční trend</h2>
           <div className="flex gap-2 items-end h-40">
@@ -250,35 +238,46 @@ export default function DashboardPage() {
           </div>
         ) : (
           <ul className="divide-y divide-ink-100">
-            {recent.map((r) => (
-              <li key={r.syncId} className="px-6 py-3 flex items-center gap-3">
-                <div
-                  className={`w-8 h-8 rounded-full grid place-items-center text-sm ${
-                    r.data.type === "INCOME"
-                      ? "bg-emerald-100 text-emerald-700"
-                      : "bg-red-100 text-red-700"
-                  }`}
-                >
-                  {r.data.type === "INCOME" ? "↓" : "↑"}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm text-ink-900 truncate">
-                    {r.data.note || "(bez popisu)"}
+            {recent.map((tx) => {
+              const cat = tx.categorySyncId ? catMap.get(tx.categorySyncId) : undefined;
+              const sign = tx.type === "INCOME" ? "+" : tx.type === "EXPENSE" ? "−" : "";
+              return (
+                <li key={tx.syncId} className="px-6 py-3 flex items-center gap-3">
+                  <div
+                    className={`w-8 h-8 rounded-full grid place-items-center text-sm ${
+                      tx.type === "INCOME"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : tx.type === "EXPENSE"
+                          ? "bg-red-100 text-red-700"
+                          : "bg-ink-100 text-ink-600"
+                    }`}
+                  >
+                    {tx.type === "INCOME" ? "↓" : tx.type === "EXPENSE" ? "↑" : "⇄"}
                   </div>
-                  <div className="text-xs text-ink-500">
-                    {formatDate(r.data.dateTime)}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-ink-900 truncate">
+                      {tx.description || tx.merchant || "(bez popisu)"}
+                    </div>
+                    <div className="text-xs text-ink-500 flex items-center gap-2">
+                      <span>{formatDate(tx.date)}</span>
+                      {cat && (
+                        <span className="text-ink-400">
+                          · {cat.icon ?? ""} {cat.name}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <div
-                  className={`text-sm font-semibold tabular-nums ${
-                    r.data.type === "INCOME" ? "text-emerald-700" : "text-ink-900"
-                  }`}
-                >
-                  {r.data.type === "INCOME" ? "+" : "−"}
-                  {fmt(r.data.amount, r.data.currency)}
-                </div>
-              </li>
-            ))}
+                  <div
+                    className={`text-sm font-semibold tabular-nums ${
+                      tx.type === "INCOME" ? "text-emerald-700" : "text-ink-900"
+                    }`}
+                  >
+                    {sign}
+                    {fmt(tx.amount, tx.currency)}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

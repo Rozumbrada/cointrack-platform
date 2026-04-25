@@ -5,24 +5,11 @@ import { useMemo, useState } from "react";
 import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
-
-interface TxData {
-  type: "INCOME" | "EXPENSE" | "TRANSFER";
-  amount: number;
-  currency: string;
-  accountId: number;
-  categoryId?: number;
-  note: string;
-  dateTime: string;
-  externalProvider?: string;
-  profileId?: number | string;
-}
-
-interface CategoryData {
-  id?: number;
-  name: string;
-  icon?: string;
-}
+import {
+  ServerCategory,
+  ServerTransaction,
+  toUiTransaction,
+} from "@/lib/sync-types";
 
 export default function TransactionsPage() {
   const { loading, error, entitiesByProfile, diagnose, profileSyncId, reload } = useSyncData();
@@ -32,24 +19,35 @@ export default function TransactionsPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
 
-  const txs = entitiesByProfile<TxData>("transactions");
-  const cats = entitiesByProfile<CategoryData>("categories");
+  const txEntities = entitiesByProfile<ServerTransaction>("transactions");
+  const cats = entitiesByProfile<ServerCategory>("categories");
+
+  // Map: kategorie syncId → kategorie data
   const catMap = useMemo(() => {
-    const m = new Map<number, CategoryData>();
-    cats.forEach((c) => c.data.id && m.set(c.data.id, c.data));
+    const m = new Map<string, ServerCategory>();
+    cats.forEach((c) => m.set(c.syncId, c.data));
     return m;
   }, [cats]);
 
   const diag = diagnose("transactions");
 
+  // Map server data → UI shape
+  const uiTxs = useMemo(
+    () => txEntities.map((e) => toUiTransaction(e.syncId, e.data)),
+    [txEntities],
+  );
+
   const filtered = useMemo(() => {
-    return [...txs]
-      .filter((r) => (filter === "ALL" ? true : r.data.type === filter))
+    return [...uiTxs]
+      .filter((r) => (filter === "ALL" ? true : r.type === filter))
       .filter((r) =>
-        query ? r.data.note?.toLowerCase().includes(query.toLowerCase()) : true,
+        query
+          ? (r.description?.toLowerCase().includes(query.toLowerCase()) ||
+             r.merchant?.toLowerCase().includes(query.toLowerCase()))
+          : true,
       )
-      .sort((a, b) => (b.data.dateTime ?? "").localeCompare(a.data.dateTime ?? ""));
-  }, [txs, filter, query]);
+      .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
+  }, [uiTxs, filter, query]);
 
   const allSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.syncId));
 
@@ -78,7 +76,7 @@ export default function TransactionsPage() {
     setBulkError(null);
     try {
       const now = new Date().toISOString();
-      const entities = filtered
+      const entities = txEntities
         .filter((r) => selected.has(r.syncId))
         .map((r) => ({
           syncId: r.syncId,
@@ -88,13 +86,10 @@ export default function TransactionsPage() {
           data: r.data as unknown as Record<string, unknown>,
         }));
 
-      // Push v dávkách max 100 (kdyby user vybral 1000)
       const CHUNK = 100;
       for (let i = 0; i < entities.length; i += CHUNK) {
         const chunk = entities.slice(i, i + CHUNK);
-        await withAuth((t) =>
-          sync.push(t, { entities: { transactions: chunk } }),
-        );
+        await withAuth((t) => sync.push(t, { entities: { transactions: chunk } }));
       }
 
       setSelected(new Set());
@@ -136,13 +131,7 @@ export default function TransactionsPage() {
           <div className="font-medium mb-1">Žádné transakce pro aktivní profil</div>
           <p className="text-amber-700">
             Máš {diag.total} transakcí celkem, ale žádná z nich nepatří do právě vybraného profilu.
-            Zkontroluj přepínač profilu v sidebaru.
           </p>
-          {profileSyncId && (
-            <p className="text-[10px] text-amber-600 mt-2 font-mono break-all">
-              aktivní profil: {profileSyncId}
-            </p>
-          )}
         </div>
       )}
 
@@ -155,7 +144,7 @@ export default function TransactionsPage() {
       <div className="flex flex-col sm:flex-row gap-3">
         <input
           type="text"
-          placeholder="Hledat v poznámkách…"
+          placeholder="Hledat v popisu nebo obchodníkovi…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="flex-1 h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
@@ -175,15 +164,11 @@ export default function TransactionsPage() {
         </div>
       </div>
 
-      {/* Bulk action bar */}
       {inSelectionMode && (
         <div className="sticky top-2 z-10 bg-brand-600 text-white rounded-xl p-3 flex items-center justify-between shadow-lg">
           <div className="flex items-center gap-3">
             <span className="font-medium">Vybráno: {selected.size}</span>
-            <button
-              onClick={clearSelection}
-              className="text-sm text-white/80 hover:text-white"
-            >
+            <button onClick={clearSelection} className="text-sm text-white/80 hover:text-white">
               Zrušit výběr
             </button>
           </div>
@@ -202,7 +187,6 @@ export default function TransactionsPage() {
           <div className="p-8 text-center text-ink-500 text-sm">Žádné výsledky.</div>
         ) : (
           <>
-            {/* Select-all header */}
             <div className="px-6 py-2 border-b border-ink-100 flex items-center gap-3 text-xs text-ink-600">
               <input
                 type="checkbox"
@@ -215,12 +199,17 @@ export default function TransactionsPage() {
               </span>
             </div>
             <ul className="divide-y divide-ink-100">
-              {filtered.map((r) => {
-                const cat = r.data.categoryId ? catMap.get(r.data.categoryId) : undefined;
-                const isSelected = selected.has(r.syncId);
+              {filtered.map((tx) => {
+                const cat = tx.categorySyncId ? catMap.get(tx.categorySyncId) : undefined;
+                const isSelected = selected.has(tx.syncId);
+                const sign = tx.type === "INCOME" ? "+" : tx.type === "EXPENSE" ? "−" : "";
+                const amountColor =
+                  tx.type === "INCOME" ? "text-emerald-700" :
+                  tx.type === "EXPENSE" ? "text-ink-900" :
+                  "text-ink-600";
                 return (
                   <li
-                    key={r.syncId}
+                    key={tx.syncId}
                     className={`px-6 py-3 flex items-center gap-3 transition-colors ${
                       isSelected ? "bg-brand-50" : "hover:bg-ink-50/50"
                     }`}
@@ -228,50 +217,41 @@ export default function TransactionsPage() {
                     <input
                       type="checkbox"
                       checked={isSelected}
-                      onChange={() => toggleOne(r.syncId)}
+                      onChange={() => toggleOne(tx.syncId)}
                       onClick={(e) => e.stopPropagation()}
                       className="w-4 h-4 cursor-pointer shrink-0"
                     />
                     <Link
-                      href={`/app/transactions/${r.syncId}/edit`}
+                      href={`/app/transactions/${tx.syncId}/edit`}
                       className="flex-1 flex items-center gap-3 min-w-0"
                     >
                       <div
                         className={`w-8 h-8 rounded-full grid place-items-center text-sm shrink-0 ${
-                          r.data.type === "INCOME"
+                          tx.type === "INCOME"
                             ? "bg-emerald-100 text-emerald-700"
-                            : r.data.type === "EXPENSE"
+                            : tx.type === "EXPENSE"
                               ? "bg-red-100 text-red-700"
                               : "bg-ink-100 text-ink-600"
                         }`}
                       >
-                        {r.data.type === "INCOME" ? "↓" : r.data.type === "EXPENSE" ? "↑" : "⇄"}
+                        {tx.type === "INCOME" ? "↓" : tx.type === "EXPENSE" ? "↑" : "⇄"}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm text-ink-900 truncate flex items-center gap-2">
-                          {r.data.note || "(bez popisu)"}
-                          {r.data.externalProvider === "saltedge" && (
-                            <span className="inline-block text-[10px] uppercase tracking-wide bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded">
-                              banka
-                            </span>
-                          )}
+                        <div className="text-sm text-ink-900 truncate">
+                          {tx.description || tx.merchant || "(bez popisu)"}
                         </div>
                         <div className="text-xs text-ink-500 flex items-center gap-2">
-                          <span>{formatDate(r.data.dateTime)}</span>
+                          <span>{formatDate(tx.date)}</span>
                           {cat && (
                             <span className="text-ink-400">
-                              · {cat.icon} {cat.name}
+                              · {cat.icon ?? ""} {cat.name}
                             </span>
                           )}
                         </div>
                       </div>
-                      <div
-                        className={`text-sm font-semibold tabular-nums ${
-                          r.data.type === "INCOME" ? "text-emerald-700" : "text-ink-900"
-                        }`}
-                      >
-                        {r.data.type === "INCOME" ? "+" : r.data.type === "EXPENSE" ? "−" : ""}
-                        {fmt(r.data.amount, r.data.currency)}
+                      <div className={`text-sm font-semibold tabular-nums ${amountColor}`}>
+                        {sign}
+                        {fmt(tx.amount, tx.currency)}
                       </div>
                     </Link>
                   </li>
