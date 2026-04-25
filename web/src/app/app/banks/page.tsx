@@ -1,5 +1,6 @@
 "use client";
 
+// Sprint 8 v2 — bank ↔ profile assignment UI (force rebuild marker)
 import { useEffect, useState } from "react";
 import { bank, BankConnectionDto, BankAccountExtDto, ApiError, sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
