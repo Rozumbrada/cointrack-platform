@@ -218,12 +218,12 @@ function ReceiptPhotos({ keys }: { keys: string[] }) {
       for (const k of keys) {
         try {
           const res = await withAuth((t) =>
-            api<{ url: string }>(
+            api<{ downloadUrl: string; expiresIn: number }>(
               `/api/v1/files/download-url?key=${encodeURIComponent(k)}`,
               { token: t },
             ),
           );
-          map[k] = res.url;
+          map[k] = res.downloadUrl;
         } catch {
           // ignore single failure
         }

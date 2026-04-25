@@ -5,9 +5,10 @@ import { useSyncData } from "@/lib/sync-hook";
 import { ServerCategory, ServerTransaction, toUiTransaction } from "@/lib/sync-types";
 
 export default function CategoriesPage() {
-  const { loading, error, entitiesByProfile } = useSyncData();
+  const { loading, error, entitiesByProfile, diagnose, profileSyncId } = useSyncData();
   const categoryEntities = entitiesByProfile<ServerCategory>("categories");
   const txEntities = entitiesByProfile<ServerTransaction>("transactions");
+  const catDiag = diagnose("categories");
 
   // Map UI tx s typem
   const uiTxs = useMemo(
@@ -63,12 +64,41 @@ export default function CategoriesPage() {
       {loading ? (
         <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>
       ) : categoryEntities.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-ink-200 p-12 text-center">
-          <div className="text-4xl mb-3">📂</div>
-          <div className="font-medium text-ink-900">Žádné kategorie</div>
-          <p className="text-sm text-ink-600 mt-2">
-            Vytvoř první kategorii v mobilní aplikaci.
-          </p>
+        <div className="space-y-3">
+          <div className="bg-white rounded-2xl border border-ink-200 p-12 text-center">
+            <div className="text-4xl mb-3">📂</div>
+            <div className="font-medium text-ink-900">
+              {catDiag.total === 0
+                ? "Žádné kategorie v cloudu"
+                : "Žádné kategorie pro aktivní profil"}
+            </div>
+            <p className="text-sm text-ink-600 mt-2">
+              {catDiag.total === 0
+                ? "Vytvoř první kategorii v mobilní aplikaci a sesynchronizuj cloud."
+                : `Máš ${catDiag.total} kategorií celkem, ale žádná není přiřazená k aktuálnímu profilu.`}
+            </p>
+          </div>
+          {catDiag.total > 0 && catDiag.matched === 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 space-y-1">
+              <div className="font-medium">Diagnostika:</div>
+              {profileSyncId && (
+                <div className="font-mono break-all">aktivní profil: {profileSyncId}</div>
+              )}
+              {catDiag.otherProfiles.size > 0 && (
+                <div className="font-mono break-all">
+                  profily kategorií: {Array.from(catDiag.otherProfiles).slice(0, 5).join(", ")}
+                </div>
+              )}
+              <div className="text-amber-700 pt-1">
+                Možná řešení:
+                <ul className="list-disc list-inside mt-1">
+                  <li>Přepni profil v sidebaru</li>
+                  <li>V mobilu vytvoř kategorii v aktuálním profilu</li>
+                  <li>Pokud kategorie patří ke smazanému profilu, byl bug — uděláme bulk re-link později</li>
+                </ul>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
