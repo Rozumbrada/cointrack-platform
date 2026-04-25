@@ -72,6 +72,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/app/receipts", label: "Účtenky", section: "Doklady" },
     { href: "/app/invoices", label: "Faktury" },
     { href: "/app/warranties", label: "Záruky" },
+    { href: "/app/loyalty-cards", label: "Věrnostní karty" },
     { href: "/app/budgets", label: "Rozpočty", section: "Plánování" },
     { href: "/app/planned", label: "Plánované platby" },
     { href: "/app/debts", label: "Dluhy" },

@@ -12,11 +12,21 @@ import {
 } from "@/lib/sync-types";
 import { CategoryIcon, colorFromInt } from "@/components/app/CategoryIcon";
 import { CategoryPicker } from "@/components/app/CategoryPicker";
+import {
+  Period,
+  PeriodSelector,
+  periodRange,
+} from "@/components/app/PeriodSelector";
 
 export default function TransactionsPage() {
   const { loading, error, entitiesByProfile, diagnose, profileSyncId, reload } = useSyncData();
   const [filter, setFilter] = useState<"ALL" | "INCOME" | "EXPENSE">("ALL");
   const [query, setQuery] = useState("");
+  const [period, setPeriod] = useState<Period>("30d");
+  const [customRange, setCustomRange] = useState<{ from: string; to: string }>({
+    from: "",
+    to: "",
+  });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
@@ -45,9 +55,16 @@ export default function TransactionsPage() {
     [txEntities],
   );
 
+  const range = useMemo(() => periodRange(period, customRange), [period, customRange]);
+
   const filtered = useMemo(() => {
     return [...uiTxs]
       .filter((r) => (filter === "ALL" ? true : r.type === filter))
+      .filter((r) => {
+        if (range.from && r.date < range.from) return false;
+        if (range.to && r.date > range.to) return false;
+        return true;
+      })
       .filter((r) =>
         query
           ? (r.description?.toLowerCase().includes(query.toLowerCase()) ||
@@ -55,7 +72,7 @@ export default function TransactionsPage() {
           : true,
       )
       .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
-  }, [uiTxs, filter, query]);
+  }, [uiTxs, filter, query, range]);
 
   const allSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.syncId));
 
@@ -151,17 +168,25 @@ export default function TransactionsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold text-ink-900">Transakce</h1>
           <p className="text-sm text-ink-600 mt-1">Všechny transakce pro aktivní profil.</p>
         </div>
-        <Link
-          href="/app/transactions/new"
-          className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium grid place-items-center"
-        >
-          + Nová
-        </Link>
+        <div className="flex items-center gap-3">
+          <PeriodSelector
+            period={period}
+            onChange={setPeriod}
+            custom={customRange}
+            onCustomChange={setCustomRange}
+          />
+          <Link
+            href="/app/transactions/new"
+            className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium grid place-items-center"
+          >
+            + Nová
+          </Link>
+        </div>
       </div>
 
       {!loading && diag.total > 0 && diag.matched === 0 && (

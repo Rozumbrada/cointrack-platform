@@ -8,12 +8,19 @@ import {
   toUiTransaction,
   UiTransaction,
 } from "@/lib/sync-types";
-
-type Period = "7d" | "30d" | "3m" | "6m" | "1y" | "all";
+import {
+  Period,
+  PeriodSelector,
+  periodRange,
+} from "@/components/app/PeriodSelector";
 
 export default function StatisticsPage() {
   const { loading, error, entitiesByProfile } = useSyncData();
   const [period, setPeriod] = useState<Period>("30d");
+  const [customRange, setCustomRange] = useState<{ from: string; to: string }>({
+    from: "",
+    to: "",
+  });
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set());
 
   const txEntities = entitiesByProfile<ServerTransaction>("transactions");
@@ -30,22 +37,15 @@ export default function StatisticsPage() {
     [txEntities],
   );
 
-  const dateFrom = useMemo(() => {
-    if (period === "all") return null;
-    const d = new Date();
-    switch (period) {
-      case "7d": d.setDate(d.getDate() - 7); break;
-      case "30d": d.setDate(d.getDate() - 30); break;
-      case "3m": d.setMonth(d.getMonth() - 3); break;
-      case "6m": d.setMonth(d.getMonth() - 6); break;
-      case "1y": d.setFullYear(d.getFullYear() - 1); break;
-    }
-    return d.toISOString().slice(0, 10);
-  }, [period]);
+  const range = useMemo(() => periodRange(period, customRange), [period, customRange]);
 
   const inPeriod = useMemo(() => {
-    return uiTxs.filter((tx) => !dateFrom || tx.date >= dateFrom);
-  }, [uiTxs, dateFrom]);
+    return uiTxs.filter((tx) => {
+      if (range.from && tx.date < range.from) return false;
+      if (range.to && tx.date > range.to) return false;
+      return true;
+    });
+  }, [uiTxs, range]);
 
   const totals = useMemo(() => {
     let income = 0;
@@ -106,7 +106,12 @@ export default function StatisticsPage() {
             Přehled výdajů podle kategorií + trend v čase.
           </p>
         </div>
-        <PeriodSelector period={period} onChange={setPeriod} />
+        <PeriodSelector
+          period={period}
+          onChange={setPeriod}
+          custom={customRange}
+          onCustomChange={setCustomRange}
+        />
       </div>
 
       {/* KPI tiles */}
@@ -227,40 +232,6 @@ export default function StatisticsPage() {
 }
 
 // ─── Sub components ───────────────────────────────────────────────────
-
-function PeriodSelector({
-  period,
-  onChange,
-}: {
-  period: Period;
-  onChange: (p: Period) => void;
-}) {
-  const options: Array<{ value: Period; label: string }> = [
-    { value: "7d", label: "7 dní" },
-    { value: "30d", label: "30 dní" },
-    { value: "3m", label: "3 měs." },
-    { value: "6m", label: "6 měs." },
-    { value: "1y", label: "1 rok" },
-    { value: "all", label: "Vše" },
-  ];
-  return (
-    <div className="flex rounded-lg border border-ink-300 bg-white overflow-hidden text-xs self-start">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          onClick={() => onChange(o.value)}
-          className={`px-3 py-2 ${
-            period === o.value
-              ? "bg-brand-50 text-brand-700"
-              : "text-ink-700 hover:bg-ink-50"
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function Tile({
   label,
