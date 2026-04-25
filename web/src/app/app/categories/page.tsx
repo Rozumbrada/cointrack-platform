@@ -55,6 +55,19 @@ export default function CategoriesPage() {
         </p>
       </div>
 
+      <div className="bg-ink-50 border border-ink-200 rounded-xl p-3 text-xs font-mono text-ink-700 space-y-1">
+        <div>build: v8-debug · loading={String(loading)} · error={error ?? "null"}</div>
+        <div>profileSyncId: {profileSyncId ?? "(žádný)"}</div>
+        <div>
+          categories: total={catDiag.total} · matched={catDiag.matched} · rendered={categoryEntities.length}
+        </div>
+        {catDiag.otherProfiles.size > 0 && (
+          <div className="break-all">
+            jiné profily v kategoriích: {Array.from(catDiag.otherProfiles).join(", ")}
+          </div>
+        )}
+      </div>
+
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">
           {error}
