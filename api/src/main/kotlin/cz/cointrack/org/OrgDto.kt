@@ -104,3 +104,6 @@ data class AcceptInviteResponse(
 
 @Serializable
 data class MessageResponse(val message: String)
+
+@Serializable
+data class RenameOrganizationRequest(val name: String)

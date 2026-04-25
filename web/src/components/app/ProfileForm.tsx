@@ -14,7 +14,7 @@ const COLORS = [
 const TYPES = [
   { value: "PERSONAL", label: "Osobní", desc: "Pro tvé osobní finance" },
   { value: "BUSINESS", label: "Firemní", desc: "OSVČ / s.r.o. — IČO, DPH" },
-  { value: "GROUP", label: "Skupinový", desc: "Sdílené výdaje (Settle Up styl)" },
+  { value: "GROUP", label: "Skupinový", desc: "Sdílené výdaje mezi členy skupiny" },
 ];
 
 interface ProfileFormProps {

@@ -4,6 +4,7 @@ import cz.cointrack.auth.TokenGenerator
 import cz.cointrack.db.OrganizationInvites
 import cz.cointrack.db.OrganizationMembers
 import cz.cointrack.db.Organizations
+import cz.cointrack.db.Profiles
 import cz.cointrack.db.Users
 import cz.cointrack.db.db
 import cz.cointrack.email.EmailService
@@ -13,6 +14,8 @@ import io.ktor.http.HttpStatusCode
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.dao.id.EntityID
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insertAndGetId
 import org.jetbrains.exposed.sql.lowerCase
@@ -100,6 +103,58 @@ class OrgService(
             }
 
         return createdOrg
+    }
+
+    /** Přejmenovat organizaci. Jen owner může. */
+    suspend fun renameOrganization(orgId: UUID, callerUserId: UUID, newName: String) {
+        val name = newName.trim()
+        if (name.isBlank() || name.length > 256) {
+            throw ApiException(HttpStatusCode.BadRequest, "invalid_name", "Neplatný název.")
+        }
+        db {
+            val org = Organizations.selectAll().where { Organizations.id eq orgId }.singleOrNull()
+                ?: throw ApiException(HttpStatusCode.NotFound, "org_not_found", "Organizace neexistuje.")
+            if (org[Organizations.ownerUserId].value != callerUserId) {
+                throw ApiException(HttpStatusCode.Forbidden, "not_owner", "Pouze vlastník může přejmenovat.")
+            }
+            Organizations.update({ Organizations.id eq orgId }) {
+                it[Organizations.name] = name
+                it[Organizations.updatedAt] = Instant.now()
+            }
+        }
+    }
+
+    /**
+     * Smazat organizaci (soft-delete). Jen owner může.
+     * Profily v organizaci NEZMIZÍ — zůstanou členům, jen ztratí org binding.
+     */
+    suspend fun deleteOrganization(orgId: UUID, callerUserId: UUID) {
+        db {
+            val org = Organizations.selectAll().where { Organizations.id eq orgId }.singleOrNull()
+                ?: throw ApiException(HttpStatusCode.NotFound, "org_not_found", "Organizace neexistuje.")
+            if (org[Organizations.ownerUserId].value != callerUserId) {
+                throw ApiException(HttpStatusCode.Forbidden, "not_owner", "Pouze vlastník může smazat organizaci.")
+            }
+            val now = Instant.now()
+            Organizations.update({ Organizations.id eq orgId }) {
+                it[Organizations.deletedAt] = now
+                it[Organizations.updatedAt] = now
+            }
+            // Odpojit profily od orgu (zůstanou jako osobní profily členů)
+            Profiles.update({ Profiles.organizationId eq orgId }) {
+                it[Profiles.organizationId] = null
+                it[Profiles.updatedAt] = now
+            }
+            // Smazat členství (orgu už nikdo není členem — je smazaná)
+            OrganizationMembers.deleteWhere {
+                OrganizationMembers.organizationId.eq(EntityID(orgId, Organizations))
+            }
+            // Odvolat všechny pending invites
+            OrganizationInvites.update({ OrganizationInvites.organizationId eq orgId }) {
+                it[OrganizationInvites.acceptedAt] = null
+                it[OrganizationInvites.revokedAt] = now
+            }
+        }
     }
 
     /** Seznam všech orgů, v kterých je user členem. */

@@ -55,6 +55,23 @@ fun Route.orgRoutes(orgService: OrgService) {
 
             route("/{orgId}") {
 
+                // Přejmenovat organizaci
+                patch {
+                    val orgId = call.orgIdParam()
+                    val callerId = call.userId()
+                    val req = call.receive<RenameOrganizationRequest>()
+                    orgService.renameOrganization(orgId, callerId, req.name)
+                    call.respond(MessageResponse("organization_renamed"))
+                }
+
+                // Smazat organizaci (jen owner)
+                delete {
+                    val orgId = call.orgIdParam()
+                    val callerId = call.userId()
+                    orgService.deleteOrganization(orgId, callerId)
+                    call.respond(MessageResponse("organization_deleted"))
+                }
+
                 get("/members") {
                     val orgId = call.orgIdParam()
                     val userId = call.userId()

@@ -18,25 +18,63 @@ interface OrganizationListResponse {
   organizations: OrganizationDto[];
 }
 
+interface MessageResponse { message: string }
+
 export default function OrganizationsPage() {
   const [orgs, setOrgs] = useState<OrganizationDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await withAuth((t) =>
-          api<OrganizationListResponse>("/api/v1/org", { token: t }),
-        );
-        setOrgs(res.organizations);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  async function load() {
+    try {
+      const res = await withAuth((t) =>
+        api<OrganizationListResponse>("/api/v1/org", { token: t }),
+      );
+      setOrgs(res.organizations);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function rename(orgId: string, currentName: string) {
+    const newName = prompt("Nový název:", currentName);
+    if (!newName || newName.trim() === "" || newName === currentName) return;
+    try {
+      await withAuth((t) =>
+        api<MessageResponse>(`/api/v1/org/${orgId}`, {
+          method: "PATCH",
+          body: { name: newName.trim() },
+          token: t,
+        }),
+      );
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function deleteOrg(orgId: string, name: string) {
+    const ok = confirm(
+      `Opravdu smazat organizaci "${name}"?\n\n` +
+      `• Profily v ní zůstanou (převedou se na osobní vlastníků).\n` +
+      `• Všechna pozvánky budou odvolány.\n` +
+      `• Členové ztratí přístup ke sdíleným datům.\n\n` +
+      `Akce je nevratná.`,
+    );
+    if (!ok) return;
+    try {
+      await withAuth((t) =>
+        api<MessageResponse>(`/api/v1/org/${orgId}`, { method: "DELETE", token: t }),
+      );
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   const b2b = orgs.filter((o) => o.type === "B2B");
   const groups = orgs.filter((o) => o.type === "GROUP");
@@ -68,8 +106,8 @@ export default function OrganizationsPage() {
         </div>
       ) : (
         <>
-          <OrgSection title="Firmy (B2B)" icon="🏢" orgs={b2b} />
-          <OrgSection title="Skupiny" icon="👥" orgs={groups} />
+          <OrgSection title="Firmy (B2B)" icon="🏢" orgs={b2b} onRename={rename} onDelete={deleteOrg} />
+          <OrgSection title="Skupiny" icon="👥" orgs={groups} onRename={rename} onDelete={deleteOrg} />
         </>
       )}
     </div>
@@ -80,10 +118,14 @@ function OrgSection({
   title,
   icon,
   orgs,
+  onRename,
+  onDelete,
 }: {
   title: string;
   icon: string;
   orgs: OrganizationDto[];
+  onRename: (orgId: string, name: string) => void;
+  onDelete: (orgId: string, name: string) => void;
 }) {
   if (orgs.length === 0) return null;
   return (
@@ -92,28 +134,51 @@ function OrgSection({
         <h2 className="font-semibold text-ink-900">{title}</h2>
       </div>
       <ul className="divide-y divide-ink-100">
-        {orgs.map((o) => (
-          <li key={o.id} className="px-6 py-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-ink-100 grid place-items-center text-xl">
-              {icon}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-ink-900 truncate">
-                {o.name}
+        {orgs.map((o) => {
+          const isOwner = o.myRole === "owner";
+          return (
+            <li key={o.id} className="px-6 py-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-ink-100 grid place-items-center text-xl">
+                {icon}
               </div>
-              <div className="text-xs text-ink-500 flex items-center gap-2">
-                <span>{o.memberCount} členů</span>
-                <span>·</span>
-                <span>{o.currency}</span>
-                <span>·</span>
-                <span className="text-[10px] uppercase tracking-wide bg-ink-100 text-ink-700 px-1.5 py-0.5 rounded">
-                  {labelRole(o.myRole)}
-                </span>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-ink-900 truncate">
+                  {o.name}
+                </div>
+                <div className="text-xs text-ink-500 flex items-center gap-2">
+                  <span>{o.memberCount} členů</span>
+                  <span>·</span>
+                  <span>{o.currency}</span>
+                  <span>·</span>
+                  <span className="text-[10px] uppercase tracking-wide bg-ink-100 text-ink-700 px-1.5 py-0.5 rounded">
+                    {labelRole(o.myRole)}
+                  </span>
+                </div>
               </div>
-            </div>
-            <div className="text-[10px] uppercase text-ink-500">{o.planTier}</div>
-          </li>
-        ))}
+              <div className="flex items-center gap-1">
+                {isOwner && (
+                  <>
+                    <button
+                      onClick={() => onRename(o.id, o.name)}
+                      className="w-8 h-8 grid place-items-center rounded-lg hover:bg-ink-100 text-ink-600"
+                      title="Přejmenovat"
+                    >
+                      ✎
+                    </button>
+                    <button
+                      onClick={() => onDelete(o.id, o.name)}
+                      className="w-8 h-8 grid place-items-center rounded-lg hover:bg-red-50 text-red-500"
+                      title="Smazat organizaci"
+                    >
+                      🗑
+                    </button>
+                  </>
+                )}
+                <span className="text-[10px] uppercase text-ink-500 ml-2">{o.planTier}</span>
+              </div>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

@@ -31,21 +31,28 @@ export default function DashboardPage() {
     [txEntities],
   );
 
-  // Celkový zůstatek per měna — počítáno z initialBalance + sum(transakcí na účtu).
-  // Ignoruj měny s nulovým součtem (vyhne se zmatení v UI když máš dávno smazané účty
-  // různých měn, ale aktuální stav je 0).
+  // Celkový zůstatek per měna.
+  //
+  // Pravidla:
+  //  • účet musí mít includeInTotal/!excludedFromTotal
+  //  • Salt Edge účty bez profile assignmentu jsou ignorovány (auto-importované
+  //    do dávno smazaných profilů zůstaly v cloudu jako "zombie")
+  //  • Nulový součet měny se neukazuje (zbavuje UI artefaktů smazaných účtů)
   const totalBalance = useMemo(() => {
     const totals: Record<string, number> = {};
-    const hasAny: Record<string, boolean> = {};
     for (const acc of accountEntities) {
-      if (acc.data.excludedFromTotal) continue;
+      const d = acc.data as unknown as Record<string, unknown>;
+      if (d.excludedFromTotal === true) continue;
+      // Salt Edge účet bez assignmentu = zombie data, ignoruj
+      if (d.bankProvider === "saltedge" || d.externalProvider === "saltedge") {
+        const assigned = d.assignedProfileIds as string[] | undefined;
+        if (!assigned || assigned.length === 0) continue;
+      }
       const live = computeAccountBalance(acc.data, txEntities, acc.syncId);
       totals[acc.data.currency] = (totals[acc.data.currency] ?? 0) + live;
-      hasAny[acc.data.currency] = true;
     }
-    // Skryj měny, kde součet je 0 a neexistuje žádný účet (artefakt smazaných dat)
     return Object.fromEntries(
-      Object.entries(totals).filter(([cur, amount]) => hasAny[cur] && Math.abs(amount) > 0.005),
+      Object.entries(totals).filter(([, amount]) => Math.abs(amount) > 0.005),
     );
   }, [accountEntities, txEntities]);
 

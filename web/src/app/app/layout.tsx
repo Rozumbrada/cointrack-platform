@@ -79,8 +79,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/app/shopping", label: "Nákupní seznamy" },
     { href: "/app/investments", label: "Investice", section: "Majetek" },
     { href: "/app/banks", label: "Banky" },
-    { href: "/app/groups", label: "Skupina (Settle Up)", section: "Sociální" },
-    { href: "/app/organizations", label: "Organizace" },
+    { href: "/app/organizations", label: "Organizace a skupiny", section: "Sociální" },
     { href: "/app/settings", label: "Nastavení" },
   ];
 

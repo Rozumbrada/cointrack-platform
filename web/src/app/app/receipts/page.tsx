@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { sync, SyncEntity } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
@@ -93,7 +94,11 @@ export default function ReceiptsPage() {
             </thead>
             <tbody className="divide-y divide-ink-100">
               {filtered.map((r) => (
-                <tr key={r.syncId} className="hover:bg-ink-50/50">
+                <tr
+                  key={r.syncId}
+                  className="hover:bg-ink-50/50 cursor-pointer"
+                  onClick={() => { window.location.href = `/app/receipts/${r.syncId}`; }}
+                >
                   <td className="px-6 py-3 font-medium text-ink-900">
                     {r.data.merchantName || "(bez názvu)"}
                   </td>

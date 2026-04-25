@@ -119,7 +119,11 @@ export default function InvoicesPage() {
             </thead>
             <tbody className="divide-y divide-ink-100">
               {filtered.map((r) => (
-                <tr key={r.syncId} className="hover:bg-ink-50/50">
+                <tr
+                  key={r.syncId}
+                  className="hover:bg-ink-50/50 cursor-pointer"
+                  onClick={() => { window.location.href = `/app/invoices/${r.syncId}`; }}
+                >
                   <td className="px-6 py-3 font-medium text-ink-900 tabular-nums">
                     {r.data.invoiceNumber || "—"}
                   </td>
