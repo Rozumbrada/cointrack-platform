@@ -54,52 +54,52 @@ export function fileToBase64(file: File): Promise<string> {
   });
 }
 
-const RECEIPT_PROMPT = `Jsi expert na extrakci dat z českých účtenek a paragonů.
+const DOCUMENT_PROMPT = `Jsi expert na extrakci dat z českých daňových dokladů.
 
-Z přiloženého obrázku extrahuj data a vrať POUZE validní JSON bez dalšího textu nebo markdownu.
+Z přiloženého obrázku/PDF rozpoznej typ dokumentu (účtenka vs. faktura) a extrahuj data.
 
-Formát:
+Typy:
+- "receipt" = pokladní účtenka / paragon (typicky termální papír, hotovost/karta, kup v obchodě, krátký seznam položek, často bez čísla nebo s pořadovým číslem účtenky/EET)
+- "invoice" = faktura (dodavatel a odběratel, číslo faktury, IČO/DIČ, splatnost, často variabilní symbol, bankovní účet)
+
+Vrať POUZE validní JSON bez markdownu nebo dalšího textu:
 {
+  "docType": "receipt" | "invoice",
   "merchantName": string|null,
   "date": "YYYY-MM-DD"|null,
   "time": "HH:MM"|null,
   "totalWithVat": number|null,
   "totalWithoutVat": number|null,
   "currency": "CZK"|"EUR"|"USD",
-  "paymentMethod": "CASH"|"CARD"|"UNKNOWN",
-  "items": [
-    { "name": string, "quantity": number, "totalPrice": number, "vatRate": number }
-  ]
-}
+  "paymentMethod": "CASH"|"CARD"|"BANK_TRANSFER"|"OTHER"|"UNKNOWN",
 
-Pravidla: částky jako desetinná čísla (125.90), null pro chybějící hodnoty, pokud položky nejsou rozlišitelné, vrať jednu položku "Nákup".`;
-
-const INVOICE_PROMPT = `Jsi expert na extrakci dat z českých faktur.
-
-Z přiložené faktury (obrázek nebo PDF) extrahuj data a vrať POUZE validní JSON bez dalšího textu.
-
-Formát:
-{
+  // Pouze pokud docType=="invoice":
   "invoiceNumber": string|null,
   "issueDate": "YYYY-MM-DD"|null,
   "dueDate": "YYYY-MM-DD"|null,
-  "totalWithVat": number|null,
-  "totalWithoutVat": number|null,
-  "currency": "CZK"|"EUR"|"USD",
   "supplierName": string|null,
   "supplierIco": string|null,
   "supplierDic": string|null,
   "customerName": string|null,
   "variableSymbol": string|null,
   "bankAccount": string|null,
-  "paymentMethod": "BANK_TRANSFER"|"CASH"|"CARD"|"OTHER",
   "isExpense": boolean,
+
   "items": [
-    { "name": string, "quantity": number, "totalPriceWithVat": number, "vatRate": number }
+    {
+      "name": string,
+      "quantity": number,
+      "totalPrice": number,    // cena s DPH
+      "vatRate": number        // 0|10|12|21
+    }
   ]
 }
 
-Pravidla: isExpense=true pokud jsme příjemci (customer), false pokud my jsme dodavatel. null pro chybějící hodnoty. Datumy YYYY-MM-DD.`;
+Pravidla:
+- Částky jako desetinná čísla (125.90), null pro chybějící hodnoty.
+- isExpense=true pokud jsme odběratel (customer), false pokud jsme dodavatel.
+- Pokud položky nejsou rozlišitelné, vrať jednu položku "Nákup".
+- Účtenka má docType="receipt" a date+time; faktura má docType="invoice" a issueDate+dueDate.`;
 
 interface GeminiPart {
   text?: string;
@@ -112,21 +112,49 @@ interface GeminiResponse {
   candidates?: GeminiCandidate[];
 }
 
-/** Pošle obrázek/PDF do Gemini a vrátí parsovaný JSON. */
-export async function extractDocument<T>(
+export interface ParsedDocument {
+  docType: "receipt" | "invoice";
+  merchantName?: string | null;
+  date?: string | null;
+  time?: string | null;
+  totalWithVat?: number | null;
+  totalWithoutVat?: number | null;
+  currency?: string;
+  paymentMethod?: string;
+  invoiceNumber?: string | null;
+  issueDate?: string | null;
+  dueDate?: string | null;
+  supplierName?: string | null;
+  supplierIco?: string | null;
+  supplierDic?: string | null;
+  customerName?: string | null;
+  variableSymbol?: string | null;
+  bankAccount?: string | null;
+  isExpense?: boolean;
+  items?: Array<{
+    name: string;
+    quantity?: number;
+    totalPrice?: number;
+    vatRate?: number;
+  }>;
+}
+
+/**
+ * Pošle obrázek/PDF do Gemini, AI sama rozpozná, jestli je to účtenka nebo
+ * faktura, a vrátí strukturovaná data s polem `docType`.
+ */
+export async function extractDocument(
   token: string,
   file: File,
-  type: "receipt" | "invoice",
-): Promise<T> {
+): Promise<ParsedDocument> {
   const base64 = await fileToBase64(file);
-  const prompt = type === "receipt" ? RECEIPT_PROMPT : INVOICE_PROMPT;
 
   const requestBody = {
     contents: [
       {
         parts: [
           { inlineData: { mimeType: file.type, data: base64 } },
-          { text: prompt },
+          { text: DOCUMENT_PROMPT },
         ],
       },
     ],
@@ -147,14 +175,13 @@ export async function extractDocument<T>(
     throw new Error("Gemini nevrátilo žádná data.");
   }
 
-  // Někdy Gemini obalí JSON do ```json ... ```
   const cleaned = text
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/```\s*$/, "")
     .trim();
 
   try {
-    return JSON.parse(cleaned) as T;
+    return JSON.parse(cleaned) as ParsedDocument;
   } catch {
     throw new Error(`Nepodařilo se parsovat odpověď AI: ${cleaned.slice(0, 200)}`);
   }

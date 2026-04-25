@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ScanReceiptDialog } from "./ScanReceiptDialog";
-import { ScanInvoiceDialog } from "./ScanInvoiceDialog";
+import { DocumentDialog } from "./DocumentDialog";
 
 /**
  * Plovoucí + tlačítko vpravo dole, klik rozbalí 3 akce
@@ -12,10 +11,9 @@ import { ScanInvoiceDialog } from "./ScanInvoiceDialog";
 export function QuickActionFab() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [scanReceipt, setScanReceipt] = useState(false);
-  const [scanInvoice, setScanInvoice] = useState(false);
+  const [docMode, setDocMode] = useState<"scan" | "upload" | null>(null);
 
-  // Zavřít speed-dial při Esc nebo navigaci
+  // Zavřít speed-dial při Esc
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -31,20 +29,20 @@ export function QuickActionFab() {
         {open && (
           <>
             <FabAction
-              label="Naskenovat účtenku"
+              label="Skenovat doklad"
               icon="📷"
               onClick={() => {
                 setOpen(false);
-                setScanReceipt(true);
+                setDocMode("scan");
               }}
               color="bg-emerald-600 hover:bg-emerald-700"
             />
             <FabAction
-              label="Nahrát fakturu"
+              label="Nahrát doklad"
               icon="📄"
               onClick={() => {
                 setOpen(false);
-                setScanInvoice(true);
+                setDocMode("upload");
               }}
               color="bg-amber-600 hover:bg-amber-700"
             />
@@ -71,7 +69,6 @@ export function QuickActionFab() {
         </button>
       </div>
 
-      {/* Backdrop pro zavření při kliku mimo */}
       {open && (
         <div
           className="fixed inset-0 z-30 bg-black/10"
@@ -79,8 +76,9 @@ export function QuickActionFab() {
         />
       )}
 
-      {scanReceipt && <ScanReceiptDialog onClose={() => setScanReceipt(false)} />}
-      {scanInvoice && <ScanInvoiceDialog onClose={() => setScanInvoice(false)} />}
+      {docMode && (
+        <DocumentDialog mode={docMode} onClose={() => setDocMode(null)} />
+      )}
     </>
   );
 }
