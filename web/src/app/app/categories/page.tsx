@@ -56,15 +56,24 @@ export default function CategoriesPage() {
       </div>
 
       <div className="bg-ink-50 border border-ink-200 rounded-xl p-3 text-xs font-mono text-ink-700 space-y-1">
-        <div>build: v8-debug · loading={String(loading)} · error={error ?? "null"}</div>
+        <div>build: v9-debug · loading={String(loading)} · error={error ?? "null"}</div>
         <div>profileSyncId: {profileSyncId ?? "(žádný)"}</div>
         <div>
           categories: total={catDiag.total} · matched={catDiag.matched} · rendered={categoryEntities.length}
         </div>
-        {catDiag.otherProfiles.size > 0 && (
-          <div className="break-all">
-            jiné profily v kategoriích: {Array.from(catDiag.otherProfiles).join(", ")}
-          </div>
+        <div>
+          types found: {JSON.stringify(
+            Array.from(new Set(categoryEntities.map((c) => c.data.type ?? "(null)"))),
+          )}
+        </div>
+        <div>expense.length={expense.length} · income.length={income.length}</div>
+        {categoryEntities[0] && (
+          <details>
+            <summary className="cursor-pointer">first category raw data</summary>
+            <pre className="text-[10px] mt-1 break-all whitespace-pre-wrap">
+              {JSON.stringify(categoryEntities[0].data, null, 2)}
+            </pre>
+          </details>
         )}
       </div>
 
