@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { sync, SyncEntity } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
+import { getCurrentProfileSyncId } from "@/lib/profile-store";
 import {
   Period,
   PeriodSelector,
   periodRange,
 } from "@/components/app/PeriodSelector";
+import { InvoiceEditor } from "@/components/app/InvoiceEditor";
 
 interface InvoiceData {
   invoiceNumber?: string;
@@ -36,18 +38,22 @@ export default function InvoicesPage() {
     from: "",
     to: "",
   });
+  const [creating, setCreating] = useState(false);
+  const profileSyncId = getCurrentProfileSyncId();
+
+  async function load() {
+    try {
+      const res = await withAuth((t) => sync.pull(t));
+      setInvoices(res.entities["invoices"] ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await withAuth((t) => sync.pull(t));
-        setInvoices(res.entities["invoices"] ?? []);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        setLoading(false);
-      }
-    })();
+    load();
   }, []);
 
   const range = useMemo(() => periodRange(period, customRange), [period, customRange]);
@@ -92,12 +98,20 @@ export default function InvoicesPage() {
           <h1 className="text-2xl font-semibold text-ink-900">Faktury</h1>
           <p className="text-sm text-ink-600 mt-1">Přijaté a vystavené faktury.</p>
         </div>
-        <PeriodSelector
-          period={period}
-          onChange={setPeriod}
-          custom={customRange}
-          onCustomChange={setCustomRange}
-        />
+        <div className="flex items-center gap-3">
+          <PeriodSelector
+            period={period}
+            onChange={setPeriod}
+            custom={customRange}
+            onCustomChange={setCustomRange}
+          />
+          <button
+            onClick={() => setCreating(true)}
+            className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
+          >
+            + Nová faktura
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
@@ -207,6 +221,21 @@ export default function InvoicesPage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {creating && (
+        <InvoiceEditor
+          initial={null}
+          initialItems={[]}
+          rawItemEntities={[]}
+          profileSyncId={profileSyncId}
+          onClose={() => setCreating(false)}
+          onSaved={async (syncId) => {
+            setCreating(false);
+            await load();
+            window.location.href = `/app/invoices/${syncId}`;
+          }}
+        />
       )}
     </div>
   );

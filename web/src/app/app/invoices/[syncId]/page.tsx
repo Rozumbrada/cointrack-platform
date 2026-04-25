@@ -6,6 +6,11 @@ import { useParams, useRouter } from "next/navigation";
 import { sync, api } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
+import {
+  InvoiceEditor,
+  InvoiceData as InvoiceEditorData,
+  InvoiceItemData as InvoiceEditorItemData,
+} from "@/components/app/InvoiceEditor";
 
 interface InvoiceData {
   invoiceNumber?: string;
@@ -42,10 +47,11 @@ interface InvoiceItemData {
 export default function InvoiceDetailPage() {
   const router = useRouter();
   const params = useParams<{ syncId: string }>();
-  const { loading, error, entitiesByProfile, rawEntities } = useSyncData();
+  const { loading, error, entitiesByProfile, rawEntities, profileSyncId, reload } = useSyncData();
 
   const all = entitiesByProfile<InvoiceData>("invoices");
   const allItems = rawEntities("invoice_items");
+  const [editing, setEditing] = useState(false);
 
   const invoice = useMemo(
     () => all.find((r) => r.syncId === params.syncId),
@@ -122,9 +128,17 @@ export default function InvoiceDetailPage() {
         <Link href="/app/invoices" className="text-sm text-brand-600 hover:text-brand-700">
           ← Zpět na faktury
         </Link>
-        <button onClick={onDelete} className="text-sm text-red-600 hover:text-red-700">
-          🗑 Smazat
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setEditing(true)}
+            className="text-sm text-brand-600 hover:text-brand-700"
+          >
+            ✏️ Upravit
+          </button>
+          <button onClick={onDelete} className="text-sm text-red-600 hover:text-red-700">
+            🗑 Smazat
+          </button>
+        </div>
       </div>
 
       <header className="bg-white rounded-2xl border border-ink-200 p-6">
@@ -226,6 +240,50 @@ export default function InvoiceDetailPage() {
           <h2 className="font-semibold text-ink-900 mb-2">Poznámka</h2>
           <p className="text-sm text-ink-700 whitespace-pre-wrap">{r.note}</p>
         </section>
+      )}
+
+      {editing && invoice && (
+        <InvoiceEditor
+          initial={{
+            syncId: invoice.syncId,
+            data: {
+              ...invoice.data,
+              totalWithVat: String(invoice.data.totalWithVat),
+              totalWithoutVat:
+                invoice.data.totalWithoutVat != null
+                  ? String(invoice.data.totalWithoutVat)
+                  : undefined,
+              currency: invoice.data.currency || "CZK",
+              paid: !!invoice.data.paid,
+              fileKeys: Array.isArray(invoice.data.fileKeys)
+                ? invoice.data.fileKeys
+                : [],
+              profileId: invoice.data.profileId ?? "",
+            } as InvoiceEditorData,
+          }}
+          initialItems={items.map((it) => ({
+            syncId: it.syncId,
+            data: {
+              invoiceId: it.data.invoiceId,
+              name: it.data.name,
+              quantity: String(it.data.quantity ?? "1"),
+              unitPriceWithVat:
+                it.data.unitPriceWithVat != null
+                  ? String(it.data.unitPriceWithVat)
+                  : undefined,
+              totalPriceWithVat: String(it.data.totalPriceWithVat ?? "0"),
+              vatRate: it.data.vatRate != null ? String(it.data.vatRate) : undefined,
+              position: it.data.position ?? 0,
+            } as InvoiceEditorItemData,
+          }))}
+          rawItemEntities={allItems}
+          profileSyncId={profileSyncId}
+          onClose={() => setEditing(false)}
+          onSaved={async () => {
+            setEditing(false);
+            await reload();
+          }}
+        />
       )}
     </div>
   );
