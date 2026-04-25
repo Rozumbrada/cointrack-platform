@@ -1,44 +1,41 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { sync } from "@/lib/api";
+import { sync, api } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
 
 interface ReceiptData {
-  merchantName: string;
-  merchantIco?: string;
-  merchantDic?: string;
-  merchantStreet?: string;
-  merchantCity?: string;
-  merchantZip?: string;
+  profileId?: string;
+  categoryId?: string;
+  transactionId?: string;
+  merchantName?: string;
   date: string;
   time?: string;
-  totalWithVat: number;
-  totalWithoutVat?: number;
+  totalWithVat: string | number;
+  totalWithoutVat?: string | number;
+  currency?: string;
   paymentMethod?: string;
-  notes?: string;
-  fileUris?: string;
-  linkedTransactionId?: number;
-  profileId?: string;
+  note?: string;
+  photoKeys?: string[];
 }
 
 interface ReceiptItemData {
-  receiptId: number;
+  receiptId: string;
   name: string;
-  quantity?: number;
-  unit?: string;
-  unitPriceWithoutVat?: number;
-  vatRate?: number;
-  totalPriceWithVat: number;
+  quantity?: string | number;
+  unitPrice?: string | number;
+  totalPrice: string | number;
+  vatRate?: string | number;
+  position?: number;
 }
 
 export default function ReceiptDetailPage() {
   const router = useRouter();
   const params = useParams<{ syncId: string }>();
-  const { loading, error, entitiesByProfile, rawEntities, reload } = useSyncData();
+  const { loading, error, entitiesByProfile, rawEntities } = useSyncData();
 
   const allReceipts = entitiesByProfile<ReceiptData>("receipts");
   const allItems = rawEntities("receipt_items");
@@ -48,18 +45,16 @@ export default function ReceiptDetailPage() {
     [allReceipts, params.syncId],
   );
 
-  // Items patří k receipt přes receiptId (Long), ale my máme syncId. Backend by měl
-  // expose receiptSyncId, jinak musíme mapovat přes lokální Long ID. Pro web — server
-  // posílá receiptId jako UUID, takže můžeme matchovat na syncId.
   const items = useMemo(() => {
     if (!receipt) return [];
     return allItems
       .filter((e) => {
         const d = e.data as Record<string, unknown>;
-        return d.receiptId === params.syncId;
+        return d.receiptId === receipt.syncId;
       })
-      .map((e) => ({ syncId: e.syncId, data: e.data as unknown as ReceiptItemData }));
-  }, [allItems, receipt, params.syncId]);
+      .map((e) => ({ syncId: e.syncId, data: e.data as unknown as ReceiptItemData }))
+      .sort((a, b) => (a.data.position ?? 0) - (b.data.position ?? 0));
+  }, [allItems, receipt]);
 
   async function onDelete() {
     if (!receipt) return;
@@ -102,14 +97,15 @@ export default function ReceiptDetailPage() {
           ← Zpět
         </Link>
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-          Účtenku <code>{params.syncId}</code> jsem nenašel — možná byla smazaná, nebo
-          patří do jiného profilu.
+          Účtenku <code>{params.syncId}</code> jsem nenašel.
         </div>
       </div>
     );
   }
 
   const r = receipt.data;
+  const currency = r.currency ?? "CZK";
+  const photoKeys = Array.isArray(r.photoKeys) ? r.photoKeys : [];
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -117,10 +113,7 @@ export default function ReceiptDetailPage() {
         <Link href="/app/receipts" className="text-sm text-brand-600 hover:text-brand-700">
           ← Zpět na účtenky
         </Link>
-        <button
-          onClick={onDelete}
-          className="text-sm text-red-600 hover:text-red-700"
-        >
+        <button onClick={onDelete} className="text-sm text-red-600 hover:text-red-700">
           🗑 Smazat
         </button>
       </div>
@@ -135,31 +128,35 @@ export default function ReceiptDetailPage() {
               {r.date}
               {r.time && <span> · {r.time}</span>}
             </p>
+            {r.transactionId && (
+              <p className="text-xs text-emerald-700 mt-1">
+                ✓ Spárováno s bankovní transakcí
+              </p>
+            )}
           </div>
           <div className="text-right">
-            <div className="text-xs text-ink-500 uppercase tracking-wide">
-              Celkem
-            </div>
+            <div className="text-xs text-ink-500 uppercase tracking-wide">Celkem</div>
             <div className="text-2xl font-semibold text-ink-900 tabular-nums">
-              {fmt(r.totalWithVat, "CZK")}
+              {fmtAmt(r.totalWithVat, currency)}
             </div>
+            {r.totalWithoutVat && (
+              <div className="text-xs text-ink-500 mt-1">
+                bez DPH: {fmtAmt(r.totalWithoutVat, currency)}
+              </div>
+            )}
           </div>
         </div>
 
-        {(r.merchantIco || r.merchantDic || r.merchantStreet) && (
-          <div className="mt-4 pt-4 border-t border-ink-100 grid grid-cols-2 gap-2 text-sm">
-            {r.merchantIco && <Field label="IČO" value={r.merchantIco} />}
-            {r.merchantDic && <Field label="DIČ" value={r.merchantDic} />}
-            {r.merchantStreet && (
-              <Field
-                label="Adresa"
-                value={[r.merchantStreet, r.merchantCity, r.merchantZip].filter(Boolean).join(", ")}
-              />
-            )}
-            {r.paymentMethod && <Field label="Platba" value={labelPayment(r.paymentMethod)} />}
+        {r.paymentMethod && (
+          <div className="mt-4 pt-4 border-t border-ink-100">
+            <Field label="Platba" value={labelPayment(r.paymentMethod)} />
           </div>
         )}
       </header>
+
+      {photoKeys.length > 0 && (
+        <ReceiptPhotos keys={photoKeys} />
+      )}
 
       {items.length > 0 && (
         <section className="bg-white rounded-2xl border border-ink-200 overflow-hidden">
@@ -181,19 +178,16 @@ export default function ReceiptDetailPage() {
                 <tr key={i.syncId}>
                   <td className="px-6 py-3 text-ink-900">{i.data.name}</td>
                   <td className="px-6 py-3 text-ink-600 text-right tabular-nums">
-                    {i.data.quantity ?? 1}
-                    {i.data.unit ? ` ${i.data.unit}` : ""}
+                    {fmtNum(i.data.quantity)}
                   </td>
                   <td className="px-6 py-3 text-ink-600 text-right tabular-nums">
-                    {i.data.unitPriceWithoutVat != null
-                      ? fmt(i.data.unitPriceWithoutVat, "CZK")
-                      : "—"}
+                    {i.data.unitPrice != null ? fmtAmt(i.data.unitPrice, currency) : "—"}
                   </td>
                   <td className="px-6 py-3 text-ink-600 text-right tabular-nums">
-                    {i.data.vatRate != null ? `${i.data.vatRate} %` : "—"}
+                    {i.data.vatRate != null ? `${fmtNum(i.data.vatRate)} %` : "—"}
                   </td>
                   <td className="px-6 py-3 text-ink-900 font-medium text-right tabular-nums">
-                    {fmt(i.data.totalPriceWithVat, "CZK")}
+                    {fmtAmt(i.data.totalPrice, currency)}
                   </td>
                 </tr>
               ))}
@@ -202,19 +196,66 @@ export default function ReceiptDetailPage() {
         </section>
       )}
 
-      {r.notes && (
+      {r.note && (
         <section className="bg-white rounded-2xl border border-ink-200 p-6">
           <h2 className="font-semibold text-ink-900 mb-2">Poznámka</h2>
-          <p className="text-sm text-ink-700 whitespace-pre-wrap">{r.notes}</p>
+          <p className="text-sm text-ink-700 whitespace-pre-wrap">{r.note}</p>
         </section>
       )}
-
-      {r.linkedTransactionId && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-sm text-emerald-800">
-          ✓ Účtenka je spárovaná s bankovní transakcí.
-        </div>
-      )}
     </div>
+  );
+}
+
+// ─── File preview přes presigned URL ──────────────────────────────────
+
+function ReceiptPhotos({ keys }: { keys: string[] }) {
+  const [urls, setUrls] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const map: Record<string, string> = {};
+      for (const k of keys) {
+        try {
+          const res = await withAuth((t) =>
+            api<{ url: string }>(
+              `/api/v1/files/download-url?key=${encodeURIComponent(k)}`,
+              { token: t },
+            ),
+          );
+          map[k] = res.url;
+        } catch {
+          // ignore single failure
+        }
+      }
+      if (!cancelled) setUrls(map);
+    })();
+    return () => { cancelled = true; };
+  }, [keys]);
+
+  return (
+    <section className="bg-white rounded-2xl border border-ink-200 p-6">
+      <h2 className="font-semibold text-ink-900 mb-3">Foto účtenky</h2>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {keys.map((k) => (
+          <div key={k} className="aspect-[3/4] bg-ink-100 rounded-lg overflow-hidden">
+            {urls[k] ? (
+              <a href={urls[k]} target="_blank" rel="noopener">
+                <img
+                  src={urls[k]}
+                  alt="účtenka"
+                  className="w-full h-full object-contain hover:scale-105 transition-transform"
+                />
+              </a>
+            ) : (
+              <div className="w-full h-full grid place-items-center text-ink-400 text-xs">
+                Načítám…
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -222,17 +263,24 @@ function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <div className="text-xs text-ink-500">{label}</div>
-      <div className="text-ink-900">{value}</div>
+      <div className="text-ink-900 text-sm">{value}</div>
     </div>
   );
 }
 
-function fmt(amount: number, currency: string): string {
+function fmtAmt(amount: string | number | undefined, currency: string): string {
+  const n = typeof amount === "string" ? parseFloat(amount) : (amount ?? 0);
   return new Intl.NumberFormat("cs-CZ", {
     style: "currency",
     currency,
     maximumFractionDigits: 2,
-  }).format(amount);
+  }).format(Number.isFinite(n) ? n : 0);
+}
+
+function fmtNum(n: string | number | undefined): string {
+  const v = typeof n === "string" ? parseFloat(n) : (n ?? 0);
+  if (!Number.isFinite(v)) return "—";
+  return v.toLocaleString("cs-CZ");
 }
 
 function labelPayment(p: string): string {

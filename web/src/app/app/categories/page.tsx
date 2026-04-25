@@ -2,56 +2,47 @@
 
 import { useMemo } from "react";
 import { useSyncData } from "@/lib/sync-hook";
-
-interface CategoryData {
-  name: string;
-  icon?: string;
-  color?: number;
-  type: "INCOME" | "EXPENSE";
-  profileId?: number;
-}
-
-interface TxData {
-  amount: number;
-  categoryId?: number;
-  type: "INCOME" | "EXPENSE" | "TRANSFER";
-  dateTime: string;
-  profileId?: number;
-}
+import { ServerCategory, ServerTransaction, toUiTransaction } from "@/lib/sync-types";
 
 export default function CategoriesPage() {
   const { loading, error, entitiesByProfile } = useSyncData();
-  const categories = entitiesByProfile<CategoryData & { id?: number }>("categories");
-  const transactions = entitiesByProfile<TxData>("transactions");
+  const categoryEntities = entitiesByProfile<ServerCategory>("categories");
+  const txEntities = entitiesByProfile<ServerTransaction>("transactions");
 
-  // Spočítej výdaje/příjmy tohoto měsíce per kategorie (přes categoryId)
-  const byCategory = useMemo(() => {
-    const monthKey = new Date().toISOString().slice(0, 7);
-    const sums: Record<string, { count: number; amount: number }> = {};
-    for (const t of transactions) {
-      if (!t.data.dateTime?.startsWith(monthKey)) continue;
-      const cid = t.data.categoryId;
-      if (cid == null) continue;
-      const key = String(cid);
-      const prev = sums[key] ?? { count: 0, amount: 0 };
-      sums[key] = { count: prev.count + 1, amount: prev.amount + t.data.amount };
-    }
-    return sums;
-  }, [transactions]);
-
-  const income = useMemo(
-    () =>
-      categories
-        .filter((c) => c.data.type === "INCOME")
-        .sort((a, b) => a.data.name.localeCompare(b.data.name)),
-    [categories],
+  // Map UI tx s typem
+  const uiTxs = useMemo(
+    () => txEntities.map((e) => toUiTransaction(e.syncId, e.data)),
+    [txEntities],
   );
+
+  // Sumy podle category syncId za aktuální měsíc
+  const sums = useMemo(() => {
+    const monthKey = new Date().toISOString().slice(0, 7);
+    const m = new Map<string, { count: number; amount: number }>();
+    for (const tx of uiTxs) {
+      if (tx.type !== "EXPENSE" && tx.type !== "INCOME") continue;
+      if (!tx.date?.startsWith(monthKey)) continue;
+      const cid = tx.categorySyncId;
+      if (!cid) continue;
+      const prev = m.get(cid) ?? { count: 0, amount: 0 };
+      m.set(cid, { count: prev.count + 1, amount: prev.amount + tx.amount });
+    }
+    return m;
+  }, [uiTxs]);
+
   const expense = useMemo(
     () =>
-      categories
+      categoryEntities
         .filter((c) => c.data.type === "EXPENSE")
         .sort((a, b) => a.data.name.localeCompare(b.data.name)),
-    [categories],
+    [categoryEntities],
+  );
+  const income = useMemo(
+    () =>
+      categoryEntities
+        .filter((c) => c.data.type === "INCOME")
+        .sort((a, b) => a.data.name.localeCompare(b.data.name)),
+    [categoryEntities],
   );
 
   return (
@@ -59,7 +50,7 @@ export default function CategoriesPage() {
       <div>
         <h1 className="text-2xl font-semibold text-ink-900">Kategorie</h1>
         <p className="text-sm text-ink-600 mt-1">
-          Kategorie pro příjmy a výdaje. Čísla ukazují tento měsíc.
+          Kategorie pro příjmy a výdaje. Čísla ukazují aktuální měsíc.
         </p>
       </div>
 
@@ -71,20 +62,18 @@ export default function CategoriesPage() {
 
       {loading ? (
         <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>
+      ) : categoryEntities.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-ink-200 p-12 text-center">
+          <div className="text-4xl mb-3">📂</div>
+          <div className="font-medium text-ink-900">Žádné kategorie</div>
+          <p className="text-sm text-ink-600 mt-2">
+            Vytvoř první kategorii v mobilní aplikaci.
+          </p>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <CategorySection
-            title="Výdaje"
-            items={expense}
-            sums={byCategory}
-            colorClass="text-red-700"
-          />
-          <CategorySection
-            title="Příjmy"
-            items={income}
-            sums={byCategory}
-            colorClass="text-emerald-700"
-          />
+          <CategorySection title="Výdaje" items={expense} sums={sums} colorClass="text-red-700" />
+          <CategorySection title="Příjmy" items={income} sums={sums} colorClass="text-emerald-700" />
         </div>
       )}
     </div>
@@ -98,8 +87,8 @@ function CategorySection({
   colorClass,
 }: {
   title: string;
-  items: Array<{ syncId: string; data: CategoryData & { id?: number } }>;
-  sums: Record<string, { count: number; amount: number }>;
+  items: Array<{ syncId: string; data: ServerCategory }>;
+  sums: Map<string, { count: number; amount: number }>;
   colorClass: string;
 }) {
   return (
@@ -112,13 +101,9 @@ function CategorySection({
       ) : (
         <ul className="divide-y divide-ink-100">
           {items.map((c) => {
-            const id = c.data.id ? String(c.data.id) : null;
-            const s = id ? sums[id] : undefined;
+            const s = sums.get(c.syncId);
             return (
-              <li
-                key={c.syncId}
-                className="px-5 py-3 flex items-center gap-3"
-              >
+              <li key={c.syncId} className="px-5 py-3 flex items-center gap-3">
                 <div
                   className="w-8 h-8 rounded-full grid place-items-center text-sm"
                   style={{ backgroundColor: colorFromInt(c.data.color) }}

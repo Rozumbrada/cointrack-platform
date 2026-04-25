@@ -1,18 +1,22 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { sync, SyncEntity } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 
 interface ReceiptData {
-  merchantName: string;
-  merchantIco?: string;
+  profileId?: string;
+  categoryId?: string;
+  transactionId?: string;     // = "spárováno s tx" (server NEPOSÍLÁ linkedTransactionId)
+  merchantName?: string;
   date: string;
-  totalWithVat: number;
-  paymentMethod: string;
-  linkedTransactionId?: number;
-  fileUris?: string;
+  time?: string;
+  totalWithVat: string;       // server posílá string
+  totalWithoutVat?: string;
+  currency?: string;
+  paymentMethod?: string;
+  note?: string;              // ne 'notes'!
+  photoKeys?: unknown;        // array, server posílá JSON
 }
 
 export default function ReceiptsPage() {
@@ -36,12 +40,14 @@ export default function ReceiptsPage() {
 
   const filtered = useMemo(() => {
     return [...receipts]
-      .filter((e) => !e.deletedAt)
+      .filter((e) => {
+        if (e.deletedAt) return false;
+        const d = e.data as Record<string, unknown>;
+        return !(d.deletedAt != null && d.deletedAt !== 0);
+      })
       .map((e) => ({ syncId: e.syncId, data: e.data as unknown as ReceiptData }))
       .filter((r) =>
-        query
-          ? r.data.merchantName?.toLowerCase().includes(query.toLowerCase())
-          : true,
+        query ? r.data.merchantName?.toLowerCase().includes(query.toLowerCase()) : true,
       )
       .sort((a, b) => (b.data.date ?? "").localeCompare(a.data.date ?? ""));
   }, [receipts, query]);
@@ -51,7 +57,7 @@ export default function ReceiptsPage() {
       <div>
         <h1 className="text-2xl font-semibold text-ink-900">Účtenky</h1>
         <p className="text-sm text-ink-600 mt-1">
-          Naskenované účtenky z mobilní aplikace. Upload z webu bude v budoucí verzi.
+          Naskenované účtenky. Klikni na řádek pro detail.
         </p>
       </div>
 
@@ -76,7 +82,7 @@ export default function ReceiptsPage() {
           <div className="text-4xl mb-3">🧾</div>
           <div className="font-medium text-ink-900">Žádné účtenky</div>
           <p className="text-sm text-ink-600 mt-2">
-            Naskenuj účtenku v mobilní aplikaci — zobrazí se tu po synchronizaci.
+            Naskenuj účtenku v mobilní aplikaci.
           </p>
         </div>
       ) : (
@@ -85,44 +91,38 @@ export default function ReceiptsPage() {
             <thead className="bg-ink-50 text-ink-600 text-left text-xs uppercase tracking-wide">
               <tr>
                 <th className="px-6 py-3 font-medium">Obchodník</th>
-                <th className="px-6 py-3 font-medium">IČO</th>
                 <th className="px-6 py-3 font-medium">Datum</th>
                 <th className="px-6 py-3 font-medium">Platba</th>
-                <th className="px-6 py-3 font-medium">Spárováno</th>
+                <th className="px-6 py-3 font-medium">Foto</th>
                 <th className="px-6 py-3 font-medium text-right">Částka</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-100">
-              {filtered.map((r) => (
-                <tr
-                  key={r.syncId}
-                  className="hover:bg-ink-50/50 cursor-pointer"
-                  onClick={() => { window.location.href = `/app/receipts/${r.syncId}`; }}
-                >
-                  <td className="px-6 py-3 font-medium text-ink-900">
-                    {r.data.merchantName || "(bez názvu)"}
-                  </td>
-                  <td className="px-6 py-3 text-ink-600 tabular-nums">
-                    {r.data.merchantIco || "—"}
-                  </td>
-                  <td className="px-6 py-3 text-ink-600">{r.data.date || "—"}</td>
-                  <td className="px-6 py-3 text-ink-600">
-                    {labelPayment(r.data.paymentMethod)}
-                  </td>
-                  <td className="px-6 py-3">
-                    {r.data.linkedTransactionId ? (
-                      <span className="inline-block text-[10px] uppercase bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">
-                        ✓ banka
-                      </span>
-                    ) : (
-                      <span className="text-ink-400 text-xs">—</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-3 text-right font-semibold tabular-nums text-ink-900">
-                    {fmt(r.data.totalWithVat, "CZK")}
-                  </td>
-                </tr>
-              ))}
+              {filtered.map((r) => {
+                const photos = Array.isArray(r.data.photoKeys) ? r.data.photoKeys : [];
+                return (
+                  <tr
+                    key={r.syncId}
+                    className="hover:bg-ink-50/50 cursor-pointer"
+                    onClick={() => { window.location.href = `/app/receipts/${r.syncId}`; }}
+                  >
+                    <td className="px-6 py-3 font-medium text-ink-900">
+                      {r.data.merchantName || "(bez názvu)"}
+                    </td>
+                    <td className="px-6 py-3 text-ink-600 whitespace-nowrap">
+                      {r.data.date || "—"}
+                      {r.data.time && <span className="text-ink-400 text-xs"> {r.data.time}</span>}
+                    </td>
+                    <td className="px-6 py-3 text-ink-600">{labelPayment(r.data.paymentMethod)}</td>
+                    <td className="px-6 py-3 text-ink-600 text-xs">
+                      {photos.length > 0 ? `📷 ${photos.length}` : "—"}
+                    </td>
+                    <td className="px-6 py-3 text-right font-semibold tabular-nums text-ink-900">
+                      {fmtAmt(r.data.totalWithVat, r.data.currency ?? "CZK")}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -131,21 +131,19 @@ export default function ReceiptsPage() {
   );
 }
 
-function fmt(amount: number, currency: string): string {
+function fmtAmt(amount: string | number | undefined, currency: string): string {
+  const n = typeof amount === "string" ? parseFloat(amount) : (amount ?? 0);
   return new Intl.NumberFormat("cs-CZ", {
     style: "currency",
     currency,
     maximumFractionDigits: 2,
-  }).format(amount);
+  }).format(Number.isFinite(n) ? n : 0);
 }
 
-function labelPayment(p: string): string {
+function labelPayment(p: string | undefined | null): string {
   switch (p) {
-    case "CASH":
-      return "Hotově";
-    case "CARD":
-      return "Kartou";
-    default:
-      return "—";
+    case "CASH": return "Hotově";
+    case "CARD": return "Kartou";
+    default: return "—";
   }
 }

@@ -5,16 +5,18 @@ import { sync, SyncEntity } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 
 interface InvoiceData {
-  invoiceNumber: string;
-  issueDate: string;
+  invoiceNumber?: string;
+  issueDate?: string;
   dueDate?: string;
-  supplierName: string;
+  supplierName?: string;
   customerName?: string;
-  totalWithVat: number;
+  totalWithVat: string | number;     // server posílá string
+  currency?: string;
   isExpense: boolean;
-  isPaid: boolean;
-  linkedTransactionId?: number;
-  variabilniSymbol?: string;
+  paid?: boolean;                    // ne 'isPaid'!
+  linkedTransactionId?: string;
+  variableSymbol?: string;           // ne 'variabilniSymbol'
+  fileKeys?: unknown;
 }
 
 export default function InvoicesPage() {
@@ -145,14 +147,14 @@ export default function InvoicesPage() {
                     </span>
                   </td>
                   <td className="px-6 py-3">
-                    {r.data.isPaid || r.data.linkedTransactionId ? (
+                    {r.data.paid || r.data.linkedTransactionId ? (
                       <span className="text-emerald-700 text-xs font-medium">✓ uhrazeno</span>
                     ) : (
                       <span className="text-ink-500 text-xs">nezaplaceno</span>
                     )}
                   </td>
                   <td className="px-6 py-3 text-right font-semibold tabular-nums text-ink-900">
-                    {fmt(r.data.totalWithVat, "CZK")}
+                    {fmtAmt(r.data.totalWithVat, r.data.currency ?? "CZK")}
                   </td>
                 </tr>
               ))}
@@ -164,10 +166,11 @@ export default function InvoicesPage() {
   );
 }
 
-function fmt(amount: number, currency: string): string {
+function fmtAmt(amount: string | number | undefined, currency: string): string {
+  const n = typeof amount === "string" ? parseFloat(amount) : (amount ?? 0);
   return new Intl.NumberFormat("cs-CZ", {
     style: "currency",
     currency,
     maximumFractionDigits: 2,
-  }).format(amount);
+  }).format(Number.isFinite(n) ? n : 0);
 }
