@@ -233,11 +233,14 @@ export default function InvoiceDetailPage() {
 
 function InvoiceFiles({ keys }: { keys: string[] }) {
   const [urls, setUrls] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [done, setDone] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const map: Record<string, string> = {};
+      const okMap: Record<string, string> = {};
+      const errMap: Record<string, string> = {};
       for (const k of keys) {
         try {
           const res = await withAuth((t) =>
@@ -246,12 +249,17 @@ function InvoiceFiles({ keys }: { keys: string[] }) {
               { token: t },
             ),
           );
-          map[k] = res.downloadUrl;
-        } catch {
-          // skip
+          if (res.downloadUrl) okMap[k] = res.downloadUrl;
+          else errMap[k] = "prázdná URL";
+        } catch (e) {
+          errMap[k] = e instanceof Error ? e.message : String(e);
         }
       }
-      if (!cancelled) setUrls(map);
+      if (!cancelled) {
+        setUrls(okMap);
+        setErrors(errMap);
+        setDone(true);
+      }
     })();
     return () => { cancelled = true; };
   }, [keys]);
@@ -282,6 +290,14 @@ function InvoiceFiles({ keys }: { keys: string[] }) {
                     />
                   )}
                 </a>
+              ) : done && errors[k] ? (
+                <div className="w-full h-full grid place-items-center p-3 text-center">
+                  <div>
+                    <div className="text-2xl mb-1">⚠️</div>
+                    <div className="text-[10px] text-red-700 break-words">{errors[k]}</div>
+                    <div className="text-[9px] text-ink-500 break-all mt-1">{k}</div>
+                  </div>
+                </div>
               ) : (
                 <div className="w-full h-full grid place-items-center text-ink-400 text-xs">
                   Načítám…
