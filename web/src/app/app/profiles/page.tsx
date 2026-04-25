@@ -92,27 +92,88 @@ export default function ProfilesPage() {
 
   async function deleteProfile(p: Profile) {
     const ok = confirm(
-      `Opravdu smazat profil "${p.data.name}"? Profil bude označen jako smazaný a všechna data v něm zůstanou skrytá.`,
+      `Opravdu smazat profil "${p.data.name}"?\n\n` +
+      `Smaže se profil a VŠECHNA data v něm:\n` +
+      `• účty + transakce\n` +
+      `• účtenky + faktury\n` +
+      `• kategorie + rozpočty + plánované platby\n` +
+      `• dluhy, cíle, věrnostní karty, záruky, nákupní seznamy\n\n` +
+      `Tato akce je nevratná.`,
     );
     if (!ok) return;
     try {
       const now = new Date().toISOString();
-      await withAuth((t) =>
-        sync.push(t, {
-          entities: {
-            profiles: [
-              {
-                syncId: p.syncId,
-                updatedAt: now,
-                deletedAt: now,
-                clientVersion: 1,
-                data: p.data as unknown as Record<string, unknown>,
-              },
-            ],
-          },
-        }),
-      );
-      // Pokud byl smazaný profil aktivní/default → reset
+
+      // 1. Stáhni všechny entity, které patří k profilu (musí mít data.profileId == p.syncId)
+      const pull = await withAuth((t) => sync.pull(t));
+
+      const cascadeKeys = [
+        "accounts",
+        "categories",
+        "transactions",
+        "receipts",
+        "receipt_items",
+        "invoices",
+        "invoice_items",
+        "loyalty_cards",
+        "budgets",
+        "planned_payments",
+        "debts",
+        "goals",
+        "warranties",
+        "shopping_lists",
+        "shopping_items",
+        "merchant_rules",
+        "investment_positions",
+        "fio_accounts",
+        "group_members",
+        "group_expenses",
+        "group_expense_items",
+      ];
+
+      const entities: Record<string, Array<{
+        syncId: string;
+        updatedAt: string;
+        deletedAt: string;
+        clientVersion: number;
+        data: Record<string, unknown>;
+      }>> = {};
+
+      for (const key of cascadeKeys) {
+        const all = pull.entities[key] ?? [];
+        const toDelete = all.filter((e) => {
+          if (e.deletedAt) return false;
+          const d = e.data as Record<string, unknown>;
+          // Pro entity přímo pod profilem — má profileId
+          if (d.profileId === p.syncId) return true;
+          return false;
+        });
+        if (toDelete.length > 0) {
+          entities[key] = toDelete.map((e) => ({
+            syncId: e.syncId,
+            updatedAt: now,
+            deletedAt: now,
+            clientVersion: 1,
+            data: e.data,
+          }));
+        }
+      }
+
+      // 2. Profil sám na konci
+      entities["profiles"] = [
+        {
+          syncId: p.syncId,
+          updatedAt: now,
+          deletedAt: now,
+          clientVersion: 1,
+          data: p.data as unknown as Record<string, unknown>,
+        },
+      ];
+
+      // 3. Push všeho najednou
+      await withAuth((t) => sync.push(t, { entities }));
+
+      // 4. Reset client-side state
       if (getCurrentProfileSyncId() === p.syncId) setCurrentProfileSyncId(null);
       if (getDefaultProfileSyncId() === p.syncId) {
         setDefaultProfileSyncId(null);
