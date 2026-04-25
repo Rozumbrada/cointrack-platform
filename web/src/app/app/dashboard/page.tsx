@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
+import { sync } from "@/lib/api";
+import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
 import {
   ServerAccount,
@@ -10,9 +12,17 @@ import {
   computeAccountBalance,
   toUiTransaction,
 } from "@/lib/sync-types";
+import { CategoryIcon, colorFromInt } from "@/components/app/CategoryIcon";
+import { CategoryPicker } from "@/components/app/CategoryPicker";
 
 export default function DashboardPage() {
-  const { loading, error, entitiesByProfile } = useSyncData();
+  const { loading, error, entitiesByProfile, reload } = useSyncData();
+  const [pickerFor, setPickerFor] = useState<{
+    txSyncId: string;
+    txType: "INCOME" | "EXPENSE" | "TRANSFER";
+    currentCatSyncId?: string;
+  } | null>(null);
+  const [pickerError, setPickerError] = useState<string | null>(null);
 
   const accountEntities = entitiesByProfile<ServerAccount>("accounts");
   const txEntities = entitiesByProfile<ServerTransaction>("transactions");
@@ -121,6 +131,38 @@ export default function DashboardPage() {
   const maxExpenseCat = topExpenseCats[0]?.amount ?? 1;
   const maxTrend = Math.max(...trend.flatMap((m) => [m.income, m.expense]), 1);
 
+  async function setCategory(txSyncId: string, newCatSyncId: string | null) {
+    const target = txEntities.find((t) => t.syncId === txSyncId);
+    if (!target) return;
+    setPickerError(null);
+    try {
+      const now = new Date().toISOString();
+      const merged: ServerTransaction = {
+        ...target.data,
+        categoryId: newCatSyncId ?? undefined,
+      };
+      await withAuth((t) =>
+        sync.push(t, {
+          entities: {
+            transactions: [
+              {
+                syncId: target.syncId,
+                updatedAt: now,
+                clientVersion: 1,
+                data: merged as unknown as Record<string, unknown>,
+              },
+            ],
+          },
+        }),
+      );
+      await reload();
+    } catch (e) {
+      setPickerError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  const allCats = categoryEntities;
+
   if (loading) return <Loading />;
   if (error) return <ErrorState message={error} />;
 
@@ -179,7 +221,12 @@ export default function DashboardPage() {
                 <div key={String(row.cid)}>
                   <div className="flex items-center justify-between text-sm mb-1">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span>{row.category?.icon || "📂"}</span>
+                      <div
+                        className="w-6 h-6 rounded-full grid place-items-center shrink-0"
+                        style={{ backgroundColor: colorFromInt(row.category?.color) }}
+                      >
+                        <CategoryIcon name={row.category?.icon} size="sm" />
+                      </div>
                       <span className="text-ink-900 truncate">
                         {row.category?.name || "Bez kategorie"}
                       </span>
@@ -246,6 +293,11 @@ export default function DashboardPage() {
             Všechny →
           </Link>
         </div>
+        {pickerError && (
+          <div className="mx-6 my-3 bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-800">
+            {pickerError}
+          </div>
+        )}
         {recent.length === 0 ? (
           <div className="p-8 text-center text-ink-500 text-sm">
             Žádné transakce. Napoj banku nebo naskenuj účtenku v mobilu.
@@ -255,46 +307,79 @@ export default function DashboardPage() {
             {recent.map((tx) => {
               const cat = tx.categorySyncId ? catMap.get(tx.categorySyncId) : undefined;
               const sign = tx.type === "INCOME" ? "+" : tx.type === "EXPENSE" ? "−" : "";
+              const fallbackBg =
+                tx.type === "INCOME"
+                  ? "rgba(16, 185, 129, 0.15)"
+                  : tx.type === "EXPENSE"
+                    ? "rgba(239, 68, 68, 0.15)"
+                    : "rgba(99, 102, 241, 0.15)";
               return (
-                <li key={tx.syncId} className="px-6 py-3 flex items-center gap-3">
-                  <div
-                    className={`w-8 h-8 rounded-full grid place-items-center text-sm ${
-                      tx.type === "INCOME"
-                        ? "bg-emerald-100 text-emerald-700"
-                        : tx.type === "EXPENSE"
-                          ? "bg-red-100 text-red-700"
-                          : "bg-ink-100 text-ink-600"
-                    }`}
+                <li key={tx.syncId} className="px-6 py-3 flex items-center gap-3 hover:bg-ink-50/50">
+                  <button
+                    onClick={() =>
+                      setPickerFor({
+                        txSyncId: tx.syncId,
+                        txType: tx.type,
+                        currentCatSyncId: tx.categorySyncId,
+                      })
+                    }
+                    title="Změnit kategorii"
+                    disabled={tx.type === "TRANSFER"}
+                    className="w-9 h-9 rounded-full grid place-items-center shrink-0 hover:ring-2 hover:ring-brand-500/40 transition-all disabled:opacity-60 disabled:cursor-default"
+                    style={{
+                      backgroundColor: cat ? colorFromInt(cat.color) : fallbackBg,
+                    }}
                   >
-                    {tx.type === "INCOME" ? "↓" : tx.type === "EXPENSE" ? "↑" : "⇄"}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm text-ink-900 truncate">
-                      {tx.description || tx.merchant || "(bez popisu)"}
-                    </div>
-                    <div className="text-xs text-ink-500 flex items-center gap-2">
-                      <span>{formatDate(tx.date)}</span>
-                      {cat && (
-                        <span className="text-ink-400">
-                          · {cat.icon ?? ""} {cat.name}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div
-                    className={`text-sm font-semibold tabular-nums ${
-                      tx.type === "INCOME" ? "text-emerald-700" : "text-ink-900"
-                    }`}
+                    {cat ? (
+                      <CategoryIcon name={cat.icon} />
+                    ) : (
+                      <span className="text-sm">
+                        {tx.type === "INCOME" ? "↓" : tx.type === "EXPENSE" ? "↑" : "⇄"}
+                      </span>
+                    )}
+                  </button>
+                  <Link
+                    href={`/app/transactions/${tx.syncId}`}
+                    className="flex-1 min-w-0 flex items-center gap-3"
                   >
-                    {sign}
-                    {fmt(tx.amount, tx.currency)}
-                  </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-ink-900 truncate">
+                        {tx.description || tx.merchant || "(bez popisu)"}
+                      </div>
+                      <div className="text-xs text-ink-500 flex items-center gap-2">
+                        <span>{formatDate(tx.date)}</span>
+                        {cat && <span className="text-ink-400 truncate">· {cat.name}</span>}
+                      </div>
+                    </div>
+                    <div
+                      className={`text-sm font-semibold tabular-nums ${
+                        tx.type === "INCOME" ? "text-emerald-700" : "text-ink-900"
+                      }`}
+                    >
+                      {sign}
+                      {fmt(tx.amount, tx.currency)}
+                    </div>
+                  </Link>
                 </li>
               );
             })}
           </ul>
         )}
       </section>
+
+      {pickerFor && (
+        <CategoryPicker
+          allCategories={allCats}
+          currentSyncId={pickerFor.currentCatSyncId}
+          txType={pickerFor.txType}
+          onClose={() => setPickerFor(null)}
+          onSelect={async (catSyncId) => {
+            const target = pickerFor;
+            setPickerFor(null);
+            await setCategory(target.txSyncId, catSyncId);
+          }}
+        />
+      )}
     </div>
   );
 }

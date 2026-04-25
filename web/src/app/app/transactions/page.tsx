@@ -11,6 +11,7 @@ import {
   toUiTransaction,
 } from "@/lib/sync-types";
 import { CategoryIcon, colorFromInt } from "@/components/app/CategoryIcon";
+import { CategoryPicker } from "@/components/app/CategoryPicker";
 
 export default function TransactionsPage() {
   const { loading, error, entitiesByProfile, diagnose, profileSyncId, reload } = useSyncData();
@@ -19,6 +20,12 @@ export default function TransactionsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
+  const [pickerFor, setPickerFor] = useState<{
+    txSyncId: string;
+    txType: "INCOME" | "EXPENSE" | "TRANSFER";
+    currentCatSyncId?: string;
+  } | null>(null);
+  const [pickerError, setPickerError] = useState<string | null>(null);
 
   const txEntities = entitiesByProfile<ServerTransaction>("transactions");
   const cats = entitiesByProfile<ServerCategory>("categories");
@@ -99,6 +106,36 @@ export default function TransactionsPage() {
       setBulkError(e instanceof Error ? e.message : String(e));
     } finally {
       setBulkDeleting(false);
+    }
+  }
+
+  async function setCategoryFor(txSyncId: string, newCatSyncId: string | null) {
+    const target = txEntities.find((t) => t.syncId === txSyncId);
+    if (!target) return;
+    setPickerError(null);
+    try {
+      const now = new Date().toISOString();
+      const merged: ServerTransaction = {
+        ...target.data,
+        categoryId: newCatSyncId ?? undefined,
+      };
+      await withAuth((t) =>
+        sync.push(t, {
+          entities: {
+            transactions: [
+              {
+                syncId: target.syncId,
+                updatedAt: now,
+                clientVersion: 1,
+                data: merged as unknown as Record<string, unknown>,
+              },
+            ],
+          },
+        }),
+      );
+      await reload();
+    } catch (e) {
+      setPickerError(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -222,30 +259,41 @@ export default function TransactionsPage() {
                       onClick={(e) => e.stopPropagation()}
                       className="w-4 h-4 cursor-pointer shrink-0"
                     />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPickerFor({
+                          txSyncId: tx.syncId,
+                          txType: tx.type,
+                          currentCatSyncId: tx.categorySyncId,
+                        });
+                      }}
+                      title="Změnit kategorii"
+                      disabled={tx.type === "TRANSFER"}
+                      className="w-9 h-9 rounded-full grid place-items-center shrink-0 hover:ring-2 hover:ring-brand-500/40 transition-all disabled:opacity-60 disabled:cursor-default"
+                      style={{
+                        backgroundColor: cat
+                          ? colorFromInt(cat.color)
+                          : tx.type === "INCOME"
+                            ? "rgba(16, 185, 129, 0.15)"
+                            : tx.type === "EXPENSE"
+                              ? "rgba(239, 68, 68, 0.15)"
+                              : "rgba(99, 102, 241, 0.15)",
+                      }}
+                    >
+                      {cat ? (
+                        <CategoryIcon name={cat.icon} />
+                      ) : (
+                        <span className="text-sm">
+                          {tx.type === "INCOME" ? "↓" : tx.type === "EXPENSE" ? "↑" : "⇄"}
+                        </span>
+                      )}
+                    </button>
                     <Link
                       href={`/app/transactions/${tx.syncId}`}
                       className="flex-1 flex items-center gap-3 min-w-0"
                     >
-                      <div
-                        className="w-9 h-9 rounded-full grid place-items-center shrink-0"
-                        style={{
-                          backgroundColor: cat
-                            ? colorFromInt(cat.color)
-                            : tx.type === "INCOME"
-                              ? "rgba(16, 185, 129, 0.15)"
-                              : tx.type === "EXPENSE"
-                                ? "rgba(239, 68, 68, 0.15)"
-                                : "rgba(99, 102, 241, 0.15)",
-                        }}
-                      >
-                        {cat ? (
-                          <CategoryIcon name={cat.icon} />
-                        ) : (
-                          <span className="text-sm">
-                            {tx.type === "INCOME" ? "↓" : tx.type === "EXPENSE" ? "↑" : "⇄"}
-                          </span>
-                        )}
-                      </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-ink-900 truncate">
                           {tx.description || tx.merchant || "(bez popisu)"}
@@ -267,6 +315,26 @@ export default function TransactionsPage() {
           </>
         )}
       </section>
+
+      {pickerError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-800">
+          {pickerError}
+        </div>
+      )}
+
+      {pickerFor && (
+        <CategoryPicker
+          allCategories={cats}
+          currentSyncId={pickerFor.currentCatSyncId}
+          txType={pickerFor.txType}
+          onClose={() => setPickerFor(null)}
+          onSelect={async (catSyncId) => {
+            const target = pickerFor;
+            setPickerFor(null);
+            await setCategoryFor(target.txSyncId, catSyncId);
+          }}
+        />
+      )}
     </div>
   );
 }
