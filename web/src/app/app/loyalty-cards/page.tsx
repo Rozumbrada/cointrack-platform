@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { api } from "@/lib/api";
+import { api, sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
+import { FormDialog, Field, inputClass } from "@/components/app/FormDialog";
 
 interface LoyaltyCardData {
   profileId: string;
@@ -19,11 +20,36 @@ interface LoyaltyCardData {
   backImageKey?: string;
 }
 
+type LoyaltyCardRow = { syncId: string; data: LoyaltyCardData };
+
 export default function LoyaltyCardsPage() {
-  const { loading, error, entitiesByProfile } = useSyncData();
+  const { loading, error, entitiesByProfile, profileSyncId, reload } = useSyncData();
   const cards = entitiesByProfile<LoyaltyCardData>("loyalty_cards");
   const [query, setQuery] = useState("");
-  const [active, setActive] = useState<{ syncId: string; data: LoyaltyCardData } | null>(null);
+  const [active, setActive] = useState<LoyaltyCardRow | null>(null);
+  const [editing, setEditing] = useState<LoyaltyCardRow | "new" | null>(null);
+
+  async function onDelete(row: LoyaltyCardRow) {
+    if (!confirm(`Smazat kartu „${row.data.storeName}"?`)) return;
+    const now = new Date().toISOString();
+    await withAuth((t) =>
+      sync.push(t, {
+        entities: {
+          loyalty_cards: [
+            {
+              syncId: row.syncId,
+              updatedAt: now,
+              deletedAt: now,
+              clientVersion: 1,
+              data: row.data as unknown as Record<string, unknown>,
+            },
+          ],
+        },
+      }),
+    );
+    setActive(null);
+    reload();
+  }
 
   const filtered = useMemo(() => {
     return [...cards]
@@ -38,11 +64,19 @@ export default function LoyaltyCardsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-ink-900">Věrnostní karty</h1>
-        <p className="text-sm text-ink-600 mt-1">
-          Tvoje karty z mobilní aplikace. Klikni pro zobrazení čárového kódu.
-        </p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-semibold text-ink-900">Věrnostní karty</h1>
+          <p className="text-sm text-ink-600 mt-1">
+            Tvoje karty z mobilní aplikace. Klikni pro zobrazení čárového kódu.
+          </p>
+        </div>
+        <button
+          onClick={() => setEditing("new")}
+          className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
+        >
+          + Nová karta
+        </button>
       </div>
 
       {error && (
@@ -77,9 +111,177 @@ export default function LoyaltyCardsPage() {
         </div>
       )}
 
-      {active && <CardModal card={active} onClose={() => setActive(null)} />}
+      {active && (
+        <CardModal
+          card={active}
+          onClose={() => setActive(null)}
+          onEdit={() => {
+            setEditing(active);
+            setActive(null);
+          }}
+          onDelete={() => onDelete(active)}
+        />
+      )}
+
+      {editing && (
+        <CardEditor
+          initial={editing === "new" ? null : editing}
+          profileSyncId={profileSyncId}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            reload();
+          }}
+        />
+      )}
     </div>
   );
+}
+
+function CardEditor({
+  initial,
+  profileSyncId,
+  onClose,
+  onSaved,
+}: {
+  initial: LoyaltyCardRow | null;
+  profileSyncId: string | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [storeName, setStoreName] = useState(initial?.data.storeName ?? "");
+  const [cardNumber, setCardNumber] = useState(initial?.data.cardNumber ?? "");
+  const [barcodeFormat, setBarcodeFormat] = useState(initial?.data.barcodeFormat ?? "CODE_128");
+  const [color, setColor] = useState<number>(initial?.data.color ?? 0xff5c6bc0);
+  const [note, setNote] = useState(initial?.data.note ?? "");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function save() {
+    if (!profileSyncId) return setErr("Není vybraný profil.");
+    if (!storeName.trim()) return setErr("Vyplň název obchodu.");
+    if (!cardNumber.trim()) return setErr("Vyplň číslo karty.");
+
+    setSaving(true);
+    setErr(null);
+    try {
+      const now = new Date().toISOString();
+      const data: LoyaltyCardData = {
+        profileId: profileSyncId,
+        storeName: storeName.trim(),
+        cardNumber: cardNumber.trim(),
+        barcodeFormat,
+        color,
+        note,
+        logoUrl: initial?.data.logoUrl,
+        frontImageKey: initial?.data.frontImageKey,
+        backImageKey: initial?.data.backImageKey,
+      };
+      await withAuth((t) =>
+        sync.push(t, {
+          entities: {
+            loyalty_cards: [
+              {
+                syncId: initial?.syncId ?? crypto.randomUUID(),
+                updatedAt: now,
+                clientVersion: 1,
+                data: data as unknown as Record<string, unknown>,
+              },
+            ],
+          },
+        }),
+      );
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const presetColors: Array<{ label: string; value: number }> = [
+    { label: "Indigo", value: 0xff5c6bc0 },
+    { label: "Modrá", value: 0xff3b82f6 },
+    { label: "Zelená", value: 0xff10b981 },
+    { label: "Červená", value: 0xffef4444 },
+    { label: "Oranžová", value: 0xfff59e0b },
+    { label: "Růžová", value: 0xffec4899 },
+    { label: "Fialová", value: 0xff8b5cf6 },
+    { label: "Šedá", value: 0xff6b7280 },
+  ];
+
+  return (
+    <FormDialog
+      title={initial ? "Upravit kartu" : "Nová karta"}
+      onClose={onClose}
+      onSave={save}
+      saving={saving}
+      error={err}
+    >
+      <Field label="Název obchodu">
+        <input
+          type="text"
+          value={storeName}
+          onChange={(e) => setStoreName(e.target.value)}
+          autoFocus
+          className={inputClass}
+        />
+      </Field>
+      <Field label="Číslo karty">
+        <input
+          type="text"
+          value={cardNumber}
+          onChange={(e) => setCardNumber(e.target.value)}
+          className={inputClass}
+        />
+      </Field>
+      <Field label="Typ kódu">
+        <select
+          value={barcodeFormat}
+          onChange={(e) => setBarcodeFormat(e.target.value)}
+          className={inputClass}
+        >
+          <option value="CODE_128">Code 128</option>
+          <option value="CODE_39">Code 39</option>
+          <option value="EAN_13">EAN-13</option>
+          <option value="EAN_8">EAN-8</option>
+          <option value="QR_CODE">QR kód</option>
+        </select>
+      </Field>
+      <Field label="Barva">
+        <div className="flex flex-wrap gap-2">
+          {presetColors.map((c) => (
+            <button
+              key={c.value}
+              type="button"
+              onClick={() => setColor(c.value)}
+              title={c.label}
+              className={`w-9 h-9 rounded-lg border-2 ${
+                color === c.value ? "border-ink-900" : "border-transparent"
+              }`}
+              style={{ backgroundColor: argbToCss(c.value) }}
+            />
+          ))}
+        </div>
+      </Field>
+      <Field label="Poznámka">
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          rows={2}
+          className={`${inputClass} h-auto py-2`}
+        />
+      </Field>
+    </FormDialog>
+  );
+}
+
+function argbToCss(c: number): string {
+  const n = c >>> 0;
+  const r = (n >> 16) & 0xff;
+  const g = (n >> 8) & 0xff;
+  const b = n & 0xff;
+  return `rgb(${r},${g},${b})`;
 }
 
 function CardTile({
@@ -141,9 +343,13 @@ function CardTile({
 function CardModal({
   card,
   onClose,
+  onEdit,
+  onDelete,
 }: {
   card: { syncId: string; data: LoyaltyCardData };
   onClose: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
 }) {
   const d = card.data;
 
@@ -158,12 +364,20 @@ function CardModal({
       >
         <div className="flex items-center justify-between px-5 py-3 border-b border-ink-100">
           <h2 className="text-lg font-semibold text-ink-900">{d.storeName}</h2>
-          <button
-            onClick={onClose}
-            className="text-ink-400 hover:text-ink-600 text-2xl leading-none"
-          >
-            ×
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={onEdit} className="text-ink-500 hover:text-ink-700 text-sm" title="Upravit">
+              ✏️
+            </button>
+            <button onClick={onDelete} className="text-red-500 hover:text-red-700 text-sm" title="Smazat">
+              🗑
+            </button>
+            <button
+              onClick={onClose}
+              className="text-ink-400 hover:text-ink-600 text-2xl leading-none ml-2"
+            >
+              ×
+            </button>
+          </div>
         </div>
 
         <div className="p-6 space-y-5">

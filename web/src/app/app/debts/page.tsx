@@ -1,22 +1,30 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { sync } from "@/lib/api";
+import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
+import { FormDialog, Field, inputClass } from "@/components/app/FormDialog";
 
 interface DebtData {
+  profileId: string;
   personName: string;
-  amount: number;
+  amount: string;
   currency: string;
-  isOwedToMe: boolean;
+  /** "LENT" = dluží mně, "BORROWED" = já dlužím */
+  type: string;
+  description: string;
   dueDate?: string;
-  note?: string;
-  isPaid?: boolean;
-  profileId?: number;
+  isPaid: boolean;
+  createdDate: string;
 }
 
+type DebtRow = { syncId: string; data: DebtData };
+
 export default function DebtsPage() {
-  const { loading, error, entitiesByProfile } = useSyncData();
+  const { loading, error, entitiesByProfile, profileSyncId, reload } = useSyncData();
   const debts = entitiesByProfile<DebtData>("debts");
+  const [editing, setEditing] = useState<DebtRow | "new" | null>(null);
 
   const active = useMemo(() => debts.filter((d) => !d.data.isPaid), [debts]);
   const paid = useMemo(() => debts.filter((d) => d.data.isPaid), [debts]);
@@ -26,19 +34,69 @@ export default function DebtsPage() {
     let iOwe = 0;
     for (const d of active) {
       if (d.data.currency !== "CZK") continue;
-      if (d.data.isOwedToMe) owedToMe += d.data.amount;
-      else iOwe += d.data.amount;
+      const amt = parseFloat(d.data.amount) || 0;
+      if (d.data.type?.toUpperCase() === "LENT") owedToMe += amt;
+      else iOwe += amt;
     }
     return { owedToMe, iOwe };
   }, [active]);
 
+  async function onDelete(row: DebtRow) {
+    if (!confirm(`Smazat dluh „${row.data.personName}"?`)) return;
+    const now = new Date().toISOString();
+    await withAuth((t) =>
+      sync.push(t, {
+        entities: {
+          debts: [
+            {
+              syncId: row.syncId,
+              updatedAt: now,
+              deletedAt: now,
+              clientVersion: 1,
+              data: row.data as unknown as Record<string, unknown>,
+            },
+          ],
+        },
+      }),
+    );
+    reload();
+  }
+
+  async function togglePaid(row: DebtRow) {
+    const now = new Date().toISOString();
+    const data: DebtData = { ...row.data, isPaid: !row.data.isPaid };
+    await withAuth((t) =>
+      sync.push(t, {
+        entities: {
+          debts: [
+            {
+              syncId: row.syncId,
+              updatedAt: now,
+              clientVersion: 1,
+              data: data as unknown as Record<string, unknown>,
+            },
+          ],
+        },
+      }),
+    );
+    reload();
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-ink-900">Dluhy & půjčky</h1>
-        <p className="text-sm text-ink-600 mt-1">
-          Přehled peněz, které ti někdo dluží nebo dlužíš ty někomu.
-        </p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-semibold text-ink-900">Dluhy & půjčky</h1>
+          <p className="text-sm text-ink-600 mt-1">
+            Přehled peněz, které ti někdo dluží nebo dlužíš ty někomu.
+          </p>
+        </div>
+        <button
+          onClick={() => setEditing("new")}
+          className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
+        >
+          + Nový záznam
+        </button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -72,12 +130,40 @@ export default function DebtsPage() {
         <div className="bg-white rounded-2xl border border-ink-200 p-12 text-center">
           <div className="text-4xl mb-3">🤝</div>
           <div className="font-medium text-ink-900">Žádné dluhy</div>
+          <p className="text-sm text-ink-600 mt-2">Klikni na „Nový záznam".</p>
         </div>
       ) : (
         <>
-          <Section title="Aktivní" items={active} />
-          {paid.length > 0 && <Section title="Vyřešené" items={paid} dim />}
+          <Section
+            title="Aktivní"
+            items={active}
+            onEdit={(d) => setEditing(d)}
+            onDelete={onDelete}
+            onTogglePaid={togglePaid}
+          />
+          {paid.length > 0 && (
+            <Section
+              title="Vyřešené"
+              items={paid}
+              dim
+              onEdit={(d) => setEditing(d)}
+              onDelete={onDelete}
+              onTogglePaid={togglePaid}
+            />
+          )}
         </>
+      )}
+
+      {editing && (
+        <DebtEditor
+          initial={editing === "new" ? null : editing}
+          profileSyncId={profileSyncId}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            reload();
+          }}
+        />
       )}
     </div>
   );
@@ -87,10 +173,16 @@ function Section({
   title,
   items,
   dim = false,
+  onEdit,
+  onDelete,
+  onTogglePaid,
 }: {
   title: string;
-  items: Array<{ syncId: string; data: DebtData }>;
+  items: DebtRow[];
   dim?: boolean;
+  onEdit: (row: DebtRow) => void;
+  onDelete: (row: DebtRow) => void;
+  onTogglePaid: (row: DebtRow) => void;
 }) {
   if (items.length === 0) return null;
   return (
@@ -99,35 +191,191 @@ function Section({
         <h2 className="font-semibold text-ink-900">{title}</h2>
       </div>
       <ul className="divide-y divide-ink-100">
-        {items.map((d) => (
-          <li
-            key={d.syncId}
-            className={`px-6 py-3 flex items-center gap-3 ${dim ? "opacity-60" : ""}`}
-          >
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-ink-900 truncate">
-                {d.data.personName}
-              </div>
-              <div className="text-xs text-ink-500 flex items-center gap-2">
-                <span>{d.data.isOwedToMe ? "dluží mně" : "dlužím"}</span>
-                {d.data.dueDate && <span>· do {d.data.dueDate}</span>}
-                {d.data.isPaid && <span className="text-emerald-700">· ✓ vyřešeno</span>}
-              </div>
-              {d.data.note && (
-                <div className="text-xs text-ink-500 mt-0.5 truncate">{d.data.note}</div>
-              )}
-            </div>
-            <div
-              className={`text-sm font-semibold tabular-nums ${
-                d.data.isOwedToMe ? "text-emerald-700" : "text-red-700"
-              }`}
+        {items.map((d) => {
+          const lent = d.data.type?.toUpperCase() === "LENT";
+          return (
+            <li
+              key={d.syncId}
+              className={`px-6 py-3 flex items-center gap-3 group ${dim ? "opacity-60" : ""}`}
             >
-              {fmt(d.data.amount, d.data.currency)}
-            </div>
-          </li>
-        ))}
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-ink-900 truncate">
+                  {d.data.personName}
+                </div>
+                <div className="text-xs text-ink-500 flex items-center gap-2 flex-wrap">
+                  <span>{lent ? "dluží mně" : "dlužím"}</span>
+                  {d.data.dueDate && <span>· do {d.data.dueDate}</span>}
+                  {d.data.isPaid && <span className="text-emerald-700">· ✓ vyřešeno</span>}
+                </div>
+                {d.data.description && (
+                  <div className="text-xs text-ink-500 mt-0.5 truncate">{d.data.description}</div>
+                )}
+              </div>
+              <div className={`text-sm font-semibold tabular-nums ${lent ? "text-emerald-700" : "text-red-700"}`}>
+                {fmt(parseFloat(d.data.amount) || 0, d.data.currency)}
+              </div>
+              <div className="opacity-0 group-hover:opacity-100 flex gap-1">
+                <button
+                  onClick={() => onTogglePaid(d)}
+                  title={d.data.isPaid ? "Označit jako aktivní" : "Označit jako vyřešené"}
+                  className="text-emerald-600 hover:text-emerald-800 px-1"
+                >
+                  {d.data.isPaid ? "↩︎" : "✓"}
+                </button>
+                <button onClick={() => onEdit(d)} className="text-ink-500 hover:text-ink-700 px-1" title="Upravit">
+                  ✏️
+                </button>
+                <button onClick={() => onDelete(d)} className="text-red-500 hover:text-red-700 px-1" title="Smazat">
+                  🗑
+                </button>
+              </div>
+            </li>
+          );
+        })}
       </ul>
     </section>
+  );
+}
+
+function DebtEditor({
+  initial,
+  profileSyncId,
+  onClose,
+  onSaved,
+}: {
+  initial: DebtRow | null;
+  profileSyncId: string | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [personName, setPersonName] = useState(initial?.data.personName ?? "");
+  const [amount, setAmount] = useState(initial?.data.amount ?? "");
+  const [currency, setCurrency] = useState(initial?.data.currency ?? "CZK");
+  const [type, setType] = useState<"LENT" | "BORROWED">(
+    initial?.data.type?.toUpperCase() === "BORROWED" ? "BORROWED" : "LENT",
+  );
+  const [description, setDescription] = useState(initial?.data.description ?? "");
+  const [dueDate, setDueDate] = useState(initial?.data.dueDate ?? "");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function save() {
+    if (!profileSyncId) return setErr("Není vybraný profil.");
+    if (!personName.trim()) return setErr("Vyplň jméno.");
+    const amt = parseFloat(amount.replace(",", "."));
+    if (!amt || amt <= 0) return setErr("Vyplň kladnou částku.");
+
+    setSaving(true);
+    setErr(null);
+    try {
+      const now = new Date().toISOString();
+      const data: DebtData = {
+        profileId: profileSyncId,
+        personName: personName.trim(),
+        amount: amt.toFixed(2),
+        currency,
+        type,
+        description,
+        dueDate: dueDate || undefined,
+        isPaid: initial?.data.isPaid ?? false,
+        createdDate: initial?.data.createdDate ?? now.slice(0, 10),
+      };
+      await withAuth((t) =>
+        sync.push(t, {
+          entities: {
+            debts: [
+              {
+                syncId: initial?.syncId ?? crypto.randomUUID(),
+                updatedAt: now,
+                clientVersion: 1,
+                data: data as unknown as Record<string, unknown>,
+              },
+            ],
+          },
+        }),
+      );
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <FormDialog
+      title={initial ? "Upravit dluh" : "Nový dluh"}
+      onClose={onClose}
+      onSave={save}
+      saving={saving}
+      error={err}
+    >
+      <div className="flex rounded-lg border border-ink-300 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setType("LENT")}
+          className={`flex-1 py-2 text-sm ${type === "LENT" ? "bg-emerald-50 text-emerald-700 font-medium" : "text-ink-700"}`}
+        >
+          Dluží mně
+        </button>
+        <button
+          type="button"
+          onClick={() => setType("BORROWED")}
+          className={`flex-1 py-2 text-sm ${type === "BORROWED" ? "bg-red-50 text-red-700 font-medium" : "text-ink-700"}`}
+        >
+          Já dlužím
+        </button>
+      </div>
+      <Field label="Osoba">
+        <input
+          type="text"
+          value={personName}
+          onChange={(e) => setPersonName(e.target.value)}
+          autoFocus
+          className={inputClass}
+        />
+      </Field>
+      <div className="grid grid-cols-3 gap-3">
+        <div className="col-span-2">
+          <Field label="Částka">
+            <input
+              type="text"
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className={inputClass}
+            />
+          </Field>
+        </div>
+        <Field label="Měna">
+          <select
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
+            className={inputClass}
+          >
+            {["CZK", "EUR", "USD"].map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <Field label="Termín splatnosti">
+        <input
+          type="date"
+          value={dueDate}
+          onChange={(e) => setDueDate(e.target.value)}
+          className={inputClass}
+        />
+      </Field>
+      <Field label="Popis">
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={2}
+          className={`${inputClass} h-auto py-2`}
+        />
+      </Field>
+    </FormDialog>
   );
 }
 
