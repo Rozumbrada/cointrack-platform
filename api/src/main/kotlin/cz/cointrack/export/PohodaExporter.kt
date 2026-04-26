@@ -471,12 +471,27 @@ object PohodaExporter {
     private fun BigDecimal.fmt(decimals: Int): String =
         "%.${decimals}f".format(Locale.US, this.setScale(decimals, RoundingMode.HALF_UP))
 
-    private fun String.xml(): String = this
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace("\"", "&quot;")
-        .replace("'", "&apos;")
+    /**
+     * Escape pro XML text content + filtr znaků zakázaných XML 1.0
+     * (control 0x00–0x1F kromě \t \n \r). Bez toho Pohoda hlásí
+     * "An invalid character was found in text content".
+     */
+    private fun String.xml(): String = buildString(this.length) {
+        for (c in this@xml) {
+            val code = c.code
+            val valid = code == 0x9 || code == 0xA || code == 0xD ||
+                code in 0x20..0xD7FF || code in 0xE000..0xFFFD
+            if (!valid) continue
+            when (c) {
+                '&'  -> append("&amp;")
+                '<'  -> append("&lt;")
+                '>'  -> append("&gt;")
+                '"'  -> append("&quot;")
+                '\'' -> append("&apos;")
+                else -> append(c)
+            }
+        }
+    }
 
     // ─── Bankovní reference pro Pohoda ──────────────────────────────────
     //
