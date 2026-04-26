@@ -21,9 +21,15 @@ import java.time.format.DateTimeFormatter
 data class SaltEdgeConfig(
     val appId: String,
     val secret: String,
-    val baseUrl: String,       // https://www.saltedge.com/api/v5
+    val baseUrl: String,       // https://www.saltedge.com/api/v6
     val returnUrl: String,     // /bank/return na webu (consent redirect zpět)
     val callbackUrl: String,   // /api/v1/bank/webhook
+    /** PEM-encoded RSA private key. Pokud blank, requesty se nepodepisují (Pending tier). */
+    val privateKeyPem: String = "",
+    /** PEM-encoded Salt Edge public key. Pokud blank, webhook signatures se neverifikují. */
+    val webhookPublicKeyPem: String = "",
+    /** Sekundy do expirace podpisu requestu. Salt Edge doporučuje 60s. */
+    val requestExpirySeconds: Long = 60L,
 )
 
 /**
@@ -267,9 +273,26 @@ class SaltEdgeProvider(private val config: SaltEdgeConfig) : BankingProvider {
     }
 
     override fun verifyWebhook(signature: String?, rawBody: String): Boolean {
-        // TODO: Salt Edge posílá `Signature` header s RSA-SHA256. Pro pending tier
-        //   (sandbox) je validace volitelná — zapneme v production. Teď přijímáme vše.
-        return true
+        // Pokud nemáme nakonfigurovaný Salt Edge public key, validaci přeskakujeme.
+        // Pending tier callbacky jsou často nepodepsané; Live tier vyžaduje verifikaci.
+        if (config.webhookPublicKeyPem.isBlank()) {
+            log.warn("Salt Edge webhook public key není nakonfigurovaný — webhook signatures NEJSOU verifikovány. Nastav SALT_EDGE_WEBHOOK_PUBLIC_KEY pro Live tier.")
+            return true
+        }
+        if (signature.isNullOrBlank()) {
+            log.warn("Salt Edge webhook bez podpisu odmítnut.")
+            return false
+        }
+        return runCatching {
+            val publicKey = parsePublicKey(config.webhookPublicKeyPem)
+            val sig = java.security.Signature.getInstance("SHA256withRSA")
+            sig.initVerify(publicKey)
+            sig.update(rawBody.toByteArray(Charsets.UTF_8))
+            sig.verify(java.util.Base64.getDecoder().decode(signature))
+        }.getOrElse { e ->
+            log.warn("Salt Edge webhook signature verification selhala: ${e.message}")
+            false
+        }
     }
 
     // ── HTTP jádro ─────────────────────────────────────────────────────
@@ -280,6 +303,8 @@ class SaltEdgeProvider(private val config: SaltEdgeConfig) : BankingProvider {
 
     private suspend fun request(method: HttpMethod, path: String, body: JsonObject?): JsonObject {
         val url = config.baseUrl.trimEnd('/') + path
+        val bodyText = body?.toString().orEmpty()
+        val expiresAt = (System.currentTimeMillis() / 1000L + config.requestExpirySeconds).toString()
         val resp: HttpResponse = client.request(url) {
             this.method = method
             headers {
@@ -287,8 +312,16 @@ class SaltEdgeProvider(private val config: SaltEdgeConfig) : BankingProvider {
                 append("Secret", config.secret)
                 append("Accept", "application/json")
                 if (body != null) append(HttpHeaders.ContentType, "application/json")
+                // Live tier: připoj Expires-at + Signature (RSA-SHA256). Pokud nemáme
+                // nakonfigurovaný private key, spoléháme jen na App-id+Secret (Pending).
+                if (config.privateKeyPem.isNotBlank()) {
+                    val signaturePayload = "$expiresAt|${method.value.uppercase()}|$url|$bodyText"
+                    val signature = signRequest(signaturePayload)
+                    append("Expires-at", expiresAt)
+                    append("Signature", signature)
+                }
             }
-            if (body != null) setBody(body.toString())
+            if (body != null) setBody(bodyText)
         }
         val text = resp.bodyAsText()
         if (!resp.status.isSuccess()) {
@@ -316,6 +349,49 @@ class SaltEdgeProvider(private val config: SaltEdgeConfig) : BankingProvider {
             cur = (cur as? JsonObject)?.get(p) ?: error("Chybí '$path' v odpovědi: $obj")
         }
         return (cur as? JsonPrimitive)?.contentOrNull ?: error("'$path' není string v odpovědi: $obj")
+    }
+
+    // ── RSA podepisování (Live tier) ───────────────────────────────────
+    //
+    // Salt Edge očekává hlavičku `Signature` s base64-zakódovaným RSA-SHA256
+    // podpisem stringu `${Expires-at}|${HTTP method UPPER}|${URL}|${body}`.
+    // Privátní klíč držíme na backendu (PEM), public key uploadujeme do
+    // Salt Edge dashboardu v Settings → Keys.
+
+    private val cachedPrivateKey: java.security.PrivateKey? by lazy {
+        if (config.privateKeyPem.isBlank()) null else parsePrivateKey(config.privateKeyPem)
+    }
+
+    private fun signRequest(payload: String): String {
+        val key = cachedPrivateKey ?: error("Salt Edge private key není nakonfigurovaný.")
+        val sig = java.security.Signature.getInstance("SHA256withRSA")
+        sig.initSign(key)
+        sig.update(payload.toByteArray(Charsets.UTF_8))
+        return java.util.Base64.getEncoder().encodeToString(sig.sign())
+    }
+
+    private fun parsePrivateKey(pem: String): java.security.PrivateKey {
+        val cleaned = pem
+            .replace("-----BEGIN PRIVATE KEY-----", "")
+            .replace("-----END PRIVATE KEY-----", "")
+            .replace("-----BEGIN RSA PRIVATE KEY-----", "")
+            .replace("-----END RSA PRIVATE KEY-----", "")
+            .replace("\\s+".toRegex(), "")
+        val bytes = java.util.Base64.getDecoder().decode(cleaned)
+        val spec = java.security.spec.PKCS8EncodedKeySpec(bytes)
+        return java.security.KeyFactory.getInstance("RSA").generatePrivate(spec)
+    }
+
+    private fun parsePublicKey(pem: String): java.security.PublicKey {
+        val cleaned = pem
+            .replace("-----BEGIN PUBLIC KEY-----", "")
+            .replace("-----END PUBLIC KEY-----", "")
+            .replace("-----BEGIN RSA PUBLIC KEY-----", "")
+            .replace("-----END RSA PUBLIC KEY-----", "")
+            .replace("\\s+".toRegex(), "")
+        val bytes = java.util.Base64.getDecoder().decode(cleaned)
+        val spec = java.security.spec.X509EncodedKeySpec(bytes)
+        return java.security.KeyFactory.getInstance("RSA").generatePublic(spec)
     }
 }
 

@@ -52,3 +52,8 @@ saltedge:
   baseUrl: "$SALT_EDGE_BASE_URL:https://www.saltedge.com/api/v6"
   returnUrl: "$SALT_EDGE_RETURN_URL:http://localhost:3000/bank/return"
   callbackUrl: "$SALT_EDGE_CALLBACK_URL:http://localhost:8080/api/v1/bank/webhook"
+  # PEM-encoded RSA private key (PKCS8). Pokud blank, requesty se nepodepisují (Pending tier OK).
+  # Pro Live tier vygeneruj keypair a public key uploadni do Salt Edge dashboardu.
+  privateKey: "$SALT_EDGE_PRIVATE_KEY:"
+  # PEM-encoded Salt Edge public key pro verifikaci webhook signatures.
+  webhookPublicKey: "$SALT_EDGE_WEBHOOK_PUBLIC_KEY:"

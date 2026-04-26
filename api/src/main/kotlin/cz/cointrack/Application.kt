@@ -155,6 +155,8 @@ private fun Application.loadBankService(): BankService? {
         baseUrl = se.property("baseUrl").getString(),
         returnUrl = se.property("returnUrl").getString(),
         callbackUrl = se.property("callbackUrl").getString(),
+        privateKeyPem = se.propertyOrNull("privateKey")?.getString().orEmpty(),
+        webhookPublicKeyPem = se.propertyOrNull("webhookPublicKey")?.getString().orEmpty(),
     )
     log.info("Salt Edge banking aktivován (baseUrl=${cfg.baseUrl}).")
     return BankService(
