@@ -1,16 +1,18 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
+import { ServerAccount } from "@/lib/sync-types";
 import {
   ParsedDocument,
   extractDocument,
   uploadFile,
 } from "@/lib/gemini";
 import { ensureCashAccount } from "@/lib/cash-account";
+import { getDefaultAccountSyncId } from "@/lib/profile-store";
 import { FormDialog, Field, inputClass } from "./FormDialog";
 
 /**
@@ -28,8 +30,28 @@ export function DocumentDialog({
   onClose: () => void;
 }) {
   const router = useRouter();
-  const { profileSyncId } = useSyncData();
+  const { profileSyncId, entitiesByProfile } = useSyncData();
+  const accounts = entitiesByProfile<ServerAccount>("accounts");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Účty k výběru — bez Hotovost (CASH má vlastní auto-route)
+  const nonCashAccounts = useMemo(
+    () => accounts.filter((a) => !(a.data.type === "CASH" && a.data.excludedFromTotal)),
+    [accounts],
+  );
+
+  /** Default účet pro non-cash doklady (z localStorage settings, fallback první). */
+  const [selectedAccountId, setSelectedAccountId] = useState<string>("");
+  useEffect(() => {
+    if (selectedAccountId) return;
+    if (!profileSyncId) return;
+    const saved = getDefaultAccountSyncId(profileSyncId);
+    if (saved && nonCashAccounts.some((a) => a.syncId === saved)) {
+      setSelectedAccountId(saved);
+    } else if (nonCashAccounts.length > 0) {
+      setSelectedAccountId(nonCashAccounts[0].syncId);
+    }
+  }, [profileSyncId, nonCashAccounts, selectedAccountId]);
 
   const [file, setFile] = useState<File | null>(null);
   const [parsing, setParsing] = useState(false);
@@ -104,15 +126,23 @@ export function DocumentDialog({
       const entitySyncId = crypto.randomUUID();
       const fileKeys = storageKey ? [storageKey] : [];
 
-      // Pro hotovostní doklady (CASH) auto-route na "Hotovost" účet
-      // (auto-create per profil, excludedFromTotal=true). Uživatel uvidí
-      // tx v listu pod filtrem Hotovost účtu a může ji přesunout jinam.
-      const cashAccountSyncId =
+      // CASH → auto-Hotovost. Ostatní → uživatelem vybraný účet (s defaultem
+      // z profile-store). Pokud non-cash + žádný účet vybraný (uživatel zatím
+      // nemá žádný), zůstane undefined a tx se nevytvoří.
+      const targetAccountSyncId =
         paymentMethod === "CASH"
           ? await ensureCashAccount(profileSyncId, currency)
-          : undefined;
-      const cashTxSyncId =
-        paymentMethod === "CASH" ? crypto.randomUUID() : undefined;
+          : (selectedAccountId || undefined);
+
+      // Receipt = už proběhlá platba → vždy vytvořit matching tx
+      // Invoice = může být nezaplacená → tx jen pro CASH (auto-paid)
+      const receiptTxSyncId = targetAccountSyncId ? crypto.randomUUID() : undefined;
+      const invoiceTxSyncId = paymentMethod === "CASH" && targetAccountSyncId
+        ? crypto.randomUUID()
+        : undefined;
+      // Aliasy pro existující kód níž (zachování jmen z předchozí verze)
+      const cashAccountSyncId = targetAccountSyncId;
+      const cashTxSyncId = docType === "receipt" ? receiptTxSyncId : invoiceTxSyncId;
 
       if (docType === "receipt") {
         const data = {
@@ -490,6 +520,33 @@ export function DocumentDialog({
             <option value="CARD">Kartou</option>
             <option value="CASH">Hotově</option>
             <option value="UNKNOWN">Neznámo</option>
+          </select>
+        </Field>
+      )}
+
+      {/* Účet — CASH se automaticky zařadí na Hotovost (locked).
+          Pro ostatní zdroje uživatel volí účet (default z profilu). */}
+      {paymentMethod === "CASH" ? (
+        <Field label="Účet">
+          <div className="h-10 rounded-lg border border-ink-300 bg-ink-50 px-3 flex items-center text-sm text-ink-700">
+            💵 Hotovost (automaticky)
+          </div>
+        </Field>
+      ) : (
+        <Field label="Účet">
+          <select
+            value={selectedAccountId}
+            onChange={(e) => setSelectedAccountId(e.target.value)}
+            className={inputClass}
+          >
+            {nonCashAccounts.length === 0 && (
+              <option value="">— žádný účet —</option>
+            )}
+            {nonCashAccounts.map((a) => (
+              <option key={a.syncId} value={a.syncId}>
+                {a.data.name} ({a.data.currency})
+              </option>
+            ))}
           </select>
         </Field>
       )}

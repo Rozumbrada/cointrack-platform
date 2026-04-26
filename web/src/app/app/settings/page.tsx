@@ -4,11 +4,34 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { auth, UserDto } from "@/lib/api";
 import { clearAuth, getAccessToken } from "@/lib/auth-store";
+import { useSyncData } from "@/lib/sync-hook";
+import { ServerAccount } from "@/lib/sync-types";
+import {
+  getDefaultAccountSyncId,
+  setDefaultAccountSyncId,
+} from "@/lib/profile-store";
 
 export default function SettingsPage() {
   const router = useRouter();
   const [user, setUser] = useState<UserDto | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { profileSyncId, entitiesByProfile } = useSyncData();
+  const accounts = entitiesByProfile<ServerAccount>("accounts");
+  const nonCashAccounts = accounts.filter(
+    (a) => !(a.data.type === "CASH" && a.data.excludedFromTotal),
+  );
+  const [defaultAccount, setDefaultAccount] = useState<string>("");
+  useEffect(() => {
+    if (profileSyncId) {
+      setDefaultAccount(getDefaultAccountSyncId(profileSyncId) ?? "");
+    }
+  }, [profileSyncId]);
+
+  function onChangeDefaultAccount(v: string) {
+    if (!profileSyncId) return;
+    setDefaultAccount(v);
+    setDefaultAccountSyncId(profileSyncId, v || null);
+  }
 
   useEffect(() => {
     const token = getAccessToken();
@@ -57,6 +80,27 @@ export default function SettingsPage() {
             value={user?.emailVerified ? "✓ ano" : "ne"}
           />
         </dl>
+      </section>
+
+      <section className="bg-white rounded-2xl border border-ink-200 p-6">
+        <h2 className="font-semibold text-ink-900 mb-2">Doklady</h2>
+        <p className="text-sm text-ink-600 mb-3">
+          Výchozí účet pro naskenované a nahrané účtenky/faktury (kromě hotovostních
+          — ty jdou vždy na účet Hotovost). Nastavení je uloženo lokálně v prohlížeči
+          a platí jen pro aktuálně vybraný profil.
+        </p>
+        <select
+          value={defaultAccount}
+          onChange={(e) => onChangeDefaultAccount(e.target.value)}
+          className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900"
+        >
+          <option value="">— bez defaultu (první účet v seznamu) —</option>
+          {nonCashAccounts.map((a) => (
+            <option key={a.syncId} value={a.syncId}>
+              {a.data.name} ({a.data.currency})
+            </option>
+          ))}
+        </select>
       </section>
 
       <section className="bg-white rounded-2xl border border-ink-200 p-6">

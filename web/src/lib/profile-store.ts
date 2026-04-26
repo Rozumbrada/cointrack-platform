@@ -59,3 +59,33 @@ export function setDefaultProfileSyncId(syncId: string | null) {
   else localStorage.setItem(DEFAULT_KEY, syncId);
   window.dispatchEvent(new CustomEvent("cointrack:default-profile-changed"));
 }
+
+// ─── Default account per profil (pro auto-přiřazení účtenek/faktur) ──
+
+const DEFAULT_ACCOUNT_KEY = "cointrack_defaultAccountByProfile";
+
+interface DefaultAccountMap {
+  [profileSyncId: string]: string;
+}
+
+function readDefaultAccountMap(): DefaultAccountMap {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(localStorage.getItem(DEFAULT_ACCOUNT_KEY) ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
+export function getDefaultAccountSyncId(profileSyncId: string | null): string | null {
+  if (!profileSyncId) return null;
+  return readDefaultAccountMap()[profileSyncId] ?? null;
+}
+
+export function setDefaultAccountSyncId(profileSyncId: string, accountSyncId: string | null) {
+  if (typeof window === "undefined") return;
+  const map = readDefaultAccountMap();
+  if (accountSyncId == null) delete map[profileSyncId];
+  else map[profileSyncId] = accountSyncId;
+  localStorage.setItem(DEFAULT_ACCOUNT_KEY, JSON.stringify(map));
+}
