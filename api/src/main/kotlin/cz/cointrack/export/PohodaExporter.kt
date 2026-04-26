@@ -1,10 +1,12 @@
 package cz.cointrack.export
 
+import cz.cointrack.db.Accounts
 import cz.cointrack.db.InvoiceItems
 import cz.cointrack.db.Invoices
 import cz.cointrack.db.Profiles
 import cz.cointrack.db.ReceiptItems
 import cz.cointrack.db.Receipts
+import cz.cointrack.db.Transactions
 import cz.cointrack.db.db
 import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.sql.ResultRow
@@ -143,6 +145,11 @@ object PohodaExporter {
         // Pohoda bank.xsd — analog s voucher, jen jiný namespace + voucherType
         val merchant = r[Receipts.merchantName].orEmpty().ifBlank { "Karetní platba" }
         val text = ("Karetní platba - $merchant").take(240)
+        // Bankovní účet — buď z propojené tx přes Receipts.transactionId, nebo prázdné
+        val bankRef = r[Receipts.transactionId]?.let { txId ->
+            Transactions.selectAll().where { Transactions.id eq txId }.singleOrNull()
+                ?.let { tx -> tx[Transactions.accountId]?.let { accountBankRef(it.value) } }
+        }
         sb.appendLine("""  <dat:dataPackItem id="$seq" version="2.0">""")
         sb.appendLine("""    <bnk:bank version="2.0">""")
         sb.appendLine("""      <bnk:bankHeader>""")
@@ -150,6 +157,7 @@ object PohodaExporter {
         sb.appendLine("""        <bnk:datePayment>${r[Receipts.date]}</bnk:datePayment>""")
         sb.appendLine("""        <bnk:dateStatement>${r[Receipts.date]}</bnk:dateStatement>""")
         sb.appendLine("""        <bnk:text>${text.xml()}</bnk:text>""")
+        bankRef?.let { appendAccountElement(sb, "bnk", it) }
         appendPartner(sb, r, "bnk")
         sb.appendLine("""      </bnk:bankHeader>""")
         appendVoucherSummaryBank(sb, r, items, isVatPayer)
@@ -330,6 +338,11 @@ object PohodaExporter {
         sb.appendLine("""        <inv:paymentType>""")
         sb.appendLine("""          <typ:paymentType>$pmEnum</typ:paymentType>""")
         sb.appendLine("""        </inv:paymentType>""")
+        // Bankovní účet pro platbu — primárně z linkedAccountId, fallback na
+        // Invoices.bankAccount (string IBAN/string).
+        val bankRef = r[Invoices.linkedAccountId]?.let { accountBankRef(it.value) }
+            ?: parseIban(r[Invoices.bankAccount].orEmpty())
+        bankRef?.let { appendAccountElement(sb, "inv", it) }
         sb.appendLine("""      </inv:invoiceHeader>""")
 
         // Detail
@@ -464,4 +477,51 @@ object PohodaExporter {
         .replace(">", "&gt;")
         .replace("\"", "&quot;")
         .replace("'", "&apos;")
+
+    // ─── Bankovní reference pro Pohoda ──────────────────────────────────
+    //
+    // Pohoda XSD `<typ:account>` přijímá buď:
+    //   <typ:ids>BU01</typ:ids>           ← Pohoda interní zkratka (mapování ručně),
+    //   <typ:accountNo>1234567890</typ:accountNo>
+    //   <typ:numericCode>0100</typ:numericCode>
+    // V druhé variantě se Pohoda pokusí najít Banku podle čísla účtu + kódu.
+    // Preferujeme druhou variantu, protože je „auto" — uživatel nemusí ručně mapovat.
+
+    private data class BankRef(val accountNo: String, val numericCode: String)
+
+    /** Vyhledá Account podle DB ID a vrátí BankRef pokud máme číslo účtu + kód banky. */
+    private fun accountBankRef(accountDbId: java.util.UUID): BankRef? {
+        val acc = Accounts.selectAll()
+            .where { Accounts.id eq accountDbId }
+            .singleOrNull() ?: return null
+        // Preferuj rozdělená pole; jinak fallback na parsování IBAN.
+        val explicit = acc[Accounts.bankAccountNumber]?.takeIf { it.isNotBlank() }
+        val explicitCode = acc[Accounts.bankCode]?.takeIf { it.isNotBlank() }
+        if (explicit != null && explicitCode != null) {
+            return BankRef(explicit, explicitCode)
+        }
+        return parseIban(acc[Accounts.bankIban].orEmpty())
+    }
+
+    /**
+     * Český IBAN → (accountNo, bankCode). Formát:
+     *   CZxx BBBB AAAAAAAAAA AAAAAAAAAA  (16 číslic účtu + 4 číslice kódu banky)
+     * Např. "CZ65 0800 0000 1920 0014 5399" → ("0000192000145399", "0800").
+     */
+    private fun parseIban(iban: String): BankRef? {
+        val clean = iban.replace("\\s".toRegex(), "")
+        if (clean.length < 24 || !clean.startsWith("CZ", ignoreCase = true)) return null
+        return runCatching {
+            val bankCode = clean.substring(4, 8)
+            val accountNo = clean.substring(8).trimStart('0').ifEmpty { "0" }
+            BankRef(accountNo, bankCode)
+        }.getOrNull()
+    }
+
+    private fun appendAccountElement(sb: StringBuilder, ns: String, ref: BankRef) {
+        sb.appendLine("""        <$ns:account>""")
+        sb.appendLine("""          <typ:accountNo>${ref.accountNo.xml()}</typ:accountNo>""")
+        sb.appendLine("""          <typ:numericCode>${ref.numericCode.xml()}</typ:numericCode>""")
+        sb.appendLine("""        </$ns:account>""")
+    }
 }

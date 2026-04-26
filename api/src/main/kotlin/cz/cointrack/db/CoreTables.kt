@@ -54,9 +54,11 @@ object Accounts : SyncableTable("accounts") {
     val icon           = varchar("icon", 64).nullable()
     val excludedFromTotal = bool("excluded_from_total").default(false)
 
-    val bankProvider   = varchar("bank_provider", 32).nullable()
-    val bankExternalId = varchar("bank_external_id", 128).nullable()
-    val bankIban       = varchar("bank_iban", 64).nullable()
+    val bankProvider        = varchar("bank_provider", 32).nullable()
+    val bankExternalId      = varchar("bank_external_id", 128).nullable()
+    val bankIban            = varchar("bank_iban", 64).nullable()
+    val bankAccountNumber   = varchar("bank_account_number", 32).nullable()
+    val bankCode            = varchar("bank_code", 8).nullable()
 }
 
 // ─── Categories ────────────────────────────────────────────────────

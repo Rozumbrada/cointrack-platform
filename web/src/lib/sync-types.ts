@@ -38,6 +38,10 @@ export interface ServerAccount {
   excludedFromTotal?: boolean;
   bankProvider?: string;
   bankIban?: string;
+  /** Číslo účtu bez kódu banky (např. "0000192000145399"). Pro Pohoda XML export. */
+  bankAccountNumber?: string;
+  /** Kód banky (např. "0100" pro KB). Pro Pohoda XML export. */
+  bankCode?: string;
 }
 
 export interface ServerCategory {

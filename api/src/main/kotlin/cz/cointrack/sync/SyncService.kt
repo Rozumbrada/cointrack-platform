@@ -489,6 +489,8 @@ class SyncService {
         s[Accounts.excludedFromTotal] = d.boolOr("excludedFromTotal", false)
         s[Accounts.bankProvider] = d.strOrNull("bankProvider")
         s[Accounts.bankIban] = d.strOrNull("bankIban")
+        s[Accounts.bankAccountNumber] = d.strOrNull("bankAccountNumber")
+        s[Accounts.bankCode] = d.strOrNull("bankCode")
         s[Accounts.clientVersion] = cv
         s[Accounts.updatedAt] = updatedAt
         s[Accounts.deletedAt] = deletedAt
@@ -884,6 +886,8 @@ class SyncService {
             put("excludedFromTotal", r[Accounts.excludedFromTotal])
             r[Accounts.bankProvider]?.let { put("bankProvider", it) }
             r[Accounts.bankIban]?.let { put("bankIban", it) }
+            r[Accounts.bankAccountNumber]?.let { put("bankAccountNumber", it) }
+            r[Accounts.bankCode]?.let { put("bankCode", it) }
         },
     )
 
