@@ -10,6 +10,7 @@ import {
   extractDocument,
   uploadFile,
 } from "@/lib/gemini";
+import { ensureCashAccount } from "@/lib/cash-account";
 import { FormDialog, Field, inputClass } from "./FormDialog";
 
 /**
@@ -103,9 +104,13 @@ export function DocumentDialog({
       const entitySyncId = crypto.randomUUID();
       const fileKeys = storageKey ? [storageKey] : [];
 
-      // Pro hotovostní doklady (CASH) automaticky vytvořit "floating"
-      // tx bez vazby na účet — uživatel ji uvidí v listu transakcí pod
-      // filtrem "Hotovost" a může ji případně přiřadit k účtu později.
+      // Pro hotovostní doklady (CASH) auto-route na "Hotovost" účet
+      // (auto-create per profil, excludedFromTotal=true). Uživatel uvidí
+      // tx v listu pod filtrem Hotovost účtu a může ji přesunout jinam.
+      const cashAccountSyncId =
+        paymentMethod === "CASH"
+          ? await ensureCashAccount(profileSyncId, currency)
+          : undefined;
       const cashTxSyncId =
         paymentMethod === "CASH" ? crypto.randomUUID() : undefined;
 
@@ -149,7 +154,7 @@ export function DocumentDialog({
                 clientVersion: 1,
                 data: {
                   profileId: profileSyncId,
-                  // accountId NEUVEDEN → floating cash tx (nepočítá se do balance)
+                  accountId: cashAccountSyncId,
                   amount: (-Math.abs(total)).toFixed(2),
                   currency,
                   description: merchant.trim() || "Hotovostní platba",
@@ -224,7 +229,7 @@ export function DocumentDialog({
                 clientVersion: 1,
                 data: {
                   profileId: profileSyncId,
-                  // accountId NEUVEDEN → floating cash tx
+                  accountId: cashAccountSyncId,
                   amount: (isExpense ? -Math.abs(total) : Math.abs(total)).toFixed(2),
                   currency,
                   description:
