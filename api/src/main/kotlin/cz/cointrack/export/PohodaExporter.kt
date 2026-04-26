@@ -157,8 +157,10 @@ object PohodaExporter {
         sb.appendLine("""        <bnk:datePayment>${r[Receipts.date]}</bnk:datePayment>""")
         sb.appendLine("""        <bnk:dateStatement>${r[Receipts.date]}</bnk:dateStatement>""")
         sb.appendLine("""        <bnk:text>${text.xml()}</bnk:text>""")
-        bankRef?.let { appendAccountElement(sb, "bnk", it) }
         appendPartner(sb, r, "bnk")
+        // <bnk:account> patří v xs:sequence AŽ za partnerIdentity (po paymentAccount/paymentType).
+        // Když je dřív, Pohoda ho tiše ignoruje a použije default Banku.
+        bankRef?.let { appendAccountElement(sb, "bnk", it) }
         sb.appendLine("""      </bnk:bankHeader>""")
         appendVoucherSummaryBank(sb, r, items, isVatPayer)
         sb.appendLine("""    </bnk:bank>""")
