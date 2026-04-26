@@ -27,6 +27,9 @@ interface InvoiceData {
   supplierName?: string;
   supplierIco?: string;
   supplierDic?: string;
+  supplierStreet?: string;
+  supplierCity?: string;
+  supplierZip?: string;
   customerName?: string;
   note?: string;
   fileKeys?: string[];
@@ -182,10 +185,18 @@ export default function InvoiceDetailPage() {
           </div>
         </div>
 
-        {(r.supplierIco || r.supplierDic || r.variableSymbol || r.bankAccount || r.paymentMethod) && (
+        {(r.supplierIco || r.supplierDic || r.supplierStreet || r.supplierCity ||
+          r.variableSymbol || r.bankAccount || r.paymentMethod) && (
           <div className="mt-4 pt-4 border-t border-ink-100 grid grid-cols-2 gap-2 text-sm">
             {r.supplierIco && <Field label="IČO dodavatele" value={r.supplierIco} />}
             {r.supplierDic && <Field label="DIČ dodavatele" value={r.supplierDic} />}
+            {r.supplierStreet && <Field label="Ulice" value={r.supplierStreet} />}
+            {(r.supplierCity || r.supplierZip) && (
+              <Field
+                label="Město"
+                value={[r.supplierZip, r.supplierCity].filter(Boolean).join(" ")}
+              />
+            )}
             {r.variableSymbol && <Field label="Variabilní symbol" value={r.variableSymbol} />}
             {r.bankAccount && <Field label="Bank. účet" value={r.bankAccount} />}
             {r.paymentMethod && <Field label="Platba" value={r.paymentMethod} />}

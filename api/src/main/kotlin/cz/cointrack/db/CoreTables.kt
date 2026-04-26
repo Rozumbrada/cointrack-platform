@@ -100,6 +100,11 @@ object Receipts : SyncableTable("receipts") {
     val transactionId   = reference("transaction_id", Transactions).nullable()
 
     val merchantName    = varchar("merchant_name", 256).nullable()
+    val merchantIco     = varchar("merchant_ico", 16).nullable()
+    val merchantDic     = varchar("merchant_dic", 32).nullable()
+    val merchantStreet  = varchar("merchant_street", 256).nullable()
+    val merchantCity    = varchar("merchant_city", 128).nullable()
+    val merchantZip     = varchar("merchant_zip", 16).nullable()
     val date            = date("date")
     val time            = varchar("time", 8).nullable()
     val totalWithVat    = decimal("total_with_vat", 18, 2).default(java.math.BigDecimal.ZERO)

@@ -21,6 +21,9 @@ export interface InvoiceData {
   supplierName?: string;
   supplierIco?: string;
   supplierDic?: string;
+  supplierStreet?: string;
+  supplierCity?: string;
+  supplierZip?: string;
   customerName?: string;
   note?: string;
   fileKeys?: string[];
@@ -79,6 +82,9 @@ export function InvoiceEditor({
   const [supplierName, setSupplierName] = useState(initial?.data.supplierName ?? "");
   const [supplierIco, setSupplierIco] = useState(initial?.data.supplierIco ?? "");
   const [supplierDic, setSupplierDic] = useState(initial?.data.supplierDic ?? "");
+  const [supplierStreet, setSupplierStreet] = useState(initial?.data.supplierStreet ?? "");
+  const [supplierCity, setSupplierCity] = useState(initial?.data.supplierCity ?? "");
+  const [supplierZip, setSupplierZip] = useState(initial?.data.supplierZip ?? "");
   const [customerName, setCustomerName] = useState(initial?.data.customerName ?? "");
   const [note, setNote] = useState(initial?.data.note ?? "");
 
@@ -156,6 +162,9 @@ export function InvoiceEditor({
         supplierName: supplierName.trim() || undefined,
         supplierIco: supplierIco.trim() || undefined,
         supplierDic: supplierDic.trim() || undefined,
+        supplierStreet: supplierStreet.trim() || undefined,
+        supplierCity: supplierCity.trim() || undefined,
+        supplierZip: supplierZip.trim() || undefined,
         customerName: customerName.trim() || undefined,
         note: note.trim() || undefined,
         fileKeys: initial?.data.fileKeys ?? [],
@@ -297,24 +306,54 @@ export function InvoiceEditor({
           />
         </Field>
         {isExpense && (
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="IČO">
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="IČO">
+                <input
+                  type="text"
+                  value={supplierIco}
+                  onChange={(e) => setSupplierIco(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+              <Field label="DIČ">
+                <input
+                  type="text"
+                  value={supplierDic}
+                  onChange={(e) => setSupplierDic(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+            <Field label="Ulice">
               <input
                 type="text"
-                value={supplierIco}
-                onChange={(e) => setSupplierIco(e.target.value)}
+                value={supplierStreet}
+                onChange={(e) => setSupplierStreet(e.target.value)}
                 className={inputClass}
               />
             </Field>
-            <Field label="DIČ">
-              <input
-                type="text"
-                value={supplierDic}
-                onChange={(e) => setSupplierDic(e.target.value)}
-                className={inputClass}
-              />
-            </Field>
-          </div>
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="PSČ">
+                <input
+                  type="text"
+                  value={supplierZip}
+                  onChange={(e) => setSupplierZip(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+              <div className="col-span-2">
+                <Field label="Město">
+                  <input
+                    type="text"
+                    value={supplierCity}
+                    onChange={(e) => setSupplierCity(e.target.value)}
+                    className={inputClass}
+                  />
+                </Field>
+              </div>
+            </div>
+          </>
         )}
       </div>
 

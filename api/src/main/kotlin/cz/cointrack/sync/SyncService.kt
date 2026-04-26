@@ -625,6 +625,11 @@ class SyncService {
         s[Receipts.categoryId] = categoryDbId?.let { EntityID(it, Categories) }
         s[Receipts.transactionId] = transactionDbId?.let { EntityID(it, Transactions) }
         s[Receipts.merchantName] = d.strOrNull("merchantName")
+        s[Receipts.merchantIco] = d.strOrNull("merchantIco")
+        s[Receipts.merchantDic] = d.strOrNull("merchantDic")
+        s[Receipts.merchantStreet] = d.strOrNull("merchantStreet")
+        s[Receipts.merchantCity] = d.strOrNull("merchantCity")
+        s[Receipts.merchantZip] = d.strOrNull("merchantZip")
         s[Receipts.date] = LocalDate.parse(d.str("date"))
         s[Receipts.time] = d.strOrNull("time")
         s[Receipts.totalWithVat] = d.decimalOr("totalWithVat", BigDecimal.ZERO)
@@ -690,6 +695,9 @@ class SyncService {
         s[Invoices.supplierName] = d.strOrNull("supplierName")
         s[Invoices.supplierIco] = d.strOrNull("supplierIco")
         s[Invoices.supplierDic] = d.strOrNull("supplierDic")
+        s[Invoices.supplierStreet] = d.strOrNull("supplierStreet")
+        s[Invoices.supplierCity] = d.strOrNull("supplierCity")
+        s[Invoices.supplierZip] = d.strOrNull("supplierZip")
         s[Invoices.customerName] = d.strOrNull("customerName")
         s[Invoices.note] = d.strOrNull("note")
         s[Invoices.fileKeys] = d["fileKeys"]?.toString() ?: "[]"
@@ -946,6 +954,11 @@ class SyncService {
                 put("transactionId", (transactionIdToSync[it.value] ?: it.value).toString())
             }
             r[Receipts.merchantName]?.let { put("merchantName", it) }
+            r[Receipts.merchantIco]?.let { put("merchantIco", it) }
+            r[Receipts.merchantDic]?.let { put("merchantDic", it) }
+            r[Receipts.merchantStreet]?.let { put("merchantStreet", it) }
+            r[Receipts.merchantCity]?.let { put("merchantCity", it) }
+            r[Receipts.merchantZip]?.let { put("merchantZip", it) }
             put("date", r[Receipts.date].toString())
             r[Receipts.time]?.let { put("time", it) }
             put("totalWithVat", r[Receipts.totalWithVat].toPlainString())
@@ -1009,6 +1022,9 @@ class SyncService {
             r[Invoices.supplierName]?.let { put("supplierName", it) }
             r[Invoices.supplierIco]?.let { put("supplierIco", it) }
             r[Invoices.supplierDic]?.let { put("supplierDic", it) }
+            r[Invoices.supplierStreet]?.let { put("supplierStreet", it) }
+            r[Invoices.supplierCity]?.let { put("supplierCity", it) }
+            r[Invoices.supplierZip]?.let { put("supplierZip", it) }
             r[Invoices.customerName]?.let { put("customerName", it) }
             r[Invoices.note]?.let { put("note", it) }
             put("fileKeys", Json.parseToJsonElement(r[Invoices.fileKeys]))

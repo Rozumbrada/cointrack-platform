@@ -12,6 +12,11 @@ interface ReceiptData {
   categoryId?: string;
   transactionId?: string;
   merchantName?: string;
+  merchantIco?: string;
+  merchantDic?: string;
+  merchantStreet?: string;
+  merchantCity?: string;
+  merchantZip?: string;
   date: string;
   time?: string;
   totalWithVat: string | number;
@@ -147,9 +152,18 @@ export default function ReceiptDetailPage() {
           </div>
         </div>
 
-        {r.paymentMethod && (
-          <div className="mt-4 pt-4 border-t border-ink-100">
-            <Field label="Platba" value={labelPayment(r.paymentMethod)} />
+        {(r.paymentMethod || r.merchantIco || r.merchantDic || r.merchantStreet) && (
+          <div className="mt-4 pt-4 border-t border-ink-100 grid grid-cols-2 gap-2 text-sm">
+            {r.paymentMethod && <Field label="Platba" value={labelPayment(r.paymentMethod)} />}
+            {r.merchantIco && <Field label="IČO obchodníka" value={r.merchantIco} />}
+            {r.merchantDic && <Field label="DIČ obchodníka" value={r.merchantDic} />}
+            {r.merchantStreet && <Field label="Ulice" value={r.merchantStreet} />}
+            {(r.merchantCity || r.merchantZip) && (
+              <Field
+                label="Město"
+                value={[r.merchantZip, r.merchantCity].filter(Boolean).join(" ")}
+              />
+            )}
           </div>
         )}
       </header>

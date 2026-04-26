@@ -66,6 +66,11 @@ Vrať POUZE validní JSON bez markdownu nebo dalšího textu:
 {
   "docType": "receipt" | "invoice",
   "merchantName": string|null,
+  "merchantIco": string|null,
+  "merchantDic": string|null,
+  "merchantStreet": string|null,
+  "merchantCity": string|null,
+  "merchantZip": string|null,
   "date": "YYYY-MM-DD"|null,
   "time": "HH:MM"|null,
   "totalWithVat": number|null,
@@ -80,6 +85,9 @@ Vrať POUZE validní JSON bez markdownu nebo dalšího textu:
   "supplierName": string|null,
   "supplierIco": string|null,
   "supplierDic": string|null,
+  "supplierStreet": string|null,
+  "supplierCity": string|null,
+  "supplierZip": string|null,
   "customerName": string|null,
   "variableSymbol": string|null,
   "bankAccount": string|null,
@@ -115,6 +123,11 @@ interface GeminiResponse {
 export interface ParsedDocument {
   docType: "receipt" | "invoice";
   merchantName?: string | null;
+  merchantIco?: string | null;
+  merchantDic?: string | null;
+  merchantStreet?: string | null;
+  merchantCity?: string | null;
+  merchantZip?: string | null;
   date?: string | null;
   time?: string | null;
   totalWithVat?: number | null;
@@ -127,6 +140,9 @@ export interface ParsedDocument {
   supplierName?: string | null;
   supplierIco?: string | null;
   supplierDic?: string | null;
+  supplierStreet?: string | null;
+  supplierCity?: string | null;
+  supplierZip?: string | null;
   customerName?: string | null;
   variableSymbol?: string | null;
   bankAccount?: string | null;
