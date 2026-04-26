@@ -145,10 +145,11 @@ object PohodaExporter {
         // Pohoda bank.xsd — analog s voucher, jen jiný namespace + voucherType
         val merchant = r[Receipts.merchantName].orEmpty().ifBlank { "Karetní platba" }
         val text = ("Karetní platba - $merchant").take(240)
-        // Bankovní účet — buď z propojené tx přes Receipts.transactionId, nebo prázdné
-        val bankRef = r[Receipts.transactionId]?.let { txId ->
+        // Bankovní účet — buď z propojené tx přes Receipts.transactionId, nebo prázdné.
+        // Pro <bnk:account> (typ:refType) potřebujeme Pohoda Zkratku (typ:ids), ne číslo.
+        val pohodaIds = r[Receipts.transactionId]?.let { txId ->
             Transactions.selectAll().where { Transactions.id eq txId }.singleOrNull()
-                ?.let { tx -> tx[Transactions.accountId]?.let { accountBankRef(it.value) } }
+                ?.let { tx -> tx[Transactions.accountId]?.let { pohodaIdsForAccount(it.value) } }
         }
         sb.appendLine("""  <dat:dataPackItem id="$seq" version="2.0">""")
         sb.appendLine("""    <bnk:bank version="2.0">""")
@@ -158,9 +159,12 @@ object PohodaExporter {
         sb.appendLine("""        <bnk:dateStatement>${r[Receipts.date]}</bnk:dateStatement>""")
         sb.appendLine("""        <bnk:text>${text.xml()}</bnk:text>""")
         appendPartner(sb, r, "bnk")
-        // <bnk:account> patří v xs:sequence AŽ za partnerIdentity (po paymentAccount/paymentType).
-        // Když je dřív, Pohoda ho tiše ignoruje a použije default Banku.
-        bankRef?.let { appendAccountElement(sb, "bnk", it) }
+        // <bnk:account> v bank.xsd je typ:refType — povoluje JEN <typ:ids>.
+        pohodaIds?.let { ids ->
+            sb.appendLine("""        <bnk:account>""")
+            sb.appendLine("""          <typ:ids>${ids.xml()}</typ:ids>""")
+            sb.appendLine("""        </bnk:account>""")
+        }
         sb.appendLine("""      </bnk:bankHeader>""")
         appendVoucherSummaryBank(sb, r, items, isVatPayer)
         sb.appendLine("""    </bnk:bank>""")
@@ -521,6 +525,24 @@ object PohodaExporter {
     }
 
     /**
+     * Pohoda "Zkratka" (typ:ids, max 19 znaků) z [Account.name]. Strip diakritiky,
+     * upper, alfanumerické. Cointrack uživatel by měl pojmenovat účet shodně
+     * s Pohoda Banky → Zkratka (např. "FIO", "KB").
+     */
+    private fun pohodaIdsForAccount(accountDbId: java.util.UUID): String? {
+        val acc = Accounts.selectAll()
+            .where { Accounts.id eq accountDbId }
+            .singleOrNull() ?: return null
+        val name = acc[Accounts.name]
+        val raw = java.text.Normalizer.normalize(name, java.text.Normalizer.Form.NFD)
+            .replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
+            .uppercase()
+            .replace("[^A-Z0-9]".toRegex(), "")
+            .take(19)
+        return raw.takeIf { it.isNotBlank() }
+    }
+
+    /**
      * Český IBAN → (accountNo, bankCode). Formát:
      *   CZxx BBBB AAAAAAAAAA AAAAAAAAAA  (16 číslic účtu + 4 číslice kódu banky)
      * Např. "CZ65 0800 0000 1920 0014 5399" → ("0000192000145399", "0800").
@@ -535,10 +557,15 @@ object PohodaExporter {
         }.getOrNull()
     }
 
+    /**
+     * Emituje `<{ns}:account>` pro invoice (typ:accountType — povoluje
+     * accountNo + bankCode). NEPOUŽÍVAT pro `<bnk:account>` — tam je typ:refType
+     * a chce jen <typ:ids>!
+     */
     private fun appendAccountElement(sb: StringBuilder, ns: String, ref: BankRef) {
         sb.appendLine("""        <$ns:account>""")
         sb.appendLine("""          <typ:accountNo>${ref.accountNo.xml()}</typ:accountNo>""")
-        sb.appendLine("""          <typ:numericCode>${ref.numericCode.xml()}</typ:numericCode>""")
+        sb.appendLine("""          <typ:bankCode>${ref.numericCode.xml()}</typ:bankCode>""")
         sb.appendLine("""        </$ns:account>""")
     }
 }
