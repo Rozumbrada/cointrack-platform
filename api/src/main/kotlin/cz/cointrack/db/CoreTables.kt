@@ -59,6 +59,8 @@ object Accounts : SyncableTable("accounts") {
     val bankIban            = varchar("bank_iban", 64).nullable()
     val bankAccountNumber   = varchar("bank_account_number", 32).nullable()
     val bankCode            = varchar("bank_code", 8).nullable()
+    /** Pohoda Banky → Zkratka pro typ:ids při XML importu (max 19 znaků). */
+    val pohodaShortcut      = varchar("pohoda_shortcut", 19).nullable()
 }
 
 // ─── Categories ────────────────────────────────────────────────────

@@ -525,16 +525,16 @@ object PohodaExporter {
     }
 
     /**
-     * Pohoda "Zkratka" (typ:ids, max 19 znaků) z [Account.name]. Strip diakritiky,
-     * upper, alfanumerické. Cointrack uživatel by měl pojmenovat účet shodně
-     * s Pohoda Banky → Zkratka (např. "FIO", "KB").
+     * Pohoda "Zkratka" (typ:ids, max 19 znaků). Preferuje explicit
+     * [Accounts.pohodaShortcut]; jinak fallback na sanitovaný [Accounts.name].
      */
     private fun pohodaIdsForAccount(accountDbId: java.util.UUID): String? {
         val acc = Accounts.selectAll()
             .where { Accounts.id eq accountDbId }
             .singleOrNull() ?: return null
-        val name = acc[Accounts.name]
-        val raw = java.text.Normalizer.normalize(name, java.text.Normalizer.Form.NFD)
+        acc[Accounts.pohodaShortcut]?.trim()?.takeIf { it.isNotBlank() }
+            ?.take(19)?.let { return it }
+        val raw = java.text.Normalizer.normalize(acc[Accounts.name], java.text.Normalizer.Form.NFD)
             .replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
             .uppercase()
             .replace("[^A-Z0-9]".toRegex(), "")

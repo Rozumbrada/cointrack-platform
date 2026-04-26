@@ -491,6 +491,7 @@ class SyncService {
         s[Accounts.bankIban] = d.strOrNull("bankIban")
         s[Accounts.bankAccountNumber] = d.strOrNull("bankAccountNumber")
         s[Accounts.bankCode] = d.strOrNull("bankCode")
+        s[Accounts.pohodaShortcut] = d.strOrNull("pohodaShortcut")
         s[Accounts.clientVersion] = cv
         s[Accounts.updatedAt] = updatedAt
         s[Accounts.deletedAt] = deletedAt
@@ -888,6 +889,7 @@ class SyncService {
             r[Accounts.bankIban]?.let { put("bankIban", it) }
             r[Accounts.bankAccountNumber]?.let { put("bankAccountNumber", it) }
             r[Accounts.bankCode]?.let { put("bankCode", it) }
+            r[Accounts.pohodaShortcut]?.let { put("pohodaShortcut", it) }
         },
     )
 
