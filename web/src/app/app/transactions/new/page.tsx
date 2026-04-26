@@ -49,8 +49,10 @@ export default function NewTransactionPage() {
       setError("Není vybraný profil.");
       return;
     }
-    if (!accountId) {
-      setError("Vyber účet.");
+    // accountId == "__cash__" → hotovostní tx bez vazby na účet
+    const isCash = accountId === "__cash__";
+    if (!isCash && !accountId) {
+      setError("Vyber účet (nebo Hotovost).");
       return;
     }
     if (!amt || Number.isNaN(amt) || amt <= 0) {
@@ -58,7 +60,7 @@ export default function NewTransactionPage() {
       return;
     }
 
-    const account = accounts.find((a) => a.syncId === accountId);
+    const account = isCash ? undefined : accounts.find((a) => a.syncId === accountId);
     const currency = account?.data.currency ?? "CZK";
 
     setSaving(true);
@@ -69,7 +71,7 @@ export default function NewTransactionPage() {
 
       const data: ServerTransaction = {
         profileId: profileSyncId,
-        accountId,
+        accountId: isCash ? undefined : accountId,
         categoryId: type === "TRANSFER" ? undefined : categoryId || undefined,
         amount: signedAmount.toFixed(2),
         currency,
@@ -158,7 +160,8 @@ export default function NewTransactionPage() {
             onChange={(e) => setAccountId(e.target.value)}
             className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900"
           >
-            {accounts.length === 0 && <option value="">Nejsou účty</option>}
+            <option value="__cash__">💵 Hotovost (bez vazby na účet)</option>
+            {accounts.length > 0 && <option disabled>──────────</option>}
             {accounts.map((a) => (
               <option key={a.syncId} value={a.syncId}>
                 {a.data.name} ({a.data.currency})

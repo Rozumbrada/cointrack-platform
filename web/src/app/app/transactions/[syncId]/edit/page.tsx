@@ -44,7 +44,7 @@ export default function EditTransactionPage() {
       const signed = parseFloat(tx.data.amount) || 0;
       setType(t);
       setAmount(String(Math.abs(signed)));
-      setAccountId(tx.data.accountId ?? "");
+      setAccountId(tx.data.accountId ?? "__cash__");
       setCategoryId(tx.data.categoryId ?? "");
       setDescription(tx.data.description ?? "");
       setMerchant(tx.data.merchant ?? "");
@@ -69,8 +69,9 @@ export default function EditTransactionPage() {
     setError(null);
 
     const amt = Number.parseFloat(amount.replace(",", "."));
-    if (!accountId) {
-      setError("Vyber účet.");
+    const isCash = accountId === "__cash__";
+    if (!isCash && !accountId) {
+      setError("Vyber účet (nebo Hotovost).");
       return;
     }
     if (!amt || Number.isNaN(amt) || amt <= 0) {
@@ -88,7 +89,7 @@ export default function EditTransactionPage() {
       const signedAmount = type === "EXPENSE" ? -Math.abs(amt) : Math.abs(amt);
       const merged: ServerTransaction = {
         ...tx.data,
-        accountId,
+        accountId: isCash ? undefined : accountId,
         categoryId: type === "TRANSFER" ? undefined : categoryId || undefined,
         amount: signedAmount.toFixed(2),
         description: description || undefined,
@@ -217,7 +218,8 @@ export default function EditTransactionPage() {
             onChange={(e) => setAccountId(e.target.value)}
             className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900"
           >
-            <option value="">— vyber účet —</option>
+            <option value="__cash__">💵 Hotovost (bez vazby na účet)</option>
+            {accounts.length > 0 && <option disabled>──────────</option>}
             {accounts.map((a) => (
               <option key={a.syncId} value={a.syncId}>
                 {a.data.name} ({a.data.currency})

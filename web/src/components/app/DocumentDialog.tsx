@@ -103,6 +103,12 @@ export function DocumentDialog({
       const entitySyncId = crypto.randomUUID();
       const fileKeys = storageKey ? [storageKey] : [];
 
+      // Pro hotovostní doklady (CASH) automaticky vytvořit "floating"
+      // tx bez vazby na účet — uživatel ji uvidí v listu transakcí pod
+      // filtrem "Hotovost" a může ji případně přiřadit k účtu později.
+      const cashTxSyncId =
+        paymentMethod === "CASH" ? crypto.randomUUID() : undefined;
+
       if (docType === "receipt") {
         const data = {
           profileId: profileSyncId,
@@ -120,6 +126,7 @@ export function DocumentDialog({
           paymentMethod,
           note,
           photoKeys: fileKeys,
+          transactionId: cashTxSyncId,
         };
         const items = (parsed?.items ?? []).map((item, idx) => ({
           syncId: crypto.randomUUID(),
@@ -134,6 +141,25 @@ export function DocumentDialog({
             position: idx,
           } as Record<string, unknown>,
         }));
+        const cashTransactions = cashTxSyncId
+          ? [
+              {
+                syncId: cashTxSyncId,
+                updatedAt: now,
+                clientVersion: 1,
+                data: {
+                  profileId: profileSyncId,
+                  // accountId NEUVEDEN → floating cash tx (nepočítá se do balance)
+                  amount: (-Math.abs(total)).toFixed(2),
+                  currency,
+                  description: merchant.trim() || "Hotovostní platba",
+                  merchant: merchant.trim() || undefined,
+                  date,
+                  isTransfer: false,
+                } as Record<string, unknown>,
+              },
+            ]
+          : [];
         await withAuth((t) =>
           sync.push(t, {
             entities: {
@@ -146,6 +172,9 @@ export function DocumentDialog({
                 },
               ],
               ...(items.length > 0 ? { receipt_items: items } : {}),
+              ...(cashTransactions.length > 0
+                ? { transactions: cashTransactions }
+                : {}),
             },
           }),
         );
@@ -170,8 +199,9 @@ export function DocumentDialog({
           variableSymbol: variableSymbol.trim() || undefined,
           bankAccount: parsed?.bankAccount ?? undefined,
           paymentMethod,
-          paid: false,
+          paid: paymentMethod === "CASH",
           fileKeys,
+          linkedTransactionId: cashTxSyncId,
         };
         const items = (parsed?.items ?? []).map((item, idx) => ({
           syncId: crypto.randomUUID(),
@@ -186,6 +216,27 @@ export function DocumentDialog({
             position: idx,
           } as Record<string, unknown>,
         }));
+        const cashTransactions = cashTxSyncId
+          ? [
+              {
+                syncId: cashTxSyncId,
+                updatedAt: now,
+                clientVersion: 1,
+                data: {
+                  profileId: profileSyncId,
+                  // accountId NEUVEDEN → floating cash tx
+                  amount: (isExpense ? -Math.abs(total) : Math.abs(total)).toFixed(2),
+                  currency,
+                  description:
+                    (isExpense ? merchant : (parsed?.customerName ?? merchant))
+                      .trim() || "Hotovostní platba",
+                  merchant: merchant.trim() || undefined,
+                  date,
+                  isTransfer: false,
+                } as Record<string, unknown>,
+              },
+            ]
+          : [];
         await withAuth((t) =>
           sync.push(t, {
             entities: {
@@ -198,6 +249,9 @@ export function DocumentDialog({
                 },
               ],
               ...(items.length > 0 ? { invoice_items: items } : {}),
+              ...(cashTransactions.length > 0
+                ? { transactions: cashTransactions }
+                : {}),
             },
           }),
         );

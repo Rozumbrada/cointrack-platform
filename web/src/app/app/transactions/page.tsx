@@ -6,6 +6,7 @@ import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
 import {
+  ServerAccount,
   ServerCategory,
   ServerTransaction,
   toUiTransaction,
@@ -21,6 +22,8 @@ import {
 export default function TransactionsPage() {
   const { loading, error, entitiesByProfile, diagnose, profileSyncId, reload } = useSyncData();
   const [filter, setFilter] = useState<"ALL" | "INCOME" | "EXPENSE">("ALL");
+  /** "ALL" = vše, "CASH" = bez vazby na účet, jinak account syncId */
+  const [accountFilter, setAccountFilter] = useState<string>("ALL");
   const [query, setQuery] = useState("");
   const [period, setPeriod] = useState<Period>("30d");
   const [customRange, setCustomRange] = useState<{ from: string; to: string }>({
@@ -39,6 +42,7 @@ export default function TransactionsPage() {
 
   const txEntities = entitiesByProfile<ServerTransaction>("transactions");
   const cats = entitiesByProfile<ServerCategory>("categories");
+  const accounts = entitiesByProfile<ServerAccount>("accounts");
 
   // Map: kategorie syncId → kategorie data
   const catMap = useMemo(() => {
@@ -61,6 +65,11 @@ export default function TransactionsPage() {
     return [...uiTxs]
       .filter((r) => (filter === "ALL" ? true : r.type === filter))
       .filter((r) => {
+        if (accountFilter === "ALL") return true;
+        if (accountFilter === "CASH") return !r.accountSyncId;
+        return r.accountSyncId === accountFilter;
+      })
+      .filter((r) => {
         if (range.from && r.date < range.from) return false;
         if (range.to && r.date > range.to) return false;
         return true;
@@ -72,7 +81,7 @@ export default function TransactionsPage() {
           : true,
       )
       .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
-  }, [uiTxs, filter, query, range]);
+  }, [uiTxs, filter, accountFilter, query, range]);
 
   const allSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.syncId));
 
@@ -225,6 +234,20 @@ export default function TransactionsPage() {
             </button>
           ))}
         </div>
+        <select
+          value={accountFilter}
+          onChange={(e) => setAccountFilter(e.target.value)}
+          className="h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-700"
+        >
+          <option value="ALL">Všechny účty + hotovost</option>
+          <option value="CASH">💵 Pouze hotovost</option>
+          <option disabled>──────────</option>
+          {accounts.map((a) => (
+            <option key={a.syncId} value={a.syncId}>
+              {a.data.name} ({a.data.currency})
+            </option>
+          ))}
+        </select>
       </div>
 
       {inSelectionMode && (
@@ -323,9 +346,14 @@ export default function TransactionsPage() {
                         <div className="text-sm text-ink-900 truncate">
                           {tx.description || tx.merchant || "(bez popisu)"}
                         </div>
-                        <div className="text-xs text-ink-500 flex items-center gap-2">
+                        <div className="text-xs text-ink-500 flex items-center gap-2 flex-wrap">
                           <span>{formatDate(tx.date)}</span>
                           {cat && <span className="text-ink-400 truncate">· {cat.name}</span>}
+                          {!tx.accountSyncId && (
+                            <span className="text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide">
+                              💵 hotovost
+                            </span>
+                          )}
                         </div>
                       </div>
                       <div className={`text-sm font-semibold tabular-nums ${amountColor}`}>

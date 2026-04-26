@@ -41,8 +41,10 @@ export default function TransactionDetailPage() {
   );
 
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [accountPickerOpen, setAccountPickerOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const allAccounts = entitiesByProfile<ServerAccount>("accounts");
 
   if (loading) return <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>;
   if (error)
@@ -199,27 +201,49 @@ export default function TransactionDetailPage() {
         <div className="text-ink-400">›</div>
       </button>
 
-      {/* Account card */}
-      {account && (
-        <section className="bg-white rounded-2xl border border-ink-200 p-4 flex items-center gap-3">
-          <div
-            className="w-10 h-10 rounded-full grid place-items-center shrink-0"
-            style={{ backgroundColor: colorFromInt(account.data.color) }}
-          >
-            <span
-              className="material-icons"
-              style={{ fontSize: "20px", color: colorFromIntSolid(account.data.color) }}
+      {/* Account card — kliknutelné, ať se dá změnit / přiřadit hotovostní tx */}
+      <button
+        onClick={() => setAccountPickerOpen(true)}
+        disabled={busy}
+        className="w-full bg-white rounded-2xl border border-ink-200 p-4 flex items-center gap-3 hover:bg-ink-50/50 transition-colors text-left"
+      >
+        {account ? (
+          <>
+            <div
+              className="w-10 h-10 rounded-full grid place-items-center shrink-0"
+              style={{ backgroundColor: colorFromInt(account.data.color) }}
             >
-              {account.data.icon || "account_balance"}
-            </span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-xs text-ink-500 uppercase tracking-wide">Účet</div>
-            <div className="text-base font-medium text-ink-900 truncate">{account.data.name}</div>
-          </div>
-          <div className="text-xs text-ink-500">{account.data.currency}</div>
-        </section>
-      )}
+              <span
+                className="material-icons"
+                style={{ fontSize: "20px", color: colorFromIntSolid(account.data.color) }}
+              >
+                {account.data.icon || "account_balance"}
+              </span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs text-ink-500 uppercase tracking-wide">Účet</div>
+              <div className="text-base font-medium text-ink-900 truncate">
+                {account.data.name}
+              </div>
+            </div>
+            <div className="text-xs text-ink-500">{account.data.currency}</div>
+          </>
+        ) : (
+          <>
+            <div className="w-10 h-10 rounded-full grid place-items-center shrink-0 bg-amber-100">
+              <span className="text-xl">💵</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs text-ink-500 uppercase tracking-wide">Účet</div>
+              <div className="text-base text-amber-700">Hotovost (bez vazby na účet)</div>
+              <div className="text-xs text-ink-500 mt-0.5">
+                Klikni pro přiřazení k účtu — částka se odečte ze zůstatku.
+              </div>
+            </div>
+          </>
+        )}
+        <div className="text-ink-400">›</div>
+      </button>
 
       {/* Merchant card (if set and different from description) */}
       {d.merchant && (
@@ -278,6 +302,109 @@ export default function TransactionDetailPage() {
           onClose={() => setPickerOpen(false)}
         />
       )}
+
+      {accountPickerOpen && (
+        <AccountPicker
+          allAccounts={allAccounts}
+          currentSyncId={tx.data.accountId}
+          onSelect={async (accSyncId) => {
+            setAccountPickerOpen(false);
+            await pushUpdate({ accountId: accSyncId ?? undefined });
+          }}
+          onClose={() => setAccountPickerOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function AccountPicker({
+  allAccounts,
+  currentSyncId,
+  onSelect,
+  onClose,
+}: {
+  allAccounts: Array<{ syncId: string; data: ServerAccount }>;
+  currentSyncId?: string;
+  onSelect: (syncId: string | null) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-xl w-full max-w-md p-4 space-y-2 max-h-[80vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-2">
+          <h2 className="text-lg font-semibold text-ink-900">Vyber účet</h2>
+          <button
+            onClick={onClose}
+            className="text-ink-400 hover:text-ink-600 text-xl leading-none"
+          >
+            ×
+          </button>
+        </div>
+        <div className="overflow-y-auto flex-1 space-y-1">
+          <button
+            onClick={() => onSelect(null)}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-ink-50 ${
+              currentSyncId == null ? "bg-amber-50" : ""
+            }`}
+          >
+            <div className="w-8 h-8 rounded-full grid place-items-center bg-amber-100 shrink-0">
+              💵
+            </div>
+            <div className="flex-1 text-left">
+              <div className="text-sm text-ink-900">Hotovost (bez vazby)</div>
+              <div className="text-xs text-ink-500">Nepočítá se do zůstatku žádného účtu.</div>
+            </div>
+            {currentSyncId == null && (
+              <span className="material-icons text-amber-600" style={{ fontSize: "18px" }}>
+                check
+              </span>
+            )}
+          </button>
+          {allAccounts.map((a) => {
+            const isSel = a.syncId === currentSyncId;
+            return (
+              <button
+                key={a.syncId}
+                onClick={() => onSelect(a.syncId)}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-ink-50 ${
+                  isSel ? "bg-brand-50" : ""
+                }`}
+              >
+                <div
+                  className="w-8 h-8 rounded-full grid place-items-center shrink-0"
+                  style={{ backgroundColor: colorFromInt(a.data.color) }}
+                >
+                  <span
+                    className="material-icons"
+                    style={{
+                      fontSize: "18px",
+                      color: colorFromIntSolid(a.data.color),
+                    }}
+                  >
+                    {a.data.icon || "account_balance"}
+                  </span>
+                </div>
+                <div className="flex-1 text-left">
+                  <div className="text-sm text-ink-900">{a.data.name}</div>
+                  <div className="text-xs text-ink-500">{a.data.currency}</div>
+                </div>
+                {isSel && (
+                  <span className="material-icons text-brand-600" style={{ fontSize: "18px" }}>
+                    check
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
