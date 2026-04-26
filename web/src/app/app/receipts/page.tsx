@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { sync, SyncEntity } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
+import { getCurrentProfileSyncId } from "@/lib/profile-store";
 import {
   Period,
   PeriodSelector,
   periodRange,
 } from "@/components/app/PeriodSelector";
+import { ExportButton } from "@/components/app/ExportButton";
 
 interface ReceiptData {
   profileId?: string;
@@ -35,6 +37,7 @@ export default function ReceiptsPage() {
     from: "",
     to: "",
   });
+  const profileSyncId = getCurrentProfileSyncId();
 
   useEffect(() => {
     (async () => {
@@ -86,12 +89,15 @@ export default function ReceiptsPage() {
             Naskenované účtenky. Klikni na řádek pro detail.
           </p>
         </div>
-        <PeriodSelector
-          period={period}
-          onChange={setPeriod}
-          custom={customRange}
-          onCustomChange={setCustomRange}
-        />
+        <div className="flex items-center gap-3">
+          <PeriodSelector
+            period={period}
+            onChange={setPeriod}
+            custom={customRange}
+            onCustomChange={setCustomRange}
+          />
+          <ExportButton type="receipts" profileSyncId={profileSyncId} />
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 flex-wrap">

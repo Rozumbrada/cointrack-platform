@@ -22,6 +22,7 @@ import cz.cointrack.org.permissionRoutes
 import cz.cointrack.plugins.*
 import cz.cointrack.storage.StorageConfig
 import cz.cointrack.storage.StorageService
+import cz.cointrack.export.exportRoutes
 import cz.cointrack.storage.storageRoutes
 import cz.cointrack.sync.SyncService
 import cz.cointrack.sync.syncRoutes
@@ -108,6 +109,7 @@ fun Application.module() {
             accountantRoutes(accountantService)
             if (bankService != null) bankRoutes(bankService)
             geminiRoutes(geminiService)
+            exportRoutes()
 
             // TODO (Sprint 8): billing endpoints
         }

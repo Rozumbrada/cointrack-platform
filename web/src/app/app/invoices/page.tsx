@@ -10,6 +10,7 @@ import {
   periodRange,
 } from "@/components/app/PeriodSelector";
 import { InvoiceEditor } from "@/components/app/InvoiceEditor";
+import { ExportButton } from "@/components/app/ExportButton";
 
 interface InvoiceData {
   invoiceNumber?: string;
@@ -105,6 +106,7 @@ export default function InvoicesPage() {
             custom={customRange}
             onCustomChange={setCustomRange}
           />
+          <ExportButton type="invoices" profileSyncId={profileSyncId} />
           <button
             onClick={() => setCreating(true)}
             className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
