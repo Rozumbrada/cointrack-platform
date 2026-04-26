@@ -15,7 +15,7 @@ object Users : UUIDTable("users") {
     val passwordHash     = varchar("password_hash", 255).nullable()
     val displayName      = varchar("display_name", 128).nullable()
     val locale           = varchar("locale", 8).default("cs")
-    val tier             = varchar("tier", 32).default("free")
+    val tier             = varchar("tier", 32).default("FREE")
     val createdAt        = timestamp("created_at")
     val updatedAt        = timestamp("updated_at")
     val deletedAt        = timestamp("deleted_at").nullable()

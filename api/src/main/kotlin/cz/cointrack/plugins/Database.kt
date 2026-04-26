@@ -87,6 +87,7 @@ private val MIGRATIONS: List<Pair<String, String>> = listOf(
     "10.0" to "/db/migration/V10.0__bank_profile_assignments.sql",
     "11.0" to "/db/migration/V11.0__receipt_merchant_address.sql",
     "12.0" to "/db/migration/V12.0__account_bank_number.sql",
+    "13.0" to "/db/migration/V13.0__user_subscription_tier_uppercase.sql",
 )
 
 private fun runMigrations(dataSource: DataSource) {

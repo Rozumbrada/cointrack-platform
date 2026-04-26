@@ -52,7 +52,7 @@ class AuthService(
                 it[passwordHash] = pwdHash
                 it[displayName] = req.displayName
                 it[locale] = req.locale ?: "cs"
-                it[tier] = "free"
+                it[tier] = "FREE"
                 it[createdAt] = now
                 it[updatedAt] = now
             }.value
@@ -65,7 +65,7 @@ class AuthService(
             email = normalizedEmail,
             displayName = req.displayName,
             locale = req.locale ?: "cs",
-            tier = "free",
+            tier = "FREE",
             emailVerified = false,
         )
     }
