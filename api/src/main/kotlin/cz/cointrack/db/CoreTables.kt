@@ -41,6 +41,14 @@ object Profiles : SyncableTable("profiles") {
     val city           = varchar("city", 128).nullable()
     val phone          = varchar("phone", 64).nullable()
     val email          = varchar("email", 255).nullable()
+
+    // ── iDoklad integration (V15) ──
+    val idokladClientId         = varchar("idoklad_client_id", 128).nullable()
+    /** AES-GCM ciphertext (base64); plaintext nikdy neopouští server. */
+    val idokladClientSecretEnc  = text("idoklad_client_secret_enc").nullable()
+    val idokladAccessToken      = text("idoklad_access_token").nullable()
+    val idokladTokenExpiresAt   = timestamp("idoklad_token_expires_at").nullable()
+    val idokladLastSyncAt       = timestamp("idoklad_last_sync_at").nullable()
 }
 
 // ─── Accounts ──────────────────────────────────────────────────────
