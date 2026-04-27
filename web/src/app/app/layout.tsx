@@ -73,11 +73,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const nav: Array<{ href: string; label: string; section?: string }> = [
     { href: "/app/dashboard", label: "Přehled" },
     { href: "/app/accounts", label: "Bankovní účty / hotovost" },
+    { href: "/app/banks", label: "Bankovní spojení" },
     { href: "/app/transactions", label: "Transakce" },
     { href: "/app/categories", label: "Kategorie" },
     { href: "/app/statistics", label: "Statistiky a grafy" },
     { href: "/app/receipts", label: "Účtenky", section: "Doklady" },
     { href: "/app/invoices", label: "Faktury" },
+    { href: "/app/idoklad", label: "iDoklad" },
     { href: "/app/warranties", label: "Záruky" },
     { href: "/app/loyalty-cards", label: "Věrnostní karty" },
     { href: "/app/budgets", label: "Rozpočty", section: "Plánování" },
@@ -86,7 +88,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/app/goals", label: "Cíle" },
     { href: "/app/shopping", label: "Nákupní seznamy" },
     { href: "/app/investments", label: "Investice", section: "Majetek" },
-    { href: "/app/banks", label: "Bankovní spojení" },
+    { href: "/app/exchange-rates", label: "Kurzy měn", section: "Nástroje" },
+    { href: "/app/import", label: "Import CSV" },
     { href: "/app/organizations", label: "Organizace a skupiny", section: "Sociální" },
     { href: "/app/settings", label: "Nastavení" },
   ];
