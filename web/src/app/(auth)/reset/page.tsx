@@ -11,6 +11,7 @@ function ResetForm() {
   const params = useSearchParams();
   const token = params.get("token") ?? "";
   const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
@@ -20,6 +21,10 @@ function ResetForm() {
     setError(null);
     if (password.length < 8) {
       setError("Heslo musí mít aspoň 8 znaků.");
+      return;
+    }
+    if (password !== passwordConfirm) {
+      setError("Hesla se neshodují.");
       return;
     }
     setLoading(true);
@@ -75,6 +80,24 @@ function ResetForm() {
             minLength={8}
             className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
           />
+          <p className="text-xs text-ink-500 mt-1">Aspoň 8 znaků.</p>
+        </div>
+        <div>
+          <label htmlFor="passwordConfirm" className="block text-sm font-medium text-ink-900 mb-1.5">
+            Heslo znovu
+          </label>
+          <input
+            id="passwordConfirm"
+            type="password"
+            value={passwordConfirm}
+            onChange={(e) => setPasswordConfirm(e.target.value)}
+            required
+            minLength={8}
+            className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+          />
+          {passwordConfirm.length > 0 && passwordConfirm !== password && (
+            <p className="text-xs text-red-600 mt-1">Hesla se neshodují.</p>
+          )}
         </div>
         {error && (
           <div className="rounded-lg bg-red-50 border border-red-200 text-red-700 px-3 py-2 text-sm">
