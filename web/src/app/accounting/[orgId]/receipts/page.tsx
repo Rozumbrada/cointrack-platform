@@ -15,6 +15,8 @@ interface Receipt {
   totalWithVat: string;
   currency: string;
   paymentMethod: string | null;
+  linkedAccountId?: string | null;
+  accountName?: string | null;
 }
 
 export default function AccountantReceiptsPage() {
@@ -57,13 +59,41 @@ export default function AccountantReceiptsPage() {
     return filtered.reduce((s, r) => s + (parseFloat(r.totalWithVat) || 0), 0);
   }, [filtered]);
 
+  async function downloadZip() {
+    try {
+      const token = await withAuth((t) => Promise.resolve(t));
+      const res = await fetch(
+        `/api/v1/accounting/orgs/${params.orgId}/export.zip`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `cointrack_export_${new Date().toISOString().slice(0, 10)}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-ink-900">Účtenky organizace</h1>
-        <p className="text-sm text-ink-600 mt-1">
-          Souhrn všech naskenovaných účtenek od členů organizace.
-        </p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-semibold text-ink-900">Účtenky organizace</h1>
+          <p className="text-sm text-ink-600 mt-1">
+            Souhrn všech naskenovaných účtenek od členů organizace.
+          </p>
+        </div>
+        <button
+          onClick={downloadZip}
+          className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
+        >
+          📦 Stáhnout vše (ZIP)
+        </button>
       </div>
 
       <div className="flex gap-3">

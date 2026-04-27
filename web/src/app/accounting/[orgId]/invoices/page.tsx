@@ -77,13 +77,41 @@ export default function AccountantInvoicesPage() {
     return { received, issued, unpaid };
   }, [filtered]);
 
+  async function downloadZip() {
+    try {
+      const token = await withAuth((t) => Promise.resolve(t));
+      const res = await fetch(
+        `/api/v1/accounting/orgs/${params.orgId}/export.zip`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `cointrack_export_${new Date().toISOString().slice(0, 10)}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-ink-900">Faktury organizace</h1>
-        <p className="text-sm text-ink-600 mt-1">
-          Souhrn přijatých a vystavených faktur napříč všemi profily v organizaci.
-        </p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-semibold text-ink-900">Faktury organizace</h1>
+          <p className="text-sm text-ink-600 mt-1">
+            Souhrn přijatých a vystavených faktur napříč všemi profily v organizaci.
+          </p>
+        </div>
+        <button
+          onClick={downloadZip}
+          className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
+        >
+          📦 Stáhnout vše (ZIP)
+        </button>
       </div>
 
       <div className="grid grid-cols-3 gap-4">

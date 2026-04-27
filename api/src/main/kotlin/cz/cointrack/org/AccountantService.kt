@@ -47,6 +47,8 @@ class AccountantService {
         val totalWithVat: String,
         val currency: String,
         val paymentMethod: String?,
+        val linkedAccountId: String? = null,
+        val accountName: String? = null,
     )
 
     @Serializable
@@ -64,6 +66,8 @@ class AccountantService {
         val supplierName: String?,
         val customerName: String?,
         val paid: Boolean,
+        val linkedAccountId: String? = null,
+        val accountName: String? = null,
     )
 
     /** Seznam organizací, kde má volající role 'accountant'. */
@@ -183,6 +187,95 @@ class AccountantService {
                 )
             }
     }
+
+    /**
+     * Hromadný ZIP export pro účetní — `receipts.csv` + `invoices.csv`
+     * se všemi doklady org (oba listy s českými hlavičkami a ; jako separator,
+     * UTF-8 BOM pro Excel). Vrací bytes ZIP.
+     */
+    suspend fun exportZip(userId: UUID, orgId: UUID): ByteArray {
+        val receipts = listReceipts(userId, orgId)
+        val invoices = listInvoices(userId, orgId)
+
+        val baos = java.io.ByteArrayOutputStream()
+        java.util.zip.ZipOutputStream(baos).use { zip ->
+            // ── Receipts CSV ──
+            zip.putNextEntry(java.util.zip.ZipEntry("receipts.csv"))
+            zip.write(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()))  // UTF-8 BOM
+            zip.write(buildReceiptsCsv(receipts).toByteArray(Charsets.UTF_8))
+            zip.closeEntry()
+
+            // ── Invoices CSV ──
+            zip.putNextEntry(java.util.zip.ZipEntry("invoices.csv"))
+            zip.write(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()))
+            zip.write(buildInvoicesCsv(invoices).toByteArray(Charsets.UTF_8))
+            zip.closeEntry()
+
+            // ── Souhrn (text) ──
+            zip.putNextEntry(java.util.zip.ZipEntry("README.txt"))
+            zip.write(buildSummary(receipts, invoices).toByteArray(Charsets.UTF_8))
+            zip.closeEntry()
+        }
+        return baos.toByteArray()
+    }
+
+    private fun buildReceiptsCsv(items: List<AccountantReceiptDto>): String = buildString {
+        appendLine("Datum;Obchodník;Profil;Vlastník;Platba;Částka;Měna")
+        for (r in items) {
+            appendLine(
+                listOf(
+                    r.date,
+                    csvEscape(r.merchantName ?: ""),
+                    csvEscape(r.profileName),
+                    csvEscape(r.ownerEmail),
+                    when (r.paymentMethod) { "CASH" -> "Hotově"; "CARD" -> "Kartou"; else -> "" },
+                    r.totalWithVat,
+                    r.currency,
+                ).joinToString(";")
+            )
+        }
+    }
+
+    private fun buildInvoicesCsv(items: List<AccountantInvoiceDto>): String = buildString {
+        appendLine("Číslo;Typ;Vystaveno;Splatnost;Profil;Vlastník;Dodavatel;Odběratel;Částka;Měna;Uhrazeno")
+        for (i in items) {
+            appendLine(
+                listOf(
+                    csvEscape(i.invoiceNumber ?: ""),
+                    if (i.isExpense) "Přijatá" else "Vydaná",
+                    i.issueDate ?: "",
+                    i.dueDate ?: "",
+                    csvEscape(i.profileName),
+                    csvEscape(i.ownerEmail),
+                    csvEscape(i.supplierName ?: ""),
+                    csvEscape(i.customerName ?: ""),
+                    i.totalWithVat,
+                    i.currency,
+                    if (i.paid) "ano" else "ne",
+                ).joinToString(";")
+            )
+        }
+    }
+
+    private fun buildSummary(
+        receipts: List<AccountantReceiptDto>,
+        invoices: List<AccountantInvoiceDto>,
+    ): String = buildString {
+        appendLine("Cointrack export pro účetní")
+        appendLine("Vygenerováno: ${java.time.LocalDateTime.now()}")
+        appendLine()
+        appendLine("Účtenky: ${receipts.size}")
+        appendLine("Faktury: ${invoices.size}")
+        appendLine("  • Vydané: ${invoices.count { !it.isExpense }}")
+        appendLine("  • Přijaté: ${invoices.count { it.isExpense }}")
+        appendLine()
+        appendLine("Otevři CSV soubory v Excelu (UTF-8 BOM, středník jako oddělovač).")
+    }
+
+    private fun csvEscape(s: String): String =
+        if (s.contains(';') || s.contains('"') || s.contains('\n')) {
+            "\"" + s.replace("\"", "\"\"") + "\""
+        } else s
 
     private suspend fun requireAccountantRole(userId: UUID, orgId: UUID) {
         val role = db {
