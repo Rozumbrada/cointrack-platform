@@ -51,8 +51,15 @@ export default function ReceiptDetailPage() {
   const allReceipts = entitiesByProfile<ReceiptData>("receipts");
   const allItems = rawEntities("receipt_items");
   const allAccounts = entitiesByProfile<AccountListEntry["data"]>("accounts");
+  const allTransactions = entitiesByProfile<{
+    amount: string | number;
+    type: string;
+    accountId?: string;
+    dateTime?: string;
+  }>("transactions");
 
   const [editing, setEditing] = useState(false);
+  const [linking, setLinking] = useState(false);
 
   const receipt = useMemo(
     () => allReceipts.find((r) => r.syncId === params.syncId),
@@ -69,6 +76,49 @@ export default function ReceiptDetailPage() {
       .map((e) => ({ syncId: e.syncId, data: e.data as unknown as ReceiptItemData }))
       .sort((a, b) => (a.data.position ?? 0) - (b.data.position ?? 0));
   }, [allItems, receipt]);
+
+  async function onFindAndLink() {
+    if (!receipt) return;
+    setLinking(true);
+    try {
+      const r = receipt.data;
+      const total = parseFloat(String(r.totalWithVat));
+      const baseDate = new Date(r.date);
+      // Najdi transakci s ±0.01 Kč shodou částky a ±2 dny od data účtenky
+      const match = allTransactions.find((tx) => {
+        const amt = parseFloat(String(tx.data.amount));
+        if (Math.abs(amt - total) > 0.01) return false;
+        if (tx.data.type !== "EXPENSE") return false;
+        if (!tx.data.dateTime) return false;
+        const txDate = new Date(tx.data.dateTime);
+        const diffMs = Math.abs(txDate.getTime() - baseDate.getTime());
+        return diffMs <= 2 * 24 * 3600 * 1000;
+      });
+      if (!match) {
+        alert("Žádná odpovídající transakce nenalezena (±2 dny, ±0.01 Kč).");
+        return;
+      }
+      const now = new Date().toISOString();
+      const updated: Record<string, unknown> = {
+        ...(r as unknown as Record<string, unknown>),
+        transactionId: match.syncId,
+      };
+      await withAuth((t) =>
+        sync.push(t, {
+          entities: {
+            receipts: [
+              { syncId: receipt.syncId, updatedAt: now, clientVersion: 1, data: updated },
+            ],
+          },
+        }),
+      );
+      await reload();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLinking(false);
+    }
+  }
 
   async function onDelete() {
     if (!receipt) return;
@@ -159,10 +209,18 @@ export default function ReceiptDetailPage() {
               {r.date}
               {r.time && <span> · {r.time}</span>}
             </p>
-            {r.transactionId && (
+            {r.transactionId ? (
               <p className="text-xs text-emerald-700 mt-1">
                 ✓ Spárováno s bankovní transakcí
               </p>
+            ) : (
+              <button
+                onClick={onFindAndLink}
+                disabled={linking}
+                className="text-xs mt-1 text-brand-700 hover:text-brand-800 disabled:opacity-50"
+              >
+                🔗 {linking ? "Hledám…" : "Propojit s transakcí"}
+              </button>
             )}
           </div>
           <div className="text-right">

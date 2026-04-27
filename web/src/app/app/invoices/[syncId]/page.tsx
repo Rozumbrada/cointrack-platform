@@ -289,6 +289,7 @@ export default function InvoiceDetailPage() {
           }))}
           rawItemEntities={allItems}
           profileSyncId={profileSyncId}
+          accounts={entitiesByProfile<{ name: string; type?: string }>("accounts")}
           onClose={() => setEditing(false)}
           onSaved={async () => {
             setEditing(false);

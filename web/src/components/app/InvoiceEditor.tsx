@@ -27,6 +27,7 @@ export interface InvoiceData {
   customerName?: string;
   note?: string;
   fileKeys?: string[];
+  linkedAccountId?: string;
 }
 
 export interface InvoiceItemData {
@@ -55,6 +56,7 @@ export function InvoiceEditor({
   initialItems,
   profileSyncId,
   rawItemEntities,
+  accounts = [],
   onClose,
   onSaved,
 }: {
@@ -63,6 +65,8 @@ export function InvoiceEditor({
   profileSyncId: string | null;
   /** Pro edit režim — všechny existující invoice_items (pro soft-delete odstraněných řádků). */
   rawItemEntities: SyncEntity[];
+  /** Účty profilu pro picker linkedAccountId (volitelné — bez nich se picker neukáže). */
+  accounts?: Array<{ syncId: string; data: { name: string; type?: string } }>;
   onClose: () => void;
   onSaved: (syncId: string) => void;
 }) {
@@ -87,6 +91,7 @@ export function InvoiceEditor({
   const [supplierZip, setSupplierZip] = useState(initial?.data.supplierZip ?? "");
   const [customerName, setCustomerName] = useState(initial?.data.customerName ?? "");
   const [note, setNote] = useState(initial?.data.note ?? "");
+  const [linkedAccountId, setLinkedAccountId] = useState(initial?.data.linkedAccountId ?? "");
 
   const [items, setItems] = useState<DraftItem[]>(() =>
     initialItems.length > 0
@@ -168,6 +173,7 @@ export function InvoiceEditor({
         customerName: customerName.trim() || undefined,
         note: note.trim() || undefined,
         fileKeys: initial?.data.fileKeys ?? [],
+        linkedAccountId: linkedAccountId || undefined,
       };
 
       // Položky — uložit aktuální + soft-delete ty, co byly v initialItems ale už nejsou
@@ -289,6 +295,21 @@ export function InvoiceEditor({
           />
         </Field>
       </div>
+
+      {accounts.length > 0 && (
+        <Field label="Bankovní účet / hotovost">
+          <select
+            value={linkedAccountId}
+            onChange={(e) => setLinkedAccountId(e.target.value)}
+            className={inputClass}
+          >
+            <option value="">Nepřiřazeno</option>
+            {accounts.map((a) => (
+              <option key={a.syncId} value={a.syncId}>{a.data.name}</option>
+            ))}
+          </select>
+        </Field>
+      )}
 
       {/* Partner */}
       <div className="border border-ink-200 rounded-lg p-3 space-y-3">

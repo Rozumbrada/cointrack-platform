@@ -259,6 +259,7 @@ export default function InvoicesPage() {
           initialItems={[]}
           rawItemEntities={[]}
           profileSyncId={profileSyncId}
+          accounts={accounts}
           onClose={() => setCreating(false)}
           onSaved={async (syncId) => {
             setCreating(false);
