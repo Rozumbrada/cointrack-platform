@@ -25,6 +25,12 @@ interface ReceiptData {
   paymentMethod?: string;
   note?: string;
   photoKeys?: string[];
+  linkedAccountId?: string;
+}
+
+interface AccountListEntry {
+  syncId: string;
+  data: { name: string; type?: string };
 }
 
 interface ReceiptItemData {
@@ -40,10 +46,13 @@ interface ReceiptItemData {
 export default function ReceiptDetailPage() {
   const router = useRouter();
   const params = useParams<{ syncId: string }>();
-  const { loading, error, entitiesByProfile, rawEntities } = useSyncData();
+  const { loading, error, entitiesByProfile, rawEntities, reload } = useSyncData();
 
   const allReceipts = entitiesByProfile<ReceiptData>("receipts");
   const allItems = rawEntities("receipt_items");
+  const allAccounts = entitiesByProfile<AccountListEntry["data"]>("accounts");
+
+  const [editing, setEditing] = useState(false);
 
   const receipt = useMemo(
     () => allReceipts.find((r) => r.syncId === params.syncId),
@@ -118,10 +127,27 @@ export default function ReceiptDetailPage() {
         <Link href="/app/receipts" className="text-sm text-brand-600 hover:text-brand-700">
           ← Zpět na účtenky
         </Link>
-        <button onClick={onDelete} className="text-sm text-red-600 hover:text-red-700">
-          🗑 Smazat
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setEditing(true)}
+            className="text-sm text-brand-700 hover:text-brand-800"
+          >
+            ✎ Upravit
+          </button>
+          <button onClick={onDelete} className="text-sm text-red-600 hover:text-red-700">
+            🗑 Smazat
+          </button>
+        </div>
       </div>
+
+      {editing && (
+        <ReceiptEditDialog
+          receipt={receipt}
+          accounts={allAccounts}
+          onClose={() => setEditing(false)}
+          onSaved={async () => { setEditing(false); await reload(); }}
+        />
+      )}
 
       <header className="bg-white rounded-2xl border border-ink-200 p-6">
         <div className="flex items-start justify-between gap-3">
@@ -319,4 +345,175 @@ function labelPayment(p: string): string {
     case "CARD": return "Kartou";
     default: return p;
   }
+}
+
+// ─── Edit dialog ──────────────────────────────────────────────────────
+
+function ReceiptEditDialog({
+  receipt,
+  accounts,
+  onClose,
+  onSaved,
+}: {
+  receipt: { syncId: string; data: ReceiptData };
+  accounts: Array<{ syncId: string; data: { name: string; type?: string } }>;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const r = receipt.data;
+  const [merchantName, setMerchantName] = useState(r.merchantName ?? "");
+  const [date, setDate] = useState(r.date ?? "");
+  const [totalWithVat, setTotalWithVat] = useState(String(r.totalWithVat ?? ""));
+  const [totalWithoutVat, setTotalWithoutVat] = useState(String(r.totalWithoutVat ?? ""));
+  const [paymentMethod, setPaymentMethod] = useState<string>(r.paymentMethod ?? "");
+  const [linkedAccountId, setLinkedAccountId] = useState<string>(r.linkedAccountId ?? "");
+  const [note, setNote] = useState(r.note ?? "");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function save() {
+    setSaving(true);
+    setErr(null);
+    try {
+      const now = new Date().toISOString();
+      const updated: Record<string, unknown> = {
+        ...(r as unknown as Record<string, unknown>),
+        merchantName: merchantName.trim() || undefined,
+        date: date.trim() || r.date,
+        totalWithVat: totalWithVat.replace(",", "."),
+        totalWithoutVat: totalWithoutVat ? totalWithoutVat.replace(",", ".") : undefined,
+        paymentMethod: paymentMethod || undefined,
+        linkedAccountId: linkedAccountId || undefined,
+        note: note.trim() || undefined,
+      };
+      await withAuth((t) =>
+        sync.push(t, {
+          entities: {
+            receipts: [
+              {
+                syncId: receipt.syncId,
+                updatedAt: now,
+                clientVersion: 1,
+                data: updated,
+              },
+            ],
+          },
+        }),
+      );
+      await onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl border border-ink-200 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="px-6 py-4 border-b border-ink-200 flex items-center justify-between">
+          <h2 className="font-semibold text-ink-900">Upravit účtenku</h2>
+          <button onClick={onClose} className="text-ink-500 hover:text-ink-900">✕</button>
+        </div>
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-ink-700 mb-1">Obchodník</label>
+            <input
+              type="text"
+              value={merchantName}
+              onChange={(e) => setMerchantName(e.target.value)}
+              className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-ink-700 mb-1">Datum</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-ink-700 mb-1">Platba</label>
+              <select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm"
+              >
+                <option value="">—</option>
+                <option value="CASH">Hotově</option>
+                <option value="CARD">Kartou</option>
+                <option value="UNKNOWN">Převodem</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-ink-700 mb-1">Celkem s DPH (Kč)</label>
+              <input
+                type="text"
+                value={totalWithVat}
+                onChange={(e) => setTotalWithVat(e.target.value)}
+                className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm tabular-nums"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-ink-700 mb-1">Bez DPH</label>
+              <input
+                type="text"
+                value={totalWithoutVat}
+                onChange={(e) => setTotalWithoutVat(e.target.value)}
+                className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm tabular-nums"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-ink-700 mb-1">Bankovní účet / hotovost</label>
+            <select
+              value={linkedAccountId}
+              onChange={(e) => setLinkedAccountId(e.target.value)}
+              className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm"
+            >
+              <option value="">Nepřiřazeno</option>
+              {accounts.map((a) => (
+                <option key={a.syncId} value={a.syncId}>{a.data.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-ink-700 mb-1">Poznámka</label>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={3}
+              className="w-full rounded-lg border border-ink-300 bg-white px-3 py-2 text-sm"
+            />
+          </div>
+          {err && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
+              {err}
+            </div>
+          )}
+        </div>
+        <div className="px-6 py-4 border-t border-ink-200 flex items-center justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="h-10 px-4 rounded-lg border border-ink-300 text-sm text-ink-700 hover:bg-ink-50"
+            disabled={saving}
+          >
+            Zrušit
+          </button>
+          <button
+            onClick={save}
+            className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-50"
+            disabled={saving}
+          >
+            {saving ? "Ukládám…" : "Uložit"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
