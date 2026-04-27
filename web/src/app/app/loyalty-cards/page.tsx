@@ -243,9 +243,17 @@ function CardEditor({
         >
           <option value="CODE_128">Code 128</option>
           <option value="CODE_39">Code 39</option>
+          <option value="CODE_93">Code 93</option>
           <option value="EAN_13">EAN-13</option>
           <option value="EAN_8">EAN-8</option>
+          <option value="UPC_A">UPC-A</option>
+          <option value="UPC_E">UPC-E</option>
+          <option value="ITF">ITF (Interleaved 2/5)</option>
+          <option value="CODABAR">Codabar (Tesco)</option>
           <option value="QR_CODE">QR kód</option>
+          <option value="PDF_417">PDF417</option>
+          <option value="AZTEC">Aztec</option>
+          <option value="DATA_MATRIX">Data Matrix</option>
         </select>
       </Field>
       <Field label="Barva">
@@ -418,8 +426,16 @@ function Barcode({ value, format }: { value: string; format: string }) {
     QR_CODE: "QRCode",
     CODE_128: "Code128",
     CODE_39: "Code39",
+    CODE_93: "Code93",
     EAN_13: "EAN13",
     EAN_8: "EAN8",
+    UPC_A: "UPC_A",
+    UPC_E: "UPC_E",
+    ITF: "Interleaved2of5",
+    CODABAR: "Codabar",
+    PDF_417: "PDF417",
+    AZTEC: "Aztec",
+    DATA_MATRIX: "DataMatrix",
   };
   const code = codeMap[format] ?? "Code128";
   // SVG je u tec-it placený, PNG je zdarma. Vykreslujeme přes 2x dpi pro retina.
@@ -515,8 +531,16 @@ function labelFormat(f?: string): string {
     case "QR_CODE": return "QR";
     case "CODE_128": return "Code 128";
     case "CODE_39": return "Code 39";
+    case "CODE_93": return "Code 93";
     case "EAN_13": return "EAN-13";
     case "EAN_8": return "EAN-8";
+    case "UPC_A": return "UPC-A";
+    case "UPC_E": return "UPC-E";
+    case "ITF": return "ITF";
+    case "CODABAR": return "Codabar";
+    case "PDF_417": return "PDF417";
+    case "AZTEC": return "Aztec";
+    case "DATA_MATRIX": return "Data Matrix";
     default: return f ?? "—";
   }
 }
