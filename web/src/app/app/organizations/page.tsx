@@ -21,11 +21,21 @@ interface OrganizationListResponse {
 
 interface MessageResponse { message: string }
 
+interface InviteDto {
+  id: string;
+  email: string;
+  role: string;
+  invitedByEmail?: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
 export default function OrganizationsPage() {
   const [orgs, setOrgs] = useState<OrganizationDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [inviteOrg, setInviteOrg] = useState<OrganizationDto | null>(null);
 
   async function load() {
     try {
@@ -116,9 +126,19 @@ export default function OrganizationsPage() {
         </div>
       ) : (
         <>
-          <OrgSection title="Firmy (B2B)" icon="🏢" orgs={b2b} onRename={rename} onDelete={deleteOrg} />
-          <OrgSection title="Skupiny" icon="👥" orgs={groups} onRename={rename} onDelete={deleteOrg} />
+          <OrgSection title="Firmy (B2B)" icon="🏢" orgs={b2b}
+            onRename={rename} onDelete={deleteOrg} onInvite={setInviteOrg} />
+          <OrgSection title="Skupiny" icon="👥" orgs={groups}
+            onRename={rename} onDelete={deleteOrg} onInvite={setInviteOrg} />
         </>
+      )}
+
+      {inviteOrg && (
+        <InviteMemberDialog
+          org={inviteOrg}
+          onClose={() => setInviteOrg(null)}
+          onInvited={async () => { setInviteOrg(null); await load(); }}
+        />
       )}
 
       {creating && (
@@ -238,12 +258,14 @@ function OrgSection({
   orgs,
   onRename,
   onDelete,
+  onInvite,
 }: {
   title: string;
   icon: string;
   orgs: OrganizationDto[];
   onRename: (orgId: string, name: string) => void;
   onDelete: (orgId: string, name: string) => void;
+  onInvite: (org: OrganizationDto) => void;
 }) {
   if (orgs.length === 0) return null;
   return (
@@ -274,6 +296,15 @@ function OrgSection({
                 </div>
               </div>
               <div className="flex items-center gap-1">
+                {(isOwner || o.myRole === "admin") && (
+                  <button
+                    onClick={() => onInvite(o)}
+                    className="h-8 px-3 rounded-lg bg-brand-50 hover:bg-brand-100 text-brand-700 text-xs font-medium"
+                    title="Pozvat člena nebo účetní"
+                  >
+                    + Pozvat
+                  </button>
+                )}
                 {isOwner && (
                   <>
                     <button
@@ -306,7 +337,90 @@ function labelRole(r: string): string {
   switch (r) {
     case "owner": return "vlastník";
     case "admin": return "admin";
+    case "accountant": return "účetní";
     case "member": return "člen";
     default: return r;
   }
+}
+
+function InviteMemberDialog({
+  org,
+  onClose,
+  onInvited,
+}: {
+  org: OrganizationDto;
+  onClose: () => void;
+  onInvited: () => Promise<void>;
+}) {
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<"member" | "admin" | "accountant">("member");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function send() {
+    if (!email.trim() || !email.includes("@")) return setErr("Zadej platný e-mail.");
+    setSaving(true);
+    setErr(null);
+    try {
+      await withAuth((t) =>
+        api<InviteDto>(`/api/v1/org/${org.id}/invites`, {
+          method: "POST",
+          body: { email: email.trim().toLowerCase(), role },
+          token: t,
+        }),
+      );
+      await onInvited();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <FormDialog
+      title={`Pozvat do "${org.name}"`}
+      onClose={onClose}
+      onSave={send}
+      saving={saving}
+      error={err}
+      saveLabel="Poslat pozvánku"
+    >
+      <Field label="E-mail">
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          autoFocus
+          className={inputClass}
+          placeholder="kolega@firma.cz"
+        />
+      </Field>
+      <Field label="Role">
+        <div className="flex gap-2 flex-wrap">
+          {(["member", "admin", "accountant"] as const).map((r) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => setRole(r)}
+              className={`px-3 py-2 rounded-lg text-sm font-medium border ${
+                role === r
+                  ? "bg-brand-50 border-brand-300 text-brand-700"
+                  : "bg-white border-ink-200 text-ink-700 hover:bg-ink-50"
+              }`}
+            >
+              {r === "member" ? "Člen" : r === "admin" ? "Admin" : "🧮 Účetní"}
+            </button>
+          ))}
+        </div>
+      </Field>
+      <p className="text-xs text-ink-500 leading-relaxed">
+        {role === "admin"
+          ? "Admin může zvát další členy a měnit nastavení organizace."
+          : role === "accountant"
+          ? "Účetní vidí všechny účtenky a faktury napříč organizací přes web (sekce /accounting). Nemůže doklady upravovat ani mazat."
+          : "Člen vidí jen svůj profil a co mu vlastník/admin povolí."}
+      </p>
+    </FormDialog>
+  );
 }

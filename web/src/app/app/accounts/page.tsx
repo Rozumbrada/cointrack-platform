@@ -12,6 +12,11 @@ interface AccountData {
   includeInTotal: boolean;
   externalProvider?: string;
   profileId?: number;
+  bankIban?: string;
+  bankAccountNumber?: string;
+  bankCode?: string;
+  /** Pohoda → Banky → Zkratka pro auto-mapování při XML importu (max 19 znaků). */
+  pohodaShortcut?: string;
 }
 
 export default function AccountsPage() {
@@ -35,9 +40,10 @@ export default function AccountsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-ink-900">Účty</h1>
+        <h1 className="text-2xl font-semibold text-ink-900">Bankovní účty / hotovost</h1>
         <p className="text-sm text-ink-600 mt-1">
           Všechny tvoje účty — hotovost, banka, kreditní karty, investice.
+          Editace se provádí v mobilní aplikaci.
         </p>
       </div>
 
@@ -107,6 +113,28 @@ export default function AccountsPage() {
               {!a.data.includeInTotal && (
                 <div className="text-[10px] uppercase text-ink-500 mt-2">
                   nezapočítává se do souhrnu
+                </div>
+              )}
+              {(a.data.bankAccountNumber || a.data.bankCode || a.data.bankIban) && (
+                <div className="mt-3 pt-3 border-t border-ink-100 space-y-1 text-xs text-ink-600">
+                  {a.data.bankAccountNumber && a.data.bankCode && (
+                    <div>
+                      <span className="text-ink-500">Číslo účtu: </span>
+                      <span className="font-mono">{a.data.bankAccountNumber}/{a.data.bankCode}</span>
+                    </div>
+                  )}
+                  {a.data.bankIban && (
+                    <div>
+                      <span className="text-ink-500">IBAN: </span>
+                      <span className="font-mono">{a.data.bankIban}</span>
+                    </div>
+                  )}
+                  {a.data.pohodaShortcut && (
+                    <div>
+                      <span className="text-ink-500">Pohoda Zkratka: </span>
+                      <span className="font-mono font-medium">{a.data.pohodaShortcut}</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

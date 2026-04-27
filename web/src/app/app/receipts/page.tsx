@@ -24,14 +24,22 @@ interface ReceiptData {
   paymentMethod?: string;
   note?: string;              // ne 'notes'!
   photoKeys?: unknown;        // array, server posílá JSON
+  linkedAccountId?: string;
+}
+
+interface AccountListEntry {
+  syncId: string;
+  data: { name: string; type?: string };
 }
 
 export default function ReceiptsPage() {
   const [receipts, setReceipts] = useState<SyncEntity[]>([]);
+  const [accounts, setAccounts] = useState<AccountListEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [linkFilter, setLinkFilter] = useState<"ALL" | "LINKED" | "UNLINKED">("ALL");
+  const [accountFilter, setAccountFilter] = useState<string>("ALL");
   const [period, setPeriod] = useState<Period>("all");
   const [customRange, setCustomRange] = useState<{ from: string; to: string }>({
     from: "",
@@ -44,6 +52,13 @@ export default function ReceiptsPage() {
       try {
         const res = await withAuth((t) => sync.pull(t));
         setReceipts(res.entities["receipts"] ?? []);
+        const accs = (res.entities["accounts"] ?? []).filter((e) => !e.deletedAt);
+        setAccounts(
+          accs.map((e) => ({
+            syncId: e.syncId,
+            data: e.data as { name: string; type?: string },
+          })),
+        );
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       } finally {
@@ -75,10 +90,13 @@ export default function ReceiptsPage() {
         return true;
       })
       .filter((r) =>
+        accountFilter === "ALL" ? true : r.data.linkedAccountId === accountFilter,
+      )
+      .filter((r) =>
         query ? r.data.merchantName?.toLowerCase().includes(query.toLowerCase()) : true,
       )
       .sort((a, b) => (b.data.date ?? "").localeCompare(a.data.date ?? ""));
-  }, [receipts, query, linkFilter, range]);
+  }, [receipts, query, linkFilter, range, accountFilter]);
 
   return (
     <div className="space-y-6">
@@ -121,6 +139,16 @@ export default function ReceiptsPage() {
             </button>
           ))}
         </div>
+        <select
+          value={accountFilter}
+          onChange={(e) => setAccountFilter(e.target.value)}
+          className="h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+        >
+          <option value="ALL">Všechny účty</option>
+          {accounts.map((a) => (
+            <option key={a.syncId} value={a.syncId}>{a.data.name}</option>
+          ))}
+        </select>
       </div>
 
       {error && (

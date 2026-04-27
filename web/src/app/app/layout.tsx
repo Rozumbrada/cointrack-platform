@@ -72,7 +72,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const nav: Array<{ href: string; label: string; section?: string }> = [
     { href: "/app/dashboard", label: "Přehled" },
-    { href: "/app/accounts", label: "Účty" },
+    { href: "/app/accounts", label: "Bankovní účty / hotovost" },
     { href: "/app/transactions", label: "Transakce" },
     { href: "/app/categories", label: "Kategorie" },
     { href: "/app/statistics", label: "Statistiky a grafy" },
@@ -86,7 +86,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/app/goals", label: "Cíle" },
     { href: "/app/shopping", label: "Nákupní seznamy" },
     { href: "/app/investments", label: "Investice", section: "Majetek" },
-    { href: "/app/banks", label: "Banky" },
+    { href: "/app/banks", label: "Bankovní spojení" },
     { href: "/app/organizations", label: "Organizace a skupiny", section: "Sociální" },
     { href: "/app/settings", label: "Nastavení" },
   ];
