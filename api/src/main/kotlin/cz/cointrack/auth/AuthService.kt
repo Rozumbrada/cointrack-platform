@@ -88,6 +88,12 @@ class AuthService(
             throw ApiException(HttpStatusCode.Unauthorized, "invalid_credentials", "Nesprávný email nebo heslo.")
         }
 
+        // Aktivace účtu jen po potvrzení emailu — V15+ enforcement.
+        if (row[Users.emailVerifiedAt] == null) {
+            throw ApiException(HttpStatusCode.Forbidden, "email_not_verified",
+                "Účet není aktivovaný — klikni na odkaz v ověřovacím emailu, který ti přišel po registraci.")
+        }
+
         return issueTokens(row, req.deviceId)
     }
 

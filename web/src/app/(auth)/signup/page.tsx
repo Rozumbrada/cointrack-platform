@@ -10,6 +10,7 @@ export default function SignupPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -20,6 +21,10 @@ export default function SignupPage() {
     setError(null);
     if (password.length < 8) {
       setError("Heslo musí mít aspoň 8 znaků.");
+      return;
+    }
+    if (password !== passwordConfirm) {
+      setError("Hesla se neshodují.");
       return;
     }
     setLoading(true);
@@ -100,6 +105,24 @@ export default function SignupPage() {
             className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
           />
           <p className="text-xs text-ink-500 mt-1">Aspoň 8 znaků.</p>
+        </div>
+        <div>
+          <label htmlFor="passwordConfirm" className="block text-sm font-medium text-ink-900 mb-1.5">
+            Heslo znovu
+          </label>
+          <input
+            id="passwordConfirm"
+            type="password"
+            autoComplete="new-password"
+            value={passwordConfirm}
+            onChange={(e) => setPasswordConfirm(e.target.value)}
+            required
+            minLength={8}
+            className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+          />
+          {passwordConfirm.length > 0 && passwordConfirm !== password && (
+            <p className="text-xs text-red-600 mt-1">Hesla se neshodují.</p>
+          )}
         </div>
 
         {error && (
