@@ -118,27 +118,53 @@ class AccountantService {
         val profileIds = profileMap.keys
         if (profileIds.isEmpty()) return@db emptyList()
 
-        Receipts.selectAll()
+        val rows = Receipts.selectAll()
             .where {
                 (Receipts.profileId inList profileIds) and (Receipts.deletedAt.isNull())
             }
             .orderBy(Receipts.date, SortOrder.DESC)
             .limit(500)
-            .map { r ->
-                val pid = r[Receipts.profileId].value
-                val (pname, owner) = profileMap[pid] ?: ("?" to UUID.randomUUID())
-                AccountantReceiptDto(
-                    syncId = r[Receipts.syncId].toString(),
-                    profileId = pid.toString(),
-                    profileName = pname,
-                    ownerEmail = emails[owner] ?: "—",
-                    merchantName = r[Receipts.merchantName],
-                    date = r[Receipts.date].toString(),
-                    totalWithVat = r[Receipts.totalWithVat].toPlainString(),
-                    currency = r[Receipts.currency],
-                    paymentMethod = r[Receipts.paymentMethod],
-                )
-            }
+            .toList()
+
+        // Resoluce účtu přes propojenou transakci (Receipts → Transactions.accountId).
+        val txIds = rows.mapNotNull { it[Receipts.transactionId]?.value }.distinct()
+        val txAccountById: Map<UUID, UUID> = if (txIds.isEmpty()) emptyMap() else
+            cz.cointrack.db.Transactions.selectAll()
+                .where { cz.cointrack.db.Transactions.id inList txIds }
+                .mapNotNull { row ->
+                    val tid = row[cz.cointrack.db.Transactions.id].value
+                    val aid = row[cz.cointrack.db.Transactions.accountId]?.value
+                    if (aid != null) tid to aid else null
+                }.toMap()
+        val accountIds = txAccountById.values.distinct()
+        val accountInfo: Map<UUID, Pair<String, String>> = if (accountIds.isEmpty()) emptyMap() else
+            cz.cointrack.db.Accounts.selectAll()
+                .where { cz.cointrack.db.Accounts.id inList accountIds }
+                .associate {
+                    it[cz.cointrack.db.Accounts.id].value to
+                        (it[cz.cointrack.db.Accounts.syncId].toString() to it[cz.cointrack.db.Accounts.name])
+                }
+
+        rows.map { r ->
+            val pid = r[Receipts.profileId].value
+            val (pname, owner) = profileMap[pid] ?: ("?" to UUID.randomUUID())
+            val txId = r[Receipts.transactionId]?.value
+            val accId = txId?.let { txAccountById[it] }
+            val accInfo = accId?.let { accountInfo[it] }
+            AccountantReceiptDto(
+                syncId = r[Receipts.syncId].toString(),
+                profileId = pid.toString(),
+                profileName = pname,
+                ownerEmail = emails[owner] ?: "—",
+                merchantName = r[Receipts.merchantName],
+                date = r[Receipts.date].toString(),
+                totalWithVat = r[Receipts.totalWithVat].toPlainString(),
+                currency = r[Receipts.currency],
+                paymentMethod = r[Receipts.paymentMethod],
+                linkedAccountId = accInfo?.first,
+                accountName = accInfo?.second,
+            )
+        }
     }
 
     /** Faktury všech členů organizace, kde je volající 'accountant'. */
@@ -161,31 +187,46 @@ class AccountantService {
         val profileIds = profileMap.keys
         if (profileIds.isEmpty()) return@db emptyList()
 
-        Invoices.selectAll()
+        val rows = Invoices.selectAll()
             .where {
                 (Invoices.profileId inList profileIds) and (Invoices.deletedAt.isNull())
             }
             .orderBy(Invoices.issueDate, SortOrder.DESC)
             .limit(500)
-            .map { r ->
-                val pid = r[Invoices.profileId].value
-                val (pname, owner) = profileMap[pid] ?: ("?" to UUID.randomUUID())
-                AccountantInvoiceDto(
-                    syncId = r[Invoices.syncId].toString(),
-                    profileId = pid.toString(),
-                    profileName = pname,
-                    ownerEmail = emails[owner] ?: "—",
-                    invoiceNumber = r[Invoices.invoiceNumber],
-                    isExpense = r[Invoices.isExpense],
-                    issueDate = r[Invoices.issueDate]?.toString(),
-                    dueDate = r[Invoices.dueDate]?.toString(),
-                    totalWithVat = r[Invoices.totalWithVat].toPlainString(),
-                    currency = r[Invoices.currency],
-                    supplierName = r[Invoices.supplierName],
-                    customerName = r[Invoices.customerName],
-                    paid = r[Invoices.paid],
-                )
-            }
+            .toList()
+
+        val accountIds = rows.mapNotNull { it[Invoices.linkedAccountId]?.value }.distinct()
+        val accountInfo: Map<UUID, Pair<String, String>> = if (accountIds.isEmpty()) emptyMap() else
+            cz.cointrack.db.Accounts.selectAll()
+                .where { cz.cointrack.db.Accounts.id inList accountIds }
+                .associate {
+                    it[cz.cointrack.db.Accounts.id].value to
+                        (it[cz.cointrack.db.Accounts.syncId].toString() to it[cz.cointrack.db.Accounts.name])
+                }
+
+        rows.map { r ->
+            val pid = r[Invoices.profileId].value
+            val (pname, owner) = profileMap[pid] ?: ("?" to UUID.randomUUID())
+            val accId = r[Invoices.linkedAccountId]?.value
+            val accInfo = accId?.let { accountInfo[it] }
+            AccountantInvoiceDto(
+                syncId = r[Invoices.syncId].toString(),
+                profileId = pid.toString(),
+                profileName = pname,
+                ownerEmail = emails[owner] ?: "—",
+                invoiceNumber = r[Invoices.invoiceNumber],
+                isExpense = r[Invoices.isExpense],
+                issueDate = r[Invoices.issueDate]?.toString(),
+                dueDate = r[Invoices.dueDate]?.toString(),
+                totalWithVat = r[Invoices.totalWithVat].toPlainString(),
+                currency = r[Invoices.currency],
+                supplierName = r[Invoices.supplierName],
+                customerName = r[Invoices.customerName],
+                paid = r[Invoices.paid],
+                linkedAccountId = accInfo?.first,
+                accountName = accInfo?.second,
+            )
+        }
     }
 
     /**
@@ -220,7 +261,7 @@ class AccountantService {
     }
 
     private fun buildReceiptsCsv(items: List<AccountantReceiptDto>): String = buildString {
-        appendLine("Datum;Obchodník;Profil;Vlastník;Platba;Částka;Měna")
+        appendLine("Datum;Obchodník;Profil;Vlastník;Platba;Částka;Měna;Účet")
         for (r in items) {
             appendLine(
                 listOf(
@@ -231,13 +272,14 @@ class AccountantService {
                     when (r.paymentMethod) { "CASH" -> "Hotově"; "CARD" -> "Kartou"; else -> "" },
                     r.totalWithVat,
                     r.currency,
+                    csvEscape(r.accountName ?: ""),
                 ).joinToString(";")
             )
         }
     }
 
     private fun buildInvoicesCsv(items: List<AccountantInvoiceDto>): String = buildString {
-        appendLine("Číslo;Typ;Vystaveno;Splatnost;Profil;Vlastník;Dodavatel;Odběratel;Částka;Měna;Uhrazeno")
+        appendLine("Číslo;Typ;Vystaveno;Splatnost;Profil;Vlastník;Dodavatel;Odběratel;Částka;Měna;Uhrazeno;Účet")
         for (i in items) {
             appendLine(
                 listOf(
@@ -252,6 +294,7 @@ class AccountantService {
                     i.totalWithVat,
                     i.currency,
                     if (i.paid) "ano" else "ne",
+                    csvEscape(i.accountName ?: ""),
                 ).joinToString(";")
             )
         }

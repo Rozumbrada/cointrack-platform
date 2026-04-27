@@ -19,6 +19,8 @@ interface Invoice {
   supplierName: string | null;
   customerName: string | null;
   paid: boolean;
+  linkedAccountId?: string | null;
+  accountName?: string | null;
 }
 
 export default function AccountantInvoicesPage() {
@@ -28,6 +30,9 @@ export default function AccountantInvoicesPage() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"ALL" | "RECEIVED" | "ISSUED">("ALL");
+  const [accountFilter, setAccountFilter] = useState<string>("ALL");
+  const [periodFrom, setPeriodFrom] = useState<string>("");
+  const [periodTo, setPeriodTo] = useState<string>("");
 
   useEffect(() => {
     (async () => {
@@ -51,6 +56,9 @@ export default function AccountantInvoicesPage() {
     let res = invoices;
     if (filter === "RECEIVED") res = res.filter((i) => i.isExpense);
     else if (filter === "ISSUED") res = res.filter((i) => !i.isExpense);
+    if (accountFilter !== "ALL") res = res.filter((i) => i.linkedAccountId === accountFilter);
+    if (periodFrom) res = res.filter((i) => (i.issueDate ?? "") >= periodFrom);
+    if (periodTo) res = res.filter((i) => (i.issueDate ?? "") <= periodTo);
     if (query) {
       const q = query.toLowerCase();
       res = res.filter(
@@ -62,7 +70,15 @@ export default function AccountantInvoicesPage() {
       );
     }
     return res;
-  }, [invoices, query, filter]);
+  }, [invoices, query, filter, accountFilter, periodFrom, periodTo]);
+
+  const accountOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of invoices) {
+      if (r.linkedAccountId && r.accountName) map.set(r.linkedAccountId, r.accountName);
+    }
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [invoices]);
 
   const totals = useMemo(() => {
     let received = 0;
@@ -120,13 +136,13 @@ export default function AccountantInvoicesPage() {
         <Tile label="Nezaplacené" value={fmt(totals.unpaid, "CZK")} color="text-amber-700" />
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
         <input
           type="text"
           placeholder="Hledat číslo faktury / partnera / profil…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="flex-1 h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+          className="flex-1 min-w-[14rem] h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
         />
         <div className="flex rounded-lg border border-ink-300 bg-white overflow-hidden text-sm">
           {(["ALL", "RECEIVED", "ISSUED"] as const).map((f) => (
@@ -141,6 +157,30 @@ export default function AccountantInvoicesPage() {
             </button>
           ))}
         </div>
+        <select
+          value={accountFilter}
+          onChange={(e) => setAccountFilter(e.target.value)}
+          className="h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900"
+        >
+          <option value="ALL">Všechny účty</option>
+          {accountOptions.map((a) => (
+            <option key={a.id} value={a.id}>{a.name}</option>
+          ))}
+        </select>
+        <input
+          type="date"
+          value={periodFrom}
+          onChange={(e) => setPeriodFrom(e.target.value)}
+          className="h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900"
+          title="Od"
+        />
+        <input
+          type="date"
+          value={periodTo}
+          onChange={(e) => setPeriodTo(e.target.value)}
+          className="h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900"
+          title="Do"
+        />
       </div>
 
       {error && (

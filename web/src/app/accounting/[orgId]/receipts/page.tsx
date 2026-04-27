@@ -25,6 +25,9 @@ export default function AccountantReceiptsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [accountFilter, setAccountFilter] = useState<string>("ALL");
+  const [periodFrom, setPeriodFrom] = useState<string>("");
+  const [periodTo, setPeriodTo] = useState<string>("");
 
   useEffect(() => {
     (async () => {
@@ -45,15 +48,31 @@ export default function AccountantReceiptsPage() {
   }, [params.orgId]);
 
   const filtered = useMemo(() => {
-    if (!query) return receipts;
-    const q = query.toLowerCase();
-    return receipts.filter(
-      (r) =>
-        r.merchantName?.toLowerCase().includes(q) ||
-        r.profileName.toLowerCase().includes(q) ||
-        r.ownerEmail.toLowerCase().includes(q),
-    );
-  }, [receipts, query]);
+    let r = receipts;
+    if (accountFilter !== "ALL") {
+      r = r.filter((x) => x.linkedAccountId === accountFilter);
+    }
+    if (periodFrom) r = r.filter((x) => x.date >= periodFrom);
+    if (periodTo) r = r.filter((x) => x.date <= periodTo);
+    if (query) {
+      const q = query.toLowerCase();
+      r = r.filter(
+        (x) =>
+          x.merchantName?.toLowerCase().includes(q) ||
+          x.profileName.toLowerCase().includes(q) ||
+          x.ownerEmail.toLowerCase().includes(q),
+      );
+    }
+    return r;
+  }, [receipts, query, accountFilter, periodFrom, periodTo]);
+
+  const accountOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of receipts) {
+      if (r.linkedAccountId && r.accountName) map.set(r.linkedAccountId, r.accountName);
+    }
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [receipts]);
 
   const total = useMemo(() => {
     return filtered.reduce((s, r) => s + (parseFloat(r.totalWithVat) || 0), 0);
@@ -96,13 +115,37 @@ export default function AccountantReceiptsPage() {
         </button>
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex gap-3 flex-wrap">
         <input
           type="text"
           placeholder="Hledat obchodníka, profil nebo email…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="flex-1 h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+          className="flex-1 min-w-[14rem] h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+        />
+        <select
+          value={accountFilter}
+          onChange={(e) => setAccountFilter(e.target.value)}
+          className="h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+        >
+          <option value="ALL">Všechny účty</option>
+          {accountOptions.map((a) => (
+            <option key={a.id} value={a.id}>{a.name}</option>
+          ))}
+        </select>
+        <input
+          type="date"
+          value={periodFrom}
+          onChange={(e) => setPeriodFrom(e.target.value)}
+          className="h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+          title="Od"
+        />
+        <input
+          type="date"
+          value={periodTo}
+          onChange={(e) => setPeriodTo(e.target.value)}
+          className="h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+          title="Do"
         />
         <div className="bg-white rounded-lg border border-ink-200 px-4 h-10 grid place-items-center text-sm">
           {filtered.length} účtenek · {fmt(total, "CZK")}
@@ -131,6 +174,7 @@ export default function AccountantReceiptsPage() {
                 <th className="px-6 py-3 font-medium">Obchodník</th>
                 <th className="px-6 py-3 font-medium">Profil</th>
                 <th className="px-6 py-3 font-medium">Vlastník</th>
+                <th className="px-6 py-3 font-medium">Účet</th>
                 <th className="px-6 py-3 font-medium">Platba</th>
                 <th className="px-6 py-3 font-medium text-right">Částka</th>
               </tr>
@@ -144,6 +188,7 @@ export default function AccountantReceiptsPage() {
                   </td>
                   <td className="px-6 py-3 text-ink-700">{r.profileName}</td>
                   <td className="px-6 py-3 text-ink-500 text-xs">{r.ownerEmail}</td>
+                  <td className="px-6 py-3 text-ink-700 text-xs">{r.accountName ?? "—"}</td>
                   <td className="px-6 py-3 text-ink-600">{labelPayment(r.paymentMethod)}</td>
                   <td className="px-6 py-3 text-right tabular-nums font-semibold text-ink-900">
                     {fmt(parseFloat(r.totalWithVat), r.currency)}
