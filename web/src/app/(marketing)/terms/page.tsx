@@ -41,7 +41,7 @@ export default function TermsPage() {
 
           <h2>4. Cena a platby</h2>
           <p>
-            Služba je poskytována v režimu Free (zdarma) a placených tierech (Cloud, Business, Pro).
+            Služba je poskytována v režimu Free (zdarma) a placených tierech (Personal, Business, Organization).
             Ceny jsou uvedeny na stránce <a href="/pricing">Ceník</a>. Fakturace probíhá měsíčně
             nebo ročně dopředu. První 14 dní každého placeného tieru je zdarma.
           </p>

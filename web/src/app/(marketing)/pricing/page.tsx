@@ -40,15 +40,15 @@ const tiers: Tier[] = [
     missing: ["Cloud sync", "Web přístup", "Firemní profily"],
   },
   {
-    name: "Cloud",
+    name: "Personal",
     price: "69 Kč",
     period: "/měsíc",
-    description: "Osobní profily napříč zařízeními.",
+    description: "Osobní profil napříč zařízeními (Android + web + iOS).",
     cta: "14 dní zdarma",
     ctaVariant: "primary",
     features: [
       "Vše z Free",
-      "Cloud sync mezi Android + web + iOS",
+      "Cloud sync mezi Androidem, webem a iOS",
       "Napojení bank přes PSD2 (ČSOB, KB, ČS, Air Bank…)",
       "OCR účtenek bez vlastního API klíče",
       "Web aplikace (cointrack.cz/app)",
@@ -64,7 +64,7 @@ const tiers: Tier[] = [
     ctaVariant: "brand",
     badge: "Nejoblíbenější",
     features: [
-      "Vše z Cloud",
+      "Vše z Personal",
       "Neomezený počet firemních profilů",
       "Přednastavené kategorie dle oboru",
       "iDoklad integrace (vystavení faktur)",
@@ -75,19 +75,20 @@ const tiers: Tier[] = [
     ],
   },
   {
-    name: "Pro",
+    name: "Organization",
     price: "399 Kč",
     period: "/měsíc",
-    description: "Pro růstové firmy a studia.",
-    cta: "Kontakt",
-    ctaVariant: "outline",
+    description: "Pro firmy s více členy a sdílenou účetní.",
+    cta: "14 dní zdarma",
+    ctaVariant: "brand",
     features: [
       "Vše z Business",
+      "Pozvání více členů do organizace",
+      "Sdílení jednotlivých bankovních účtů s členy",
+      "Účetní rozhraní s hromadným ZIP exportem",
+      "Per-uživatelské oprávnění na úrovni účtů",
       "API přístup pro vlastní integrace",
-      "5 sdílených uživatelů pod jedním účtem",
-      "Vlastní doména pro email report",
-      "SLA 99.9% uptime",
-      "Dedikovaná podpora do 4 hodin",
+      "Priority podpora",
     ],
   },
 ];
@@ -138,7 +139,7 @@ export default function PricingPage() {
                 <p className="text-sm text-ink-600 mb-6 min-h-[2.5rem]">{tier.description}</p>
 
                 <Button asChild variant={tier.ctaVariant} className="w-full mb-6">
-                  <Link href={tier.name === "Pro" ? "/contact" : "/signup"}>{tier.cta}</Link>
+                  <Link href="/signup">{tier.cta}</Link>
                 </Button>
 
                 <ul className="space-y-3 flex-1">
@@ -163,7 +164,7 @@ export default function PricingPage() {
           <div className="mt-8 rounded-xl bg-ink-100 p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <p className="font-semibold text-ink-900">Platíš ročně? Dostaneš 2 měsíce zdarma.</p>
-              <p className="text-sm text-ink-600 mt-1">Cloud za 690 Kč/rok, Business za 1990 Kč/rok, Pro za 3990 Kč/rok.</p>
+              <p className="text-sm text-ink-600 mt-1">Personal za 690 Kč/rok, Business za 1990 Kč/rok, Organization za 3990 Kč/rok.</p>
             </div>
           </div>
         </Container>
@@ -187,7 +188,7 @@ export default function PricingPage() {
               />
               <Faq
                 q="Jak funguje 14-denní trial?"
-                a="Registraci na Cloud nebo Business ti dá plný přístup na 14 dní bez karty. V den 14 ti pošleme připomínku — pokud pokračuješ, přidáš kartu, jinak se přepneš automaticky na Free."
+                a="Registraci na Personal, Business nebo Organization ti dá plný přístup na 14 dní bez karty. V den 14 ti pošleme připomínku — pokud pokračuješ, přidáš kartu, jinak se přepneš automaticky na Free."
               />
               <Faq
                 q="Je Cointrack registrovaný u ČNB?"
