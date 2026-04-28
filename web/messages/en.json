@@ -116,6 +116,25 @@
       "pricing": "Detailed pricing →"
     }
   },
+  "profiles": {
+    "title": "Profiles",
+    "subtitle": "Pick the profile you want to work with. Star = default profile (opens automatically on sign in).",
+    "loading": "Loading profiles…",
+    "empty_title": "No profiles yet",
+    "empty_desc": "Create your first profile — personal, business or group.",
+    "new_profile": "+ New profile",
+    "default_profile_title": "Default profile",
+    "set_default": "Set as default",
+    "unset_default": "Unset default",
+    "edit": "Edit",
+    "delete": "Delete",
+    "type_personal": "personal",
+    "type_business": "business",
+    "type_organization": "organization",
+    "type_group": "group",
+    "ico_label": "ID",
+    "delete_confirm": "Really delete profile \"{name}\"?\n\nThis will delete the profile and ALL data in it:\n• accounts + transactions\n• receipts + invoices\n• categories + budgets + planned payments\n• debts, goals, loyalty cards, warranties, shopping lists\n\nThis action cannot be undone."
+  },
   "import_csv": {
     "title": "Import CSV",
     "subtitle": "Upload a CSV with transactions (Fio Bank, Air Bank, generic CSV). For each row we'll create a transaction assigned to the chosen account.",

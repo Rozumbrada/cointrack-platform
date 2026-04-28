@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { sync, SyncEntity } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import {
@@ -31,6 +32,7 @@ interface Profile {
 
 export default function ProfilesPage() {
   const router = useRouter();
+  const t = useTranslations("profiles");
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,15 +93,7 @@ export default function ProfilesPage() {
   }
 
   async function deleteProfile(p: Profile) {
-    const ok = confirm(
-      `Opravdu smazat profil "${p.data.name}"?\n\n` +
-      `Smaže se profil a VŠECHNA data v něm:\n` +
-      `• účty + transakce\n` +
-      `• účtenky + faktury\n` +
-      `• kategorie + rozpočty + plánované platby\n` +
-      `• dluhy, cíle, věrnostní karty, záruky, nákupní seznamy\n\n` +
-      `Tato akce je nevratná.`,
-    );
+    const ok = confirm(t("delete_confirm", { name: p.data.name }));
     if (!ok) return;
     try {
       const now = new Date().toISOString();
@@ -188,7 +182,7 @@ export default function ProfilesPage() {
   if (loading) {
     return (
       <div className="grid place-items-center min-h-[60vh] text-ink-500 text-sm">
-        Načítám profily…
+        {t("loading")}
       </div>
     );
   }
@@ -196,11 +190,8 @@ export default function ProfilesPage() {
   return (
     <div className="space-y-6 max-w-4xl">
       <div>
-        <h1 className="text-2xl font-semibold text-ink-900">Profily</h1>
-        <p className="text-sm text-ink-600 mt-1">
-          Vyber profil, se kterým chceš pracovat. Hvězdička = výchozí profil
-          (otevře se rovnou po přihlášení).
-        </p>
+        <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
+        <p className="text-sm text-ink-600 mt-1">{t("subtitle")}</p>
       </div>
 
       {error && (
@@ -210,7 +201,11 @@ export default function ProfilesPage() {
       )}
 
       {profiles.length === 0 ? (
-        <EmptyState />
+        <div className="bg-white rounded-2xl border border-ink-200 p-12 text-center">
+          <div className="text-4xl mb-3">👤</div>
+          <div className="font-medium text-ink-900">{t("empty_title")}</div>
+          <p className="text-sm text-ink-600 mt-2">{t("empty_desc")}</p>
+        </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {profiles.map((p) => (
@@ -221,6 +216,18 @@ export default function ProfilesPage() {
               onSelect={() => selectProfile(p.syncId)}
               onToggleDefault={() => toggleDefault(p.syncId)}
               onDelete={() => deleteProfile(p)}
+              labels={{
+                defaultStar: t("default_profile_title"),
+                setDefault: t("set_default"),
+                unsetDefault: t("unset_default"),
+                edit: t("edit"),
+                delete: t("delete"),
+                ico: t("ico_label"),
+                typePersonal: t("type_personal"),
+                typeBusiness: t("type_business"),
+                typeOrganization: t("type_organization"),
+                typeGroup: t("type_group"),
+              }}
             />
           ))}
         </div>
@@ -230,22 +237,23 @@ export default function ProfilesPage() {
         href="/app/profiles/new"
         className="block w-full py-3 rounded-xl border-2 border-dashed border-ink-300 hover:border-brand-500 hover:bg-brand-50 text-center text-sm font-medium text-ink-700 transition-colors"
       >
-        + Nový profil
+        {t("new_profile")}
       </Link>
     </div>
   );
 }
 
-function EmptyState() {
-  return (
-    <div className="bg-white rounded-2xl border border-ink-200 p-12 text-center">
-      <div className="text-4xl mb-3">👤</div>
-      <div className="font-medium text-ink-900">Ještě nemáš žádný profil</div>
-      <p className="text-sm text-ink-600 mt-2">
-        Vytvoř svůj první profil — osobní, firemní nebo skupinový.
-      </p>
-    </div>
-  );
+interface CardLabels {
+  defaultStar: string;
+  setDefault: string;
+  unsetDefault: string;
+  edit: string;
+  delete: string;
+  ico: string;
+  typePersonal: string;
+  typeBusiness: string;
+  typeOrganization: string;
+  typeGroup: string;
 }
 
 function ProfileCard({
@@ -254,12 +262,14 @@ function ProfileCard({
   onSelect,
   onToggleDefault,
   onDelete,
+  labels,
 }: {
   profile: Profile;
   isDefault: boolean;
   onSelect: () => void;
   onToggleDefault: () => void;
   onDelete: () => void;
+  labels: CardLabels;
 }) {
   const { data, syncId } = profile;
   const initial = (data.name?.[0] ?? "?").toUpperCase();
@@ -281,13 +291,13 @@ function ProfileCard({
           <div className="font-medium text-ink-900 truncate flex items-center gap-2">
             {data.name}
             {isDefault && (
-              <span title="Výchozí profil" className="text-amber-500">
+              <span title={labels.defaultStar} className="text-amber-500">
                 ★
               </span>
             )}
           </div>
           <div className="text-[11px] uppercase tracking-wide text-ink-500 mt-0.5">
-            {labelType(data.type)}
+            {labelType(data.type, labels)}
             {data.defaultCurrency && (
               <span className="ml-2">· {data.defaultCurrency}</span>
             )}
@@ -295,7 +305,7 @@ function ProfileCard({
           {data.companyName && (
             <div className="text-xs text-ink-600 mt-1 truncate">
               {data.companyName}
-              {data.ico && <span className="text-ink-400"> · IČO {data.ico}</span>}
+              {data.ico && <span className="text-ink-400"> · {labels.ico} {data.ico}</span>}
             </div>
           )}
         </div>
@@ -310,14 +320,14 @@ function ProfileCard({
           className={`w-8 h-8 grid place-items-center rounded-lg hover:bg-ink-100 ${
             isDefault ? "text-amber-500" : "text-ink-400"
           }`}
-          title={isDefault ? "Zrušit výchozí" : "Nastavit jako výchozí"}
+          title={isDefault ? labels.unsetDefault : labels.setDefault}
         >
           {isDefault ? "★" : "☆"}
         </button>
         <Link
           href={`/app/profiles/${syncId}/edit`}
           className="w-8 h-8 grid place-items-center rounded-lg hover:bg-ink-100 text-ink-600"
-          title="Upravit"
+          title={labels.edit}
           onClick={(e) => e.stopPropagation()}
         >
           ✎
@@ -328,7 +338,7 @@ function ProfileCard({
             onDelete();
           }}
           className="w-8 h-8 grid place-items-center rounded-lg hover:bg-red-50 text-red-500"
-          title="Smazat"
+          title={labels.delete}
         >
           🗑
         </button>
@@ -349,18 +359,13 @@ function filterActiveProfiles(entities: SyncEntity[]): Profile[] {
     .sort((a, b) => a.data.name.localeCompare(b.data.name));
 }
 
-function labelType(t?: string): string {
+function labelType(t: string | undefined, labels: CardLabels): string {
   switch (t) {
-    case "BUSINESS":
-      return "firemní";
-    case "ORGANIZATION":
-      return "organizace";
-    case "GROUP":
-      return "skupinový";
-    case "PERSONAL":
-      return "hlavní";
-    default:
-      return t ?? "—";
+    case "BUSINESS": return labels.typeBusiness;
+    case "ORGANIZATION": return labels.typeOrganization;
+    case "GROUP": return labels.typeGroup;
+    case "PERSONAL": return labels.typePersonal;
+    default: return t ?? "—";
   }
 }
 

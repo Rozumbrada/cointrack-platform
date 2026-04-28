@@ -116,6 +116,25 @@
       "pricing": "Podrobný ceník →"
     }
   },
+  "profiles": {
+    "title": "Profily",
+    "subtitle": "Vyber profil, se kterým chceš pracovat. Hvězdička = výchozí profil (otevře se rovnou po přihlášení).",
+    "loading": "Načítám profily…",
+    "empty_title": "Ještě nemáš žádný profil",
+    "empty_desc": "Vytvoř svůj první profil — osobní, firemní nebo skupinový.",
+    "new_profile": "+ Nový profil",
+    "default_profile_title": "Výchozí profil",
+    "set_default": "Nastavit jako výchozí",
+    "unset_default": "Zrušit výchozí",
+    "edit": "Upravit",
+    "delete": "Smazat",
+    "type_personal": "hlavní",
+    "type_business": "firemní",
+    "type_organization": "organizace",
+    "type_group": "skupinový",
+    "ico_label": "IČO",
+    "delete_confirm": "Opravdu smazat profil \"{name}\"?\n\nSmaže se profil a VŠECHNA data v něm:\n• účty + transakce\n• účtenky + faktury\n• kategorie + rozpočty + plánované platby\n• dluhy, cíle, věrnostní karty, záruky, nákupní seznamy\n\nTato akce je nevratná."
+  },
   "import_csv": {
     "title": "Import CSV",
     "subtitle": "Nahraj CSV s transakcemi (Fio bank, Air Bank, generický CSV). Pro každý řádek vytvoříme transakci a přiřadíme ji k vybranému účtu.",
