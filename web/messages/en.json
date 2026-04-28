@@ -116,6 +116,30 @@
       "pricing": "Detailed pricing →"
     }
   },
+  "shopping_page": {
+    "title": "Shopping lists",
+    "subtitle": "Click an item to toggle, hover for edits.",
+    "new_list": "+ New list",
+    "loading": "Loading…",
+    "error_prefix": "Error:",
+    "empty_title": "No lists",
+    "empty_desc": "Click \"New list\".",
+    "empty_list": "Empty list",
+    "add_item": "+ Item",
+    "edit": "Edit",
+    "delete": "Delete",
+    "delete_list_confirm": "Delete list \"{name}\"? Items will be deleted too.",
+    "list_editor_new": "New list",
+    "list_editor_edit": "Edit list",
+    "field_name": "Name",
+    "field_color": "Color",
+    "fill_name": "Please fill in the name.",
+    "no_profile": "No profile selected.",
+    "item_editor_new": "New item",
+    "item_editor_edit": "Edit item",
+    "field_quantity": "Quantity",
+    "field_price_optional": "Price (optional)"
+  },
   "planned_page": {
     "title": "Planned payments",
     "subtitle": "Recurring income and expenses (rent, subscriptions, salary).",

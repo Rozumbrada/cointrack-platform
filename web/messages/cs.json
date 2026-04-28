@@ -116,6 +116,30 @@
       "pricing": "Podrobný ceník →"
     }
   },
+  "shopping_page": {
+    "title": "Nákupní seznamy",
+    "subtitle": "Klikni na položku pro přepnutí, hover pro úpravy.",
+    "new_list": "+ Nový seznam",
+    "loading": "Načítám…",
+    "error_prefix": "Chyba:",
+    "empty_title": "Žádné seznamy",
+    "empty_desc": "Klikni na „Nový seznam\".",
+    "empty_list": "Prázdný seznam",
+    "add_item": "+ Položka",
+    "edit": "Upravit",
+    "delete": "Smazat",
+    "delete_list_confirm": "Smazat seznam \"{name}\"? Smaže i položky.",
+    "list_editor_new": "Nový seznam",
+    "list_editor_edit": "Upravit seznam",
+    "field_name": "Název",
+    "field_color": "Barva",
+    "fill_name": "Vyplň název.",
+    "no_profile": "Není vybraný profil.",
+    "item_editor_new": "Nová položka",
+    "item_editor_edit": "Upravit položku",
+    "field_quantity": "Množství",
+    "field_price_optional": "Cena (volitelná)"
+  },
   "planned_page": {
     "title": "Plánované platby",
     "subtitle": "Opakující se příjmy a výdaje (nájem, předplatné, výplata).",

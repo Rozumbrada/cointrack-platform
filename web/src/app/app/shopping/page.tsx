@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
@@ -25,6 +26,8 @@ type ListRow = { syncId: string; data: ShoppingListData };
 type ItemRow = { syncId: string; data: ShoppingItemData };
 
 export default function ShoppingPage() {
+  const t = useTranslations("shopping_page");
+  const locale = useLocale();
   const { loading, error, entitiesByProfile, rawEntities, profileSyncId, reload } = useSyncData();
   const lists = entitiesByProfile<ShoppingListData>("shopping_lists");
   const itemEntities = rawEntities("shopping_items");
@@ -90,7 +93,7 @@ export default function ShoppingPage() {
   }
 
   async function deleteList(list: ListRow) {
-    if (!confirm(`Smazat seznam „${list.data.name}"? Smaže i položky.`)) return;
+    if (!confirm(t("delete_list_confirm", { name: list.data.name }))) return;
     const now = new Date().toISOString();
     await pushList(list.syncId, list.data, now);
   }
@@ -104,30 +107,30 @@ export default function ShoppingPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold text-ink-900">Nákupní seznamy</h1>
-          <p className="text-sm text-ink-600 mt-1">Klikni na položku pro přepnutí, hover pro úpravy.</p>
+          <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
+          <p className="text-sm text-ink-600 mt-1">{t("subtitle")}</p>
         </div>
         <button
           onClick={() => setEditingList("new")}
           className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
         >
-          + Nový seznam
+          {t("new_list")}
         </button>
       </div>
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">
-          Chyba: {error}
+          {t("error_prefix")} {error}
         </div>
       )}
 
       {loading ? (
-        <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>
+        <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>
       ) : lists.length === 0 ? (
         <div className="bg-white rounded-2xl border border-ink-200 p-12 text-center">
           <div className="text-4xl mb-3">🛒</div>
-          <div className="font-medium text-ink-900">Žádné seznamy</div>
-          <p className="text-sm text-ink-600 mt-2">Klikni na „Nový seznam".</p>
+          <div className="font-medium text-ink-900">{t("empty_title")}</div>
+          <p className="text-sm text-ink-600 mt-2">{t("empty_desc")}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -149,17 +152,17 @@ export default function ShoppingPage() {
                       {checked} / {lItems.length}
                     </div>
                     <div className="opacity-0 group-hover:opacity-100 flex gap-1">
-                      <button onClick={() => setEditingList(l)} className="text-ink-500 hover:text-ink-700 px-1" title="Upravit">
+                      <button onClick={() => setEditingList(l)} className="text-ink-500 hover:text-ink-700 px-1" title={t("edit")}>
                         ✏️
                       </button>
-                      <button onClick={() => deleteList(l)} className="text-red-500 hover:text-red-700 px-1" title="Smazat">
+                      <button onClick={() => deleteList(l)} className="text-red-500 hover:text-red-700 px-1" title={t("delete")}>
                         🗑
                       </button>
                     </div>
                   </div>
                 </div>
                 {lItems.length === 0 ? (
-                  <div className="px-5 py-4 text-center text-ink-500 text-sm">Prázdný seznam</div>
+                  <div className="px-5 py-4 text-center text-ink-500 text-sm">{t("empty_list")}</div>
                 ) : (
                   <ul className="divide-y divide-ink-100">
                     {lItems.map((it) => (
@@ -183,14 +186,14 @@ export default function ShoppingPage() {
                         )}
                         {it.data.price && (
                           <div className="text-xs text-ink-500 tabular-nums">
-                            {fmt(parseFloat(it.data.price), "CZK")}
+                            {fmt(parseFloat(it.data.price), "CZK", locale)}
                           </div>
                         )}
                         <div className="opacity-0 group-hover:opacity-100 flex gap-1">
-                          <button onClick={() => setEditingItem(it)} className="text-ink-500 hover:text-ink-700 px-1" title="Upravit">
+                          <button onClick={() => setEditingItem(it)} className="text-ink-500 hover:text-ink-700 px-1" title={t("edit")}>
                             ✏️
                           </button>
-                          <button onClick={() => deleteItem(it)} className="text-red-500 hover:text-red-700 px-1" title="Smazat">
+                          <button onClick={() => deleteItem(it)} className="text-red-500 hover:text-red-700 px-1" title={t("delete")}>
                             🗑
                           </button>
                         </div>
@@ -202,7 +205,7 @@ export default function ShoppingPage() {
                   onClick={() => setAddingItemTo(l.syncId)}
                   className="w-full px-5 py-2 text-sm text-brand-600 hover:bg-ink-50 border-t border-ink-100"
                 >
-                  + Položka
+                  {t("add_item")}
                 </button>
               </section>
             );
@@ -252,6 +255,7 @@ function ListEditor({
   onClose: () => void;
   onSaved: (data: ShoppingListData, syncId: string) => Promise<void>;
 }) {
+  const t = useTranslations("shopping_page");
   const [name, setName] = useState(initial?.data.name ?? "");
   const [color, setColor] = useState<number>(initial?.data.color ?? 0xff3b82f6);
   const [saving, setSaving] = useState(false);
@@ -262,8 +266,8 @@ function ListEditor({
   ];
 
   async function save() {
-    if (!profileSyncId) return setErr("Není vybraný profil.");
-    if (!name.trim()) return setErr("Vyplň název.");
+    if (!profileSyncId) return setErr(t("no_profile"));
+    if (!name.trim()) return setErr(t("fill_name"));
     setSaving(true);
     setErr(null);
     try {
@@ -284,16 +288,16 @@ function ListEditor({
 
   return (
     <FormDialog
-      title={initial ? "Upravit seznam" : "Nový seznam"}
+      title={initial ? t("list_editor_edit") : t("list_editor_new")}
       onClose={onClose}
       onSave={save}
       saving={saving}
       error={err}
     >
-      <Field label="Název">
+      <Field label={t("field_name")}>
         <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus className={inputClass} />
       </Field>
-      <Field label="Barva">
+      <Field label={t("field_color")}>
         <div className="flex flex-wrap gap-2">
           {presetColors.map((c) => (
             <button
@@ -317,10 +321,13 @@ function ItemEditor({
   onSaved,
 }: {
   listSyncId: string;
+  // for translations
+
   initial: ItemRow | null;
   onClose: () => void;
   onSaved: (data: ShoppingItemData, syncId: string) => Promise<void>;
 }) {
+  const t = useTranslations("shopping_page");
   const [name, setName] = useState(initial?.data.name ?? "");
   const [quantity, setQuantity] = useState(initial?.data.quantity ?? "1");
   const [price, setPrice] = useState(initial?.data.price ?? "");
@@ -328,7 +335,7 @@ function ItemEditor({
   const [err, setErr] = useState<string | null>(null);
 
   async function save() {
-    if (!name.trim()) return setErr("Vyplň název.");
+    if (!name.trim()) return setErr(t("fill_name"));
     setSaving(true);
     setErr(null);
     try {
@@ -351,20 +358,20 @@ function ItemEditor({
 
   return (
     <FormDialog
-      title={initial ? "Upravit položku" : "Nová položka"}
+      title={initial ? t("item_editor_edit") : t("item_editor_new")}
       onClose={onClose}
       onSave={save}
       saving={saving}
       error={err}
     >
-      <Field label="Název">
+      <Field label={t("field_name")}>
         <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus className={inputClass} />
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Množství">
+        <Field label={t("field_quantity")}>
           <input type="text" value={quantity} onChange={(e) => setQuantity(e.target.value)} className={inputClass} />
         </Field>
-        <Field label="Cena (volitelná)">
+        <Field label={t("field_price_optional")}>
           <input
             type="text"
             inputMode="decimal"
@@ -386,8 +393,8 @@ function argbToCss(c: number): string {
   return `rgb(${r},${g},${b})`;
 }
 
-function fmt(amount: number, currency: string): string {
-  return new Intl.NumberFormat("cs-CZ", {
+function fmt(amount: number, currency: string, locale: string = "cs-CZ"): string {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
     maximumFractionDigits: 0,
