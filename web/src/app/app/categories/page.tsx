@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
@@ -19,20 +20,22 @@ const PRESET_ICONS = [
   "work", "business", "volunteer_activism", "celebration", "child_care",
 ];
 
-const PRESET_COLORS: Array<{ label: string; value: number }> = [
-  { label: "Šedá",     value: 0xff9e9e9e },
-  { label: "Červená",  value: 0xffef4444 },
-  { label: "Oranžová", value: 0xfff59e0b },
-  { label: "Žlutá",    value: 0xffeab308 },
-  { label: "Zelená",   value: 0xff10b981 },
-  { label: "Tyrkysová",value: 0xff14b8a6 },
-  { label: "Modrá",    value: 0xff3b82f6 },
-  { label: "Indigo",   value: 0xff6366f1 },
-  { label: "Fialová",  value: 0xff8b5cf6 },
-  { label: "Růžová",   value: 0xffec4899 },
+const PRESET_COLORS: Array<{ key: string; value: number }> = [
+  { key: "color_grey",   value: 0xff9e9e9e },
+  { key: "color_red",    value: 0xffef4444 },
+  { key: "color_orange", value: 0xfff59e0b },
+  { key: "color_yellow", value: 0xffeab308 },
+  { key: "color_green",  value: 0xff10b981 },
+  { key: "color_teal",   value: 0xff14b8a6 },
+  { key: "color_blue",   value: 0xff3b82f6 },
+  { key: "color_indigo", value: 0xff6366f1 },
+  { key: "color_purple", value: 0xff8b5cf6 },
+  { key: "color_pink",   value: 0xffec4899 },
 ];
 
 export default function CategoriesPage() {
+  const t = useTranslations("categories_page");
+  const locale = useLocale();
   const { loading, error, entitiesByProfile, diagnose, profileSyncId, reload } = useSyncData();
   const categoryEntities = entitiesByProfile<ServerCategory>("categories");
   const txEntities = entitiesByProfile<ServerTransaction>("transactions");
@@ -82,7 +85,7 @@ export default function CategoriesPage() {
   );
 
   async function onDelete(row: CategoryRow) {
-    if (!confirm(`Smazat kategorii "${row.data.name}"?`)) return;
+    if (!confirm(t("delete_confirm", { name: row.data.name }))) return;
     const now = new Date().toISOString();
     try {
       await withAuth((t) =>
@@ -110,16 +113,14 @@ export default function CategoriesPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-ink-900">Kategorie</h1>
-          <p className="text-sm text-ink-600 mt-1">
-            Stejnou kategorii lze použít na příjem i výdaj — řídí se to směrem transakce.
-          </p>
+          <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
+          <p className="text-sm text-ink-600 mt-1">{t("subtitle")}</p>
         </div>
         <button
           onClick={() => setEditing({ row: null, type: "EXPENSE" })}
           className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
         >
-          + Nová kategorie
+          {t("new_category")}
         </button>
       </div>
 
@@ -130,31 +131,27 @@ export default function CategoriesPage() {
       )}
 
       {loading ? (
-        <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>
+        <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>
       ) : categoryEntities.length === 0 ? (
         <div className="space-y-3">
           <div className="bg-white rounded-2xl border border-ink-200 p-12 text-center">
             <div className="text-4xl mb-3">📂</div>
             <div className="font-medium text-ink-900">
-              {catDiag.total === 0
-                ? "Žádné kategorie v cloudu"
-                : "Žádné kategorie pro aktivní profil"}
+              {catDiag.total === 0 ? t("empty_no_cats") : t("empty_no_cats_for_profile")}
             </div>
             <p className="text-sm text-ink-600 mt-2">
-              {catDiag.total === 0
-                ? "Klikni na „+ Nová kategorie“ vpravo nahoře."
-                : `Máš ${catDiag.total} kategorií celkem, ale žádná není přiřazená k aktuálnímu profilu.`}
+              {catDiag.total === 0 ? t("empty_create_hint") : t("empty_filter_hint", { total: catDiag.total })}
             </p>
           </div>
           {catDiag.total > 0 && catDiag.matched === 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 space-y-1">
-              <div className="font-medium">Diagnostika:</div>
+              <div className="font-medium">{t("diag_title")}</div>
               {profileSyncId && (
-                <div className="font-mono break-all">aktivní profil: {profileSyncId}</div>
+                <div className="font-mono break-all">{t("diag_active_profile")} {profileSyncId}</div>
               )}
               {catDiag.otherProfiles.size > 0 && (
                 <div className="font-mono break-all">
-                  profily kategorií: {Array.from(catDiag.otherProfiles).slice(0, 5).join(", ")}
+                  {t("diag_other_profiles")} {Array.from(catDiag.otherProfiles).slice(0, 5).join(", ")}
                 </div>
               )}
             </div>
@@ -209,6 +206,8 @@ function CategoryList({
   onEdit: (row: CategoryRow) => void;
   onDelete: (row: CategoryRow) => void;
 }) {
+  const t = useTranslations("categories_page");
+  const locale = useLocale();
   return (
     <section className="bg-white rounded-2xl border border-ink-200 overflow-hidden">
       <ul className="divide-y divide-ink-100">
@@ -235,24 +234,24 @@ function CategoryList({
                           : "bg-red-50 text-red-700"
                       }`}
                     >
-                      {primaryType === "INCOME" ? "primárně příjem" : "primárně výdaj"}
+                      {primaryType === "INCOME" ? t("primary_income") : t("primary_expense")}
                     </span>
                   )}
                 </div>
                 <div className="text-xs text-ink-500 mt-0.5">
-                  {totalCount === 0 ? "Bez transakcí tento měsíc" : `${totalCount}× tento měsíc`}
+                  {totalCount === 0 ? t("no_tx_this_month") : t("tx_this_month_count", { count: totalCount })}
                 </div>
               </div>
               {s && (s.incomeCount > 0 || s.expenseCount > 0) && (
                 <div className="text-right text-xs space-y-0.5">
                   {s.incomeCount > 0 && (
                     <div className="text-emerald-700 font-medium tabular-nums">
-                      +{fmt(s.incomeAmount, "CZK")}
+                      +{fmt(s.incomeAmount, "CZK", locale)}
                     </div>
                   )}
                   {s.expenseCount > 0 && (
                     <div className="text-red-700 font-medium tabular-nums">
-                      −{fmt(s.expenseAmount, "CZK")}
+                      −{fmt(s.expenseAmount, "CZK", locale)}
                     </div>
                   )}
                 </div>
@@ -261,14 +260,14 @@ function CategoryList({
                 <button
                   onClick={() => onEdit(c)}
                   className="w-7 h-7 grid place-items-center rounded hover:bg-ink-100 text-ink-500 hover:text-ink-700"
-                  title="Upravit"
+                  title={t("edit")}
                 >
                   ✏️
                 </button>
                 <button
                   onClick={() => onDelete(c)}
                   className="w-7 h-7 grid place-items-center rounded hover:bg-red-50 text-red-500 hover:text-red-700"
-                  title="Smazat"
+                  title={t("delete")}
                 >
                   🗑
                 </button>
@@ -296,6 +295,7 @@ function CategoryEditor({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations("categories_page");
   const [name, setName] = useState(initial?.data.name ?? "");
   const [icon, setIcon] = useState(initial?.data.icon ?? "category");
   const [color, setColor] = useState<number>(initial?.data.color ?? PRESET_COLORS[0].value);
@@ -307,11 +307,11 @@ function CategoryEditor({
 
   async function onSave() {
     if (!profileSyncId) {
-      setErr("Není vybraný profil.");
+      setErr(t("no_profile"));
       return;
     }
     if (!name.trim()) {
-      setErr("Název je povinný.");
+      setErr(t("fill_name"));
       return;
     }
     setSaving(true);
@@ -357,7 +357,7 @@ function CategoryEditor({
       >
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-ink-900">
-            {initial ? "Upravit kategorii" : "Nová kategorie"}
+            {initial ? t("editor_edit_title") : t("editor_new_title")}
           </h2>
           <button onClick={onClose} className="text-ink-400 hover:text-ink-600 text-xl leading-none">
             ×
@@ -365,20 +365,20 @@ function CategoryEditor({
         </div>
 
         <div className="flex rounded-lg border border-ink-300 overflow-hidden text-sm">
-          {(["EXPENSE", "INCOME"] as const).map((t) => (
+          {(["EXPENSE", "INCOME"] as const).map((pt) => (
             <button
-              key={t}
+              key={pt}
               type="button"
-              onClick={() => setPrimaryType(t)}
+              onClick={() => setPrimaryType(pt)}
               className={`flex-1 py-2 ${
-                primaryType === t
-                  ? t === "EXPENSE"
+                primaryType === pt
+                  ? pt === "EXPENSE"
                     ? "bg-red-50 text-red-700 font-medium"
                     : "bg-emerald-50 text-emerald-700 font-medium"
                   : "text-ink-700 hover:bg-ink-50"
               }`}
             >
-              {t === "EXPENSE" ? "Primárně výdaj" : "Primárně příjem"}
+              {pt === "EXPENSE" ? t("tab_expense") : t("tab_income")}
             </button>
           ))}
         </div>
@@ -392,7 +392,7 @@ function CategoryEditor({
           </div>
           <input
             type="text"
-            placeholder="Název kategorie"
+            placeholder={t("name_placeholder")}
             value={name}
             onChange={(e) => setName(e.target.value)}
             className="flex-1 h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
@@ -401,13 +401,13 @@ function CategoryEditor({
         </div>
 
         <div>
-          <div className="text-xs font-medium text-ink-600 mb-2">Barva</div>
+          <div className="text-xs font-medium text-ink-600 mb-2">{t("color")}</div>
           <div className="flex flex-wrap gap-2">
             {PRESET_COLORS.map((c) => (
               <button
                 key={c.value}
                 onClick={() => setColor(c.value)}
-                title={c.label}
+                title={t(c.key)}
                 className={`w-8 h-8 rounded-full border-2 ${color === c.value ? "border-ink-900" : "border-transparent"}`}
                 style={{ backgroundColor: colorFromInt(c.value, 0.6) }}
               />
@@ -416,7 +416,7 @@ function CategoryEditor({
         </div>
 
         <div>
-          <div className="text-xs font-medium text-ink-600 mb-2">Ikona</div>
+          <div className="text-xs font-medium text-ink-600 mb-2">{t("icon")}</div>
           <div className="grid grid-cols-8 gap-1 max-h-48 overflow-y-auto p-1 border border-ink-200 rounded-lg">
             {PRESET_ICONS.map((name) => (
               <button
@@ -442,14 +442,14 @@ function CategoryEditor({
             onClick={onClose}
             className="h-9 px-4 rounded-lg border border-ink-300 text-sm text-ink-700 hover:bg-ink-50"
           >
-            Zrušit
+            {t("cancel")}
           </button>
           <button
             onClick={onSave}
             disabled={saving}
             className="h-9 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-50"
           >
-            {saving ? "Ukládám…" : "Uložit"}
+            {saving ? t("saving") : t("save")}
           </button>
         </div>
       </div>
@@ -482,8 +482,8 @@ function colorFromInt(c?: number, alpha = 0.2): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-function fmt(amount: number, currency: string): string {
-  return new Intl.NumberFormat("cs-CZ", {
+function fmt(amount: number, currency: string, locale: string = "cs-CZ"): string {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
     maximumFractionDigits: 2,
