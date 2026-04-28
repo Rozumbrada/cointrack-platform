@@ -116,6 +116,24 @@
       "pricing": "Podrobný ceník →"
     }
   },
+  "statistics_page": {
+    "title": "Statistiky a grafy",
+    "subtitle": "Přehled výdajů podle kategorií + trend v čase.",
+    "loading": "Načítám…",
+    "error_prefix": "Chyba:",
+    "income": "Příjmy",
+    "expense": "Výdaje",
+    "balance": "Bilance",
+    "expenses_by_category": "Výdaje podle kategorií",
+    "no_expenses_in_period": "Žádné výdaje v tomto období.",
+    "no_category": "Bez kategorie",
+    "show_in_chart": "Zobrazit v grafu",
+    "hide_from_chart": "Skrýt z grafu",
+    "no_transactions_short": "Žádné transakce.",
+    "no_description": "(bez popisu)",
+    "trend": "Trend",
+    "no_data": "Žádná data."
+  },
   "shopping_page": {
     "title": "Nákupní seznamy",
     "subtitle": "Klikni na položku pro přepnutí, hover pro úpravy.",

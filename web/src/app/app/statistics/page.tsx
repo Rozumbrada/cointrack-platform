@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import { useSyncData } from "@/lib/sync-hook";
 import {
   ServerCategory,
@@ -18,6 +19,8 @@ import { CategoryIcon } from "@/components/app/CategoryIcon";
 import { ExpenseDonut, categoryColor } from "@/components/app/ExpenseDonut";
 
 export default function StatisticsPage() {
+  const t = useTranslations("statistics_page");
+  const locale = useLocale();
   const { loading, error, entitiesByProfile } = useSyncData();
   const [period, setPeriod] = useState<Period>("30d");
   const [customRange, setCustomRange] = useState<{ from: string; to: string }>({
@@ -93,11 +96,11 @@ export default function StatisticsPage() {
     setHiddenCategories(next);
   }
 
-  if (loading) return <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>;
+  if (loading) return <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>;
   if (error)
     return (
       <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">
-        Chyba: {error}
+        {t("error_prefix")} {error}
       </div>
     );
 
@@ -105,10 +108,8 @@ export default function StatisticsPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-ink-900">Statistiky a grafy</h1>
-          <p className="text-sm text-ink-600 mt-1">
-            Přehled výdajů podle kategorií + trend v čase.
-          </p>
+          <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
+          <p className="text-sm text-ink-600 mt-1">{t("subtitle")}</p>
         </div>
         <PeriodSelector
           period={period}
@@ -120,24 +121,25 @@ export default function StatisticsPage() {
 
       {/* KPI tiles */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Tile label="Příjmy" amount={totals.income} color="text-emerald-700" sign="+" />
-        <Tile label="Výdaje" amount={totals.expense} color="text-red-700" sign="−" />
+        <Tile label={t("income")} amount={totals.income} color="text-emerald-700" sign="+" locale={locale} />
+        <Tile label={t("expense")} amount={totals.expense} color="text-red-700" sign="−" locale={locale} />
         <Tile
-          label="Bilance"
+          label={t("balance")}
           amount={totals.net}
           color={totals.net >= 0 ? "text-emerald-700" : "text-red-700"}
           sign={totals.net >= 0 ? "+" : "−"}
           absoluteAmount
+          locale={locale}
         />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Donut + legend */}
         <section className="bg-white rounded-2xl border border-ink-200 p-5">
-          <h2 className="font-semibold text-ink-900 mb-4">Výdaje podle kategorií</h2>
+          <h2 className="font-semibold text-ink-900 mb-4">{t("expenses_by_category")}</h2>
           {visibleCategoryStats.length === 0 ? (
             <div className="py-12 text-center text-ink-500 text-sm">
-              Žádné výdaje v tomto období.
+              {t("no_expenses_in_period")}
             </div>
           ) : (
             <>
@@ -183,13 +185,13 @@ export default function StatisticsPage() {
                           <CategoryIcon name={c.category.icon} size="sm" />
                         )}
                         <div className="flex-1 min-w-0 truncate">
-                          {c.category?.name ?? "Bez kategorie"}
+                          {c.category?.name ?? t("no_category")}
                         </div>
                         <div className="text-xs text-ink-500 tabular-nums">
                           {pct.toFixed(0)} %
                         </div>
                         <div className="font-medium tabular-nums w-24 text-right">
-                          {fmt(c.amount, "CZK")}
+                          {fmt(c.amount, "CZK", locale)}
                         </div>
                         <button
                           className="text-ink-400 hover:text-ink-700"
@@ -197,7 +199,7 @@ export default function StatisticsPage() {
                             e.stopPropagation();
                             toggleCategory(c.cid);
                           }}
-                          title={isHidden ? "Zobrazit v grafu" : "Skrýt z grafu"}
+                          title={isHidden ? t("show_in_chart") : t("hide_from_chart")}
                         >
                           {isHidden ? "👁" : "🚫"}
                         </button>
@@ -206,7 +208,7 @@ export default function StatisticsPage() {
                         <div className="ml-6 mt-1 mb-2 border-l-2 border-ink-200 pl-3 space-y-1">
                           {catTxs.length === 0 ? (
                             <div className="text-xs text-ink-500 py-2">
-                              Žádné transakce.
+                              {t("no_transactions_short")}
                             </div>
                           ) : (
                             catTxs.map((tx) => (
@@ -216,13 +218,13 @@ export default function StatisticsPage() {
                                 className="flex items-center gap-2 text-xs py-1.5 hover:bg-ink-100 rounded px-2 -ml-2"
                               >
                                 <span className="text-ink-500 tabular-nums shrink-0">
-                                  {formatDate(tx.date)}
+                                  {formatDate(tx.date, locale)}
                                 </span>
                                 <span className="flex-1 min-w-0 truncate text-ink-900">
-                                  {tx.description || tx.merchant || "(bez popisu)"}
+                                  {tx.description || tx.merchant || t("no_description")}
                                 </span>
                                 <span className="font-medium tabular-nums">
-                                  {fmt(tx.amount, tx.currency)}
+                                  {fmt(tx.amount, tx.currency, locale)}
                                 </span>
                               </Link>
                             ))
@@ -239,10 +241,10 @@ export default function StatisticsPage() {
 
         {/* Bar chart trend */}
         <section className="bg-white rounded-2xl border border-ink-200 p-5">
-          <h2 className="font-semibold text-ink-900 mb-4">Trend</h2>
+          <h2 className="font-semibold text-ink-900 mb-4">{t("trend")}</h2>
           {trend.length === 0 ? (
             <div className="py-12 text-center text-ink-500 text-sm">
-              Žádná data.
+              {t("no_data")}
             </div>
           ) : (
             <>
@@ -256,12 +258,12 @@ export default function StatisticsPage() {
                         <div
                           className="flex-1 bg-emerald-500 rounded-t"
                           style={{ height: `${Math.max(hIn, b.income > 0 ? 3 : 0)}%` }}
-                          title={`Příjmy: ${fmt(b.income, "CZK")}`}
+                          title={`${t("income")}: ${fmt(b.income, "CZK", locale)}`}
                         />
                         <div
                           className="flex-1 bg-red-500 rounded-t"
                           style={{ height: `${Math.max(hEx, b.expense > 0 ? 3 : 0)}%` }}
-                          title={`Výdaje: ${fmt(b.expense, "CZK")}`}
+                          title={`${t("expense")}: ${fmt(b.expense, "CZK", locale)}`}
                         />
                       </div>
                       <div className="text-[9px] text-ink-500 truncate w-full text-center">
@@ -273,10 +275,10 @@ export default function StatisticsPage() {
               </div>
               <div className="flex gap-4 mt-3 text-xs">
                 <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 bg-emerald-500 rounded" /> Příjmy
+                  <div className="w-3 h-3 bg-emerald-500 rounded" /> {t("income")}
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 bg-red-500 rounded" /> Výdaje
+                  <div className="w-3 h-3 bg-red-500 rounded" /> {t("expense")}
                 </div>
               </div>
             </>
@@ -295,12 +297,14 @@ function Tile({
   color,
   sign,
   absoluteAmount = false,
+  locale,
 }: {
   label: string;
   amount: number;
   color: string;
   sign: string;
   absoluteAmount?: boolean;
+  locale: string;
 }) {
   return (
     <div className="bg-white rounded-2xl border border-ink-200 p-5">
@@ -309,7 +313,7 @@ function Tile({
       </div>
       <div className={`text-2xl font-semibold ${color}`}>
         {sign}
-        {fmt(absoluteAmount ? Math.abs(amount) : amount, "CZK")}
+        {fmt(absoluteAmount ? Math.abs(amount) : amount, "CZK", locale)}
       </div>
     </div>
   );
@@ -405,18 +409,18 @@ function buildTrend(txs: UiTransaction[], period: Period): TrendBucket[] {
   return result;
 }
 
-function fmt(amount: number, currency: string): string {
-  return new Intl.NumberFormat("cs-CZ", {
+function fmt(amount: number, currency: string, locale: string = "cs-CZ"): string {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
     maximumFractionDigits: 0,
   }).format(amount);
 }
 
-function formatDate(iso: string): string {
+function formatDate(iso: string, locale: string = "cs-CZ"): string {
   if (!iso) return "—";
   try {
-    return new Intl.DateTimeFormat("cs-CZ", {
+    return new Intl.DateTimeFormat(locale, {
       day: "numeric",
       month: "numeric",
     }).format(new Date(iso));

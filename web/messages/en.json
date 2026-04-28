@@ -116,6 +116,24 @@
       "pricing": "Detailed pricing →"
     }
   },
+  "statistics_page": {
+    "title": "Statistics & charts",
+    "subtitle": "Overview of expenses by category + trend over time.",
+    "loading": "Loading…",
+    "error_prefix": "Error:",
+    "income": "Income",
+    "expense": "Expense",
+    "balance": "Balance",
+    "expenses_by_category": "Expenses by category",
+    "no_expenses_in_period": "No expenses in this period.",
+    "no_category": "Uncategorized",
+    "show_in_chart": "Show in chart",
+    "hide_from_chart": "Hide from chart",
+    "no_transactions_short": "No transactions.",
+    "no_description": "(no description)",
+    "trend": "Trend",
+    "no_data": "No data."
+  },
   "shopping_page": {
     "title": "Shopping lists",
     "subtitle": "Click an item to toggle, hover for edits.",
