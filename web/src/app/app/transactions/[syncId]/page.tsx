@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
 import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
@@ -21,6 +22,8 @@ import { CategoryPicker } from "@/components/app/CategoryPicker";
 
 export default function TransactionDetailPage() {
   const router = useRouter();
+  const t = useTranslations("transaction_detail");
+  const locale = useLocale();
   const params = useParams<{ syncId: string }>();
   const syncId = params.syncId;
 
@@ -46,22 +49,21 @@ export default function TransactionDetailPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const allAccounts = entitiesByProfile<ServerAccount>("accounts");
 
-  if (loading) return <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>;
+  if (loading) return <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>;
   if (error)
     return (
       <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">
-        Chyba: {error}
+        {t("error_prefix")} {error}
       </div>
     );
   if (!tx) {
     return (
       <div className="space-y-4">
         <Link href="/app/transactions" className="text-sm text-brand-600 hover:text-brand-700">
-          ← Zpět
+          {t("back_short")}
         </Link>
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-          Transakci <code>{syncId}</code> jsem nenašel. Možná patří do jiného profilu — přepni
-          v sidebaru.
+          {t("not_found", { id: syncId })}
         </div>
       </div>
     );
@@ -72,7 +74,7 @@ export default function TransactionDetailPage() {
   const signed = parseFloat(d.amount) || 0;
   const absAmount = Math.abs(signed);
   const sign = txType === "EXPENSE" ? "−" : txType === "INCOME" ? "+" : "";
-  const typeLabel = txType === "EXPENSE" ? "Výdaj" : txType === "INCOME" ? "Příjem" : "Převod";
+  const typeLabel = txType === "EXPENSE" ? t("type_expense") : txType === "INCOME" ? t("type_income") : t("type_transfer");
   const headerBg =
     txType === "EXPENSE" ? "bg-red-50" : txType === "INCOME" ? "bg-emerald-50" : "bg-brand-50";
   const headerText =
@@ -112,7 +114,7 @@ export default function TransactionDetailPage() {
 
   async function onDelete() {
     if (!tx) return;
-    if (!confirm("Opravdu smazat tuto transakci?")) return;
+    if (!confirm(t("delete_confirm"))) return;
     setBusy(true);
     setActionError(null);
     try {
@@ -143,21 +145,21 @@ export default function TransactionDetailPage() {
     <div className="space-y-4 max-w-2xl">
       <div className="flex items-center justify-between gap-4">
         <Link href="/app/transactions" className="text-sm text-brand-600 hover:text-brand-700">
-          ← Zpět na transakce
+          {t("back")}
         </Link>
         <div className="flex gap-3">
           <Link
             href={`/app/transactions/${tx.syncId}/edit`}
             className="text-sm text-brand-600 hover:text-brand-700"
           >
-            ✏️ Upravit
+            {t("edit")}
           </Link>
           <button
             onClick={onDelete}
             disabled={busy}
             className="text-sm text-red-600 hover:text-red-700 disabled:opacity-50"
           >
-            🗑 Smazat
+            {t("delete")}
           </button>
         </div>
       </div>
@@ -175,9 +177,9 @@ export default function TransactionDetailPage() {
         </div>
         <div className={`text-4xl font-bold mt-3 tabular-nums ${headerText}`}>
           {sign}
-          {fmt(absAmount, d.currency)}
+          {fmt(absAmount, d.currency, locale)}
         </div>
-        <div className="text-sm text-ink-600 mt-2">{formatDate(d.date)}</div>
+        <div className="text-sm text-ink-600 mt-2">{formatDate(d.date, locale)}</div>
       </section>
 
       {/* Category card (clickable) */}
@@ -193,9 +195,9 @@ export default function TransactionDetailPage() {
           <CategoryIcon name={category?.data.icon} />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-xs text-ink-500 uppercase tracking-wide">Kategorie</div>
+          <div className="text-xs text-ink-500 uppercase tracking-wide">{t("category_label")}</div>
           <div className={`text-base ${category ? "font-medium text-ink-900" : "text-ink-500"}`}>
-            {category?.data.name ?? "— Bez kategorie —"}
+            {category?.data.name ?? t("no_category")}
           </div>
         </div>
         <div className="text-ink-400">›</div>
@@ -221,7 +223,7 @@ export default function TransactionDetailPage() {
               </span>
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-xs text-ink-500 uppercase tracking-wide">Účet</div>
+              <div className="text-xs text-ink-500 uppercase tracking-wide">{t("account_label")}</div>
               <div className="text-base font-medium text-ink-900 truncate">
                 {account.data.name}
               </div>
@@ -234,11 +236,9 @@ export default function TransactionDetailPage() {
               <span className="text-xl">💵</span>
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-xs text-ink-500 uppercase tracking-wide">Účet</div>
-              <div className="text-base text-amber-700">Hotovost (bez vazby na účet)</div>
-              <div className="text-xs text-ink-500 mt-0.5">
-                Klikni pro přiřazení k účtu — částka se odečte ze zůstatku.
-              </div>
+              <div className="text-xs text-ink-500 uppercase tracking-wide">{t("account_label")}</div>
+              <div className="text-base text-amber-700">{t("cash_no_account")}</div>
+              <div className="text-xs text-ink-500 mt-0.5">{t("cash_assign_hint")}</div>
             </div>
           </>
         )}
@@ -252,7 +252,7 @@ export default function TransactionDetailPage() {
             store
           </span>
           <div className="flex-1 min-w-0">
-            <div className="text-xs text-ink-500 uppercase tracking-wide">Obchodník</div>
+            <div className="text-xs text-ink-500 uppercase tracking-wide">{t("merchant_label")}</div>
             <div className="text-base text-ink-900 truncate">{d.merchant}</div>
           </div>
         </section>
@@ -265,7 +265,7 @@ export default function TransactionDetailPage() {
             notes
           </span>
           <div className="flex-1 min-w-0">
-            <div className="text-xs text-ink-500 uppercase tracking-wide">Poznámka</div>
+            <div className="text-xs text-ink-500 uppercase tracking-wide">{t("note_label")}</div>
             <div className="text-base text-ink-900 whitespace-pre-wrap">{d.description}</div>
           </div>
         </section>
@@ -278,14 +278,14 @@ export default function TransactionDetailPage() {
             <span className="material-icons text-brand-600" style={{ fontSize: "18px" }}>
               account_balance
             </span>
-            <h3 className="text-sm font-semibold text-ink-900">Bankovní údaje</h3>
+            <h3 className="text-sm font-semibold text-ink-900">{t("bank_section")}</h3>
           </div>
           <div className="border-t border-ink-100 pt-2 space-y-1.5 text-sm">
-            {d.bankVs && <BankRow label="Variabilní symbol" value={d.bankVs} />}
-            {d.bankCounterparty && <BankRow label="Protiúčet" value={d.bankCounterparty} />}
-            {d.bankCounterpartyName && <BankRow label="Název protiúčtu" value={d.bankCounterpartyName} />}
-            {d.bankTxId && <BankRow label="ID pohybu" value={d.bankTxId} />}
-            {d.transferPairId && <BankRow label="Pár převodu" value={d.transferPairId} />}
+            {d.bankVs && <BankRow label={t("bank_vs")} value={d.bankVs} />}
+            {d.bankCounterparty && <BankRow label={t("bank_counterparty")} value={d.bankCounterparty} />}
+            {d.bankCounterpartyName && <BankRow label={t("bank_counterparty_name")} value={d.bankCounterpartyName} />}
+            {d.bankTxId && <BankRow label={t("bank_tx_id")} value={d.bankTxId} />}
+            {d.transferPairId && <BankRow label={t("bank_transfer_pair")} value={d.transferPairId} />}
           </div>
         </section>
       )}
@@ -329,6 +329,7 @@ function AccountPicker({
   onSelect: (syncId: string | null) => void;
   onClose: () => void;
 }) {
+  const t = useTranslations("transaction_detail");
   return (
     <div
       className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4"
@@ -339,7 +340,7 @@ function AccountPicker({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-2">
-          <h2 className="text-lg font-semibold text-ink-900">Vyber účet</h2>
+          <h2 className="text-lg font-semibold text-ink-900">{t("select_account_title")}</h2>
           <button
             onClick={onClose}
             className="text-ink-400 hover:text-ink-600 text-xl leading-none"
@@ -358,8 +359,8 @@ function AccountPicker({
               💵
             </div>
             <div className="flex-1 text-left">
-              <div className="text-sm text-ink-900">Hotovost (bez vazby)</div>
-              <div className="text-xs text-ink-500">Nepočítá se do zůstatku žádného účtu.</div>
+              <div className="text-sm text-ink-900">{t("cash_no_link")}</div>
+              <div className="text-xs text-ink-500">{t("cash_no_link_desc")}</div>
             </div>
             {currentSyncId == null && (
               <span className="material-icons text-amber-600" style={{ fontSize: "18px" }}>
@@ -418,18 +419,18 @@ function BankRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function fmt(amount: number, currency: string): string {
-  return new Intl.NumberFormat("cs-CZ", {
+function fmt(amount: number, currency: string, locale: string = "cs-CZ"): string {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
     maximumFractionDigits: 2,
   }).format(amount);
 }
 
-function formatDate(iso: string): string {
+function formatDate(iso: string, locale: string = "cs-CZ"): string {
   if (!iso) return "—";
   try {
-    return new Intl.DateTimeFormat("cs-CZ", {
+    return new Intl.DateTimeFormat(locale, {
       day: "numeric",
       month: "long",
       year: "numeric",
