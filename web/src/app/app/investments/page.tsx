@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
@@ -30,6 +31,8 @@ interface InvestmentPositionData {
 type PositionRow = { syncId: string; data: InvestmentPositionData };
 
 export default function InvestmentsPage() {
+  const t = useTranslations("investments_page");
+  const locale = useLocale();
   const { loading, error, entitiesByProfile, profileSyncId, reload } = useSyncData();
   const positions = entitiesByProfile<InvestmentPositionData>("investment_positions");
   const accounts = entitiesByProfile<ServerAccount>("accounts");
@@ -61,7 +64,7 @@ export default function InvestmentsPage() {
   }, [positions]);
 
   async function onDelete(row: PositionRow) {
-    if (!confirm(`Smazat pozici ${row.data.symbol}?`)) return;
+    if (!confirm(t("delete_confirm", { symbol: row.data.symbol }))) return;
     const now = new Date().toISOString();
     await withAuth((t) =>
       sync.push(t, {
@@ -85,24 +88,24 @@ export default function InvestmentsPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold text-ink-900">Investice</h1>
-          <p className="text-sm text-ink-600 mt-1">Pozice v akciích, ETF, kryptoměnách.</p>
+          <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
+          <p className="text-sm text-ink-600 mt-1">{t("subtitle")}</p>
         </div>
         <button
           onClick={() => setEditing("new")}
           className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
         >
-          + Nová pozice
+          {t("new_position")}
         </button>
       </div>
 
       {sorted.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Tile label="Nákupní hodnota" value={fmt(totals.cost, "CZK")} />
-          <Tile label="Aktuální hodnota" value={fmt(totals.value, "CZK")} />
+          <Tile label={t("tile_cost")} value={fmt(totals.cost, "CZK", locale)} />
+          <Tile label={t("tile_value")} value={fmt(totals.value, "CZK", locale)} />
           <Tile
-            label="Zisk / ztráta"
-            value={(totals.pnl >= 0 ? "+" : "") + fmt(totals.pnl, "CZK")}
+            label={t("tile_pnl")}
+            value={(totals.pnl >= 0 ? "+" : "") + fmt(totals.pnl, "CZK", locale)}
             color={totals.pnl >= 0 ? "text-emerald-700" : "text-red-700"}
           />
         </div>
@@ -110,29 +113,29 @@ export default function InvestmentsPage() {
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">
-          Chyba: {error}
+          {t("error_prefix")} {error}
         </div>
       )}
 
       {loading ? (
-        <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>
+        <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>
       ) : sorted.length === 0 ? (
         <div className="bg-white rounded-2xl border border-ink-200 p-12 text-center">
           <div className="text-4xl mb-3">📈</div>
-          <div className="font-medium text-ink-900">Žádné pozice</div>
-          <p className="text-sm text-ink-600 mt-2">Klikni na „Nová pozice".</p>
+          <div className="font-medium text-ink-900">{t("empty_title")}</div>
+          <p className="text-sm text-ink-600 mt-2">{t("empty_desc")}</p>
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-ink-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-ink-50 text-ink-600 text-left text-xs uppercase tracking-wide">
               <tr>
-                <th className="px-6 py-3 font-medium">Symbol</th>
-                <th className="px-6 py-3 font-medium">Účet</th>
-                <th className="px-6 py-3 font-medium text-right">Ks</th>
-                <th className="px-6 py-3 font-medium text-right">Nákup</th>
-                <th className="px-6 py-3 font-medium text-right">Aktuální</th>
-                <th className="px-6 py-3 font-medium text-right">P/L</th>
+                <th className="px-6 py-3 font-medium">{t("th_symbol")}</th>
+                <th className="px-6 py-3 font-medium">{t("th_account")}</th>
+                <th className="px-6 py-3 font-medium text-right">{t("th_quantity")}</th>
+                <th className="px-6 py-3 font-medium text-right">{t("th_buy")}</th>
+                <th className="px-6 py-3 font-medium text-right">{t("th_current")}</th>
+                <th className="px-6 py-3 font-medium text-right">{t("th_pnl")}</th>
                 <th className="px-6 py-3 w-1" />
               </tr>
             </thead>
@@ -151,7 +154,7 @@ export default function InvestmentsPage() {
                         {p.data.symbol}
                         {!p.data.isOpen && (
                           <span className="text-[10px] uppercase bg-ink-100 text-ink-600 px-1.5 py-0.5 rounded">
-                            uzavřeno
+                            {t("closed")}
                           </span>
                         )}
                       </div>
@@ -160,12 +163,12 @@ export default function InvestmentsPage() {
                       )}
                     </td>
                     <td className="px-6 py-3 text-ink-600">{acc?.name ?? "—"}</td>
-                    <td className="px-6 py-3 text-right tabular-nums">{qty.toLocaleString("cs-CZ")}</td>
+                    <td className="px-6 py-3 text-right tabular-nums">{qty.toLocaleString(locale)}</td>
                     <td className="px-6 py-3 text-right tabular-nums text-ink-600">
-                      {fmt(buy, p.data.buyCurrency)}
+                      {fmt(buy, p.data.buyCurrency, locale)}
                     </td>
                     <td className="px-6 py-3 text-right tabular-nums">
-                      {fmt(cur, p.data.buyCurrency)}
+                      {fmt(cur, p.data.buyCurrency, locale)}
                     </td>
                     <td
                       className={`px-6 py-3 text-right tabular-nums font-semibold ${
@@ -173,7 +176,7 @@ export default function InvestmentsPage() {
                       }`}
                     >
                       {pnl >= 0 ? "+" : ""}
-                      {fmt(pnl, p.data.buyCurrency)}
+                      {fmt(pnl, p.data.buyCurrency, locale)}
                       <div className="text-xs font-normal">
                         {pnl >= 0 ? "+" : ""}
                         {pnlPct.toFixed(1)} %
@@ -184,14 +187,14 @@ export default function InvestmentsPage() {
                         <button
                           onClick={() => setEditing(p)}
                           className="text-ink-500 hover:text-ink-700 px-2"
-                          title="Upravit"
+                          title={t("edit")}
                         >
                           ✏️
                         </button>
                         <button
                           onClick={() => onDelete(p)}
                           className="text-red-500 hover:text-red-700 px-2"
-                          title="Smazat"
+                          title={t("delete")}
                         >
                           🗑
                         </button>
@@ -234,6 +237,7 @@ function PositionEditor({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations("investments_page");
   const investmentAccs = useMemo(
     () => accounts.filter((a) => a.data.type === "INVESTMENT" || a.data.type === "investment" || true),
     [accounts],
@@ -256,13 +260,13 @@ function PositionEditor({
   const [err, setErr] = useState<string | null>(null);
 
   async function save() {
-    if (!profileSyncId) return setErr("Není vybraný profil.");
-    if (!symbol.trim()) return setErr("Vyplň ticker.");
-    if (!accountId) return setErr("Vyber účet.");
+    if (!profileSyncId) return setErr(t("no_profile"));
+    if (!symbol.trim()) return setErr(t("fill_ticker"));
+    if (!accountId) return setErr(t("fill_account"));
     const qty = parseFloat(quantity.replace(",", "."));
-    if (!qty || qty <= 0) return setErr("Vyplň kladný počet.");
+    if (!qty || qty <= 0) return setErr(t("fill_qty"));
     const buy = parseFloat(buyPrice.replace(",", "."));
-    if (!buy || buy <= 0) return setErr("Vyplň nákupní cenu.");
+    if (!buy || buy <= 0) return setErr(t("fill_buy_price"));
 
     setSaving(true);
     setErr(null);
@@ -308,14 +312,14 @@ function PositionEditor({
 
   return (
     <FormDialog
-      title={initial ? "Upravit pozici" : "Nová pozice"}
+      title={initial ? t("editor_edit") : t("editor_new")}
       onClose={onClose}
       onSave={save}
       saving={saving}
       error={err}
     >
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Ticker">
+        <Field label={t("field_ticker")}>
           <input
             type="text"
             value={symbol}
@@ -325,7 +329,7 @@ function PositionEditor({
             className={inputClass}
           />
         </Field>
-        <Field label="Yahoo symbol (volit.)">
+        <Field label={t("field_yahoo")}>
           <input
             type="text"
             value={yahooSymbol}
@@ -335,7 +339,7 @@ function PositionEditor({
           />
         </Field>
       </div>
-      <Field label="Název firmy">
+      <Field label={t("field_company")}>
         <input
           type="text"
           value={name}
@@ -344,7 +348,7 @@ function PositionEditor({
           className={inputClass}
         />
       </Field>
-      <Field label="Účet">
+      <Field label={t("field_account")}>
         <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className={inputClass}>
           {accounts.map((a) => (
             <option key={a.syncId} value={a.syncId}>
@@ -354,7 +358,7 @@ function PositionEditor({
         </select>
       </Field>
       <div className="grid grid-cols-3 gap-3">
-        <Field label="Počet ks">
+        <Field label={t("field_qty")}>
           <input
             type="text"
             inputMode="decimal"
@@ -363,7 +367,7 @@ function PositionEditor({
             className={inputClass}
           />
         </Field>
-        <Field label="Cena za ks">
+        <Field label={t("field_unit_price")}>
           <input
             type="text"
             inputMode="decimal"
@@ -372,7 +376,7 @@ function PositionEditor({
             className={inputClass}
           />
         </Field>
-        <Field label="Měna">
+        <Field label={t("field_currency")}>
           <select value={buyCurrency} onChange={(e) => setBuyCurrency(e.target.value)} className={inputClass}>
             {["USD", "EUR", "CZK", "GBP", "CHF"].map((c) => (
               <option key={c} value={c}>{c}</option>
@@ -381,10 +385,10 @@ function PositionEditor({
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Datum nákupu">
+        <Field label={t("field_buy_date")}>
           <input type="date" value={buyDate} onChange={(e) => setBuyDate(e.target.value)} className={inputClass} />
         </Field>
-        <Field label="Platforma">
+        <Field label={t("field_platform")}>
           <select value={platform} onChange={(e) => setPlatform(e.target.value)} className={inputClass}>
             {["Manual", "XTB", "Degiro", "IBKR", "Trading 212", "Revolut", "eToro"].map((p) => (
               <option key={p} value={p}>{p}</option>
@@ -394,11 +398,11 @@ function PositionEditor({
       </div>
       <label className="flex items-center gap-2 text-sm text-ink-700">
         <input type="checkbox" checked={isOpen} onChange={(e) => setIsOpen(e.target.checked)} className="w-4 h-4" />
-        Otevřená pozice
+        {t("is_open")}
       </label>
       {!isOpen && (
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Prodejní cena">
+          <Field label={t("field_sell_price")}>
             <input
               type="text"
               inputMode="decimal"
@@ -407,12 +411,12 @@ function PositionEditor({
               className={inputClass}
             />
           </Field>
-          <Field label="Datum prodeje">
+          <Field label={t("field_sell_date")}>
             <input type="date" value={sellDate} onChange={(e) => setSellDate(e.target.value)} className={inputClass} />
           </Field>
         </div>
       )}
-      <Field label="Poznámka">
+      <Field label={t("field_note")}>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
@@ -441,8 +445,8 @@ function Tile({
   );
 }
 
-function fmt(amount: number, currency: string): string {
-  return new Intl.NumberFormat("cs-CZ", {
+function fmt(amount: number, currency: string, locale: string = "cs-CZ"): string {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
     maximumFractionDigits: 2,
