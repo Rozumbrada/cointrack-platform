@@ -116,6 +116,276 @@
       "pricing": "Podrobný ceník →"
     }
   },
+  "for_business": {
+    "meta_title": "Pro firmy a OSVČ",
+    "meta_description": "Cointrack pro OSVČ, s.r.o. a živnostníky. Napojení na iDoklad, Fio platby, export pro účetní, předpřipravené kategorie podle oboru.",
+    "badge": "Cointrack Business",
+    "title": "Přestaň zápasit s fakturami a Excelem.",
+    "subtitle": "Pro OSVČ, s.r.o. a živnostníky. Nasken účtenku, vystav fakturu, pošli účetní. Všechno v jedné appce, propojené s tvou bankou a iDokladem.",
+    "cta_trial": "14 dní zdarma",
+    "use_cases_title": "Co Cointrack dělá za tebe.",
+    "use_cases": [
+      { "title": "Ráno otevřeš accouny, večer fakturu", "text": "Transakce z ČSOB, KB nebo Fio se stáhly samy. Účtenky z oběda jsi vyfotil během 5 sekund. Fakturu pro klienta vystavíš na cestě domů." },
+      { "title": "Účetní dostane ZIP pro kvartál", "text": "Export všech faktur (přijatých + vydaných) a účtenek v ZIP. Součástí je CSV s VS, IČO, částkami a linky na PDF. Účetní volá jen když něco chybí." },
+      { "title": "Platby z faktur napřímo", "text": "Faktura přijde, klikneš Zaplatit, Fio API pošle platbu. Autorizuješ v Smartbanking SMS nebo push. Žádné kopírování IBAN a VS." },
+      { "title": "Víš kolik máš v kase za hodinu", "text": "Dashboard ukáže, kolik tento měsíc přišlo od klientů, kolik jsi vydal za zboží, a jaké jsou nadcházející splatnosti." }
+    ],
+    "focuses_title": "Přednastavené kategorie podle tvého oboru.",
+    "focuses_subtitle": "Když zakládáš firemní profil, zvolíš zaměření. Cointrack naseje relevantní kategorie výdajů i příjmů, takže nemusíš nic vymýšlet.",
+    "focuses": [
+      { "name": "Gastronomie a restaurace", "categories": "Suroviny, nápoje, personál, energie, vybavení kuchyně" },
+      { "name": "IT a software", "categories": "Licence, cloud, hardware, subdodavatelé, marketing" },
+      { "name": "Zdravotnictví", "categories": "Laboratoř, zdravotnický materiál, léky, pronájem ordinace" },
+      { "name": "Stavebnictví", "categories": "Materiál, nářadí, PHM, OOPP, pronájem techniky" },
+      { "name": "Maloobchod a e-shop", "categories": "Zboží, logistika, obaly, marketing, pronájem" },
+      { "name": "Poradenství a právní", "categories": "Odborná literatura, pojistné, cestovné, konference" },
+      { "name": "Zemědělství", "categories": "Osivo, PHM, opravy strojů, veterinář, pojištění" },
+      { "name": "Vzdělávání", "categories": "Studijní materiály, pronájem prostor, honoráře lektorů" },
+      { "name": "Reality", "categories": "Opravy, pojistné, daně, energie, správa" },
+      { "name": "Doprava a logistika", "categories": "PHM, servis, mýto, pojistné, leasing" }
+    ],
+    "integrations_title": "Integrace, které skutečně použiješ.",
+    "integrations": [
+      { "name": "iDoklad", "description": "ClientID a ClientSecret z iDoklad dashboardu, vše ostatní řeší Cointrack. Vystav fakturu, pošli do iDokladu, stáhni PDF." },
+      { "name": "Fio API", "description": "Token z Fio internetového bankovnictví. Čtení transakcí i zadávání plateb. Autorizace v Smartbanking." },
+      { "name": "PSD2 Open Banking", "description": "ČSOB, KB, ČS, Air Bank, Raiffeisen, UniCredit, mBank a dalších 2500+. Přes regulované AIS poskytovatele." },
+      { "name": "ARES", "description": "Napiš IČO, ARES vrátí název, adresu, DIČ. Vyplnění firemních údajů za 2 sekundy." },
+      { "name": "Pohoda XML", "description": "Export účtenek a faktur ve formátu pro Pohoda účetní software. Všechno, co je třeba pro daňové přiznání." },
+      { "name": "Google Drive", "description": "Automatické zálohy v AES-256-GCM šifrování. Export účetních dokladů do oddělené složky pro sdílení s účetní." }
+    ],
+    "cta_title": "Business 199 Kč / měsíc.",
+    "cta_subtitle": "Neomezený počet firemních profilů, všechny integrace, sdílený přístup pro účetního, priority podpora.",
+    "cta_features": [
+      "14 dní zdarma, bez karty",
+      "Měsíční platba, zruš kdykoli",
+      "Česká podpora v češtině",
+      "GDPR + data v ČR"
+    ],
+    "cta_signup": "Vyzkoušet zdarma",
+    "cta_pricing": "Všechny tiery →"
+  },
+  "features_page": {
+    "meta_title": "Funkce",
+    "meta_description": "Skenování účtenek AI, napojení na bankovní účty, faktury, iDoklad, QR platby, statistiky a více.",
+    "title": "Co Cointrack umí.",
+    "subtitle": "Od ruční tabulky v Excelu ke kompletnímu finančnímu systému. Vše, co doopravdy používáš — nic navíc.",
+    "sections": [
+      {
+        "title": "Napojení na bankovní účty",
+        "paragraphs": [
+          "Přes PSD2 Open Banking se napojíš na Fio, Českou spořitelnu, ČSOB, KB, Air Bank, Raiffeisen a další z 2500+ bank v EU. Bez importu CSV, bez ručního přepisování.",
+          "Ověření probíhá v IB tvé banky — tvoje přihlašovací údaje nikdy nevidíme. Data tečou přes regulovaného PSD2 poskytovatele, schváleného ČNB.",
+          "Transakce se stáhnou až 90 dní zpětně. Automatický sync v intervalu 1 / 3 / 6 / 12 hodin."
+        ]
+      },
+      {
+        "title": "AI skenování účtenek a faktur",
+        "paragraphs": [
+          "Vyfoť účtenku z kavárny nebo nahraj PDF od dodavatele. Google Gemini AI rozpozná prodejce, IČO, datum, celkovou částku, DPH i jednotlivé položky.",
+          "Systém sám pozná, jestli jde o účtenku nebo fakturu, a zařadí ji do správné sekce. Účtenku propojí s transakcí v bance — bez tvého zásahu.",
+          "Podporuje češtinu i angličtinu. Funguje i na krátké, čtyři roky staré fotky."
+        ]
+      },
+      {
+        "title": "Faktury — přijaté i vydané",
+        "paragraphs": [
+          "Evidence přijatých i vydaných faktur s přehledem splatnosti. Variabilní symbol, IBAN, suma, DPH — vše v jednom místě.",
+          "QR kód pro platbu SPAYD se generuje automaticky. Otevři jakýkoli bankovní app, načti QR, zaplať.",
+          "Pro Fio banku: pošli platbu přímo přes Fio API — faktura je zaplacená dříve, než ji zavřeš. Autorizuješ v Fio Smartbanking."
+        ]
+      },
+      {
+        "title": "Osobní i firemní profily pod jedním účtem",
+        "paragraphs": [
+          "Jeden Cointrack účet, více profilů. Rodinný rozpočet, OSVČ, vedlejšák, s.r.o. — každý profil má vlastní účty, kategorie, DPH nastavení, IČO a DIČ.",
+          "Firemní profil má přednastavené kategorie podle oboru: pohostinství, IT, zdravotnictví, stavebnictví, vzdělávání, doprava, realitní, zemědělství a další.",
+          "Přístup pro účetního: sdílej export faktur a účtenek, aniž by viděl tvé osobní finance."
+        ]
+      },
+      {
+        "title": "Integrace s iDoklad a Pohoda",
+        "paragraphs": [
+          "Napojení na iDoklad přes API — vystav fakturu v Cointracku, pošli ji do iDokladu jedním klikem. Načti ClientID a ClientSecret, dál to řeší aplikace.",
+          "Export do Pohoda XML pro klasické účetní systémy. Export ZIP pro účetní, který chce vše v jedné složce."
+        ]
+      },
+      {
+        "title": "Statistiky, které něco řeknou",
+        "paragraphs": [
+          "Kategorie výdajů podle síly utracení. Měsíční a čtvrtletní srovnání. Koláčové a trendové grafy.",
+          "Rozpočty na kategorie — upozornění, když ses ocitl pod hranicí. Plánované platby, dlužníci, spořicí cíle."
+        ]
+      },
+      {
+        "title": "Zálohy a sync napříč zařízeními",
+        "paragraphs": [
+          "Automatické zálohy do Google Drive — AES-256 šifrované tvým heslem. I kdyby Google uviděl soubor, nic z něj nepřečte.",
+          "Sync mezi Androidem, iOSem a webem. Přidej fakturu na notebooku, pošli QR z telefonu.",
+          "Export do ZIP se vším potřebným pro migraci mezi zařízeními nebo pro účetního."
+        ]
+      },
+      {
+        "title": "Bezpečnost jako priorita",
+        "paragraphs": [
+          "Databáze šifrovaná SQLCipher (AES-256-GCM). Biometrické odemčení (Face ID, otisk). API klíče a tokeny v Android Keystore / iOS Keychain.",
+          "Všechny servery v České republice (WEDOS / Hetzner DE). GDPR-compliant, data z EU neopouštějí.",
+          "Žádné sdílení dat s třetími stranami. Žádná reklama. Žádné pixely do Facebooku."
+        ]
+      },
+      {
+        "title": "Věrnostní karty a čárové kódy",
+        "paragraphs": [
+          "Nasken ČK z peněženky — Tesco Clubcard, Rohlík, Alza Plus. V obchodě otevři kartu v appce, namíří na čtečku.",
+          "Dominantní barva loga se extrahuje automaticky — karty vypadají jako v reálu."
+        ]
+      },
+      {
+        "title": "Smart home friendly",
+        "paragraphs": [
+          "Widget na hlavní obrazovku s balancí účtu. Rychlé nahrání účtenky ze ShareSheet. Plánované platby jako připomenutí.",
+          "Android Auto podpora pro rychlé zobrazení zůstatku v autě."
+        ]
+      },
+      {
+        "title": "Kompletní lokalizace do češtiny i angličtiny",
+        "paragraphs": [
+          "Přepínač jazyka přímo v aplikaci. Nevytváří nové instance při přepnutí.",
+          "Anglická varianta pro zahraniční kolegy nebo když cestuješ."
+        ]
+      }
+    ]
+  },
+  "about": {
+    "meta_title": "O nás",
+    "meta_description": "Kdo stojí za Cointrackem a proč děláme finanční app pro Česko.",
+    "title": "Proč Cointrack existuje.",
+    "intro": "Většina finančních appek je buď zahraniční a nezná Fio banku, nebo česká a vypadá jako z roku 2015. Chtěli jsme něco, co umí oboje a vypadá dobře na telefonu, tabletu i notebooku.",
+    "for_whom_title": "Pro koho to děláme",
+    "for_whom_text": "Pro lidi, kteří používají víc českých i zahraničních účtů, občas vystaví fakturu nebo naopak dostanou, a občas chtějí vědět, kam jim tečou peníze. Pro OSVČ, který si musí sám hlídat DPH a termíny splatnosti. Pro rodiny, co chtějí pochopit, proč je účet za elektřinu větší než loni.",
+    "how_title": "Jak to děláme",
+    "how_item1_b": "Nejsme banka",
+    "how_item1": "— jsme čtenář tvých dat, která používáš u své banky. Pro napojení používáme licencované PSD2 poskytovatele.",
+    "how_item2_b": "Všechno v Evropské unii",
+    "how_item2": "— servery v České republice a Německu. Data EU neopouštějí, GDPR je základ.",
+    "how_item3_b": "Open source komponenty",
+    "how_item3": "— databáze (Postgres), šifrování (SQLCipher), UI framework (Compose). Žádné black boxy.",
+    "how_item4_b": "Bez reklamy a bez sdílení dat",
+    "how_item4": "— tvá data jsou tvá. Ne produkt.",
+    "roadmap_title": "Roadmap",
+    "roadmap_q2_b": "Q2 2026",
+    "roadmap_q2": ": Android ✓, web beta, napojení českých bank přes PSD2",
+    "roadmap_q3_b": "Q3 2026",
+    "roadmap_q3": ": iOS beta, multi-tenant pro účetní",
+    "roadmap_q4_b": "Q4 2026",
+    "roadmap_q4": ": Public API, export do více účetních systémů",
+    "contact_title": "Kontakt",
+    "contact_text_before": "Máš otázku, feedback nebo bug? Napiš na",
+    "contact_text_after": ". Odpovídáme do 1 pracovního dne."
+  },
+  "contact": {
+    "meta_title": "Kontakt",
+    "meta_description": "Napiš nám na support@cointrack.cz. Odpovídáme do 1 pracovního dne.",
+    "title": "Kontakt.",
+    "subtitle": "Nejjednodušší cesta je email. Odpovídáme do 1 pracovního dne, obvykle mnohem dřív.",
+    "support_title": "Běžná podpora",
+    "support_desc": "Dotazy k používání, bug reporty, žádosti o funkce.",
+    "sales_title": "Obchodní dotazy",
+    "sales_desc": "Team tier, custom integrace, white-label řešení.",
+    "security_title": "Bezpečnost",
+    "security_desc": "Responsible disclosure bezpečnostních zranitelností. PGP klíč na vyžádání.",
+    "operator_title": "Provozovatel",
+    "operator_line1": "Cointrack — provozovatel bude doplněn po registraci entity.",
+    "operator_line2": "Česká republika",
+    "operator_line3": "IČO: bude doplněno"
+  },
+  "pricing": {
+    "meta_title": "Ceník",
+    "meta_description": "Free pro osobní použití, Business pro OSVČ a firmy. 14 dní zdarma na zkoušku, bez karty.",
+    "title": "Ceník, který nepřekvapí.",
+    "subtitle": "Začni zdarma, plať měsíčně, zruš kdykoliv. Žádné smluvní pokuty, žádné aktivační poplatky.",
+    "vat_note": "Ceny jsou s DPH pro ČR. B2B ceny vidíš po zadání DIČ v checkoutu.",
+    "popular": "Nejoblíbenější",
+    "per_month": "/měsíc",
+    "yearly_title": "Platíš ročně? Dostaneš 2 měsíce zdarma.",
+    "yearly_desc": "Personal za 690 Kč/rok, Business za 1990 Kč/rok, Organization za 3990 Kč/rok.",
+    "free_name": "Free",
+    "free_price": "0 Kč",
+    "free_desc": "Pro osobní použití, lokálně na Androidu.",
+    "free_cta": "Stáhnout Android",
+    "personal_name": "Personal",
+    "personal_price": "69 Kč",
+    "personal_desc": "Osobní profil napříč zařízeními (Android + web + iOS).",
+    "business_name": "Business",
+    "business_price": "199 Kč",
+    "business_desc": "Pro OSVČ a s.r.o. Firemní profily.",
+    "organization_name": "Organization",
+    "organization_price": "399 Kč",
+    "organization_desc": "Pro firmy s více členy a sdílenou účetní.",
+    "trial_cta": "14 dní zdarma",
+    "free_features": [
+      "Jeden osobní profil",
+      "Fio banka přes token",
+      "OCR účtenek (vlastní Gemini API klíč)",
+      "Offline provoz + Google Drive zálohy",
+      "Kategorie, rozpočty, cíle",
+      "Export do ZIP"
+    ],
+    "free_missing": ["Cloud sync", "Web přístup", "Firemní profily"],
+    "personal_features": [
+      "Vše z Free",
+      "Cloud sync mezi Androidem, webem a iOS",
+      "Napojení bank přes PSD2 (ČSOB, KB, ČS, Air Bank…)",
+      "OCR účtenek bez vlastního API klíče",
+      "Web aplikace (cointrack.cz/app)",
+      "Priority podpora"
+    ],
+    "business_features": [
+      "Vše z Personal",
+      "Neomezený počet firemních profilů",
+      "Přednastavené kategorie dle oboru",
+      "iDoklad integrace (vystavení faktur)",
+      "Fio platby napřímo přes API",
+      "Sdílený přístup pro účetního (read-only)",
+      "Export do Pohoda XML",
+      "ARES automatická doplnění firemních dat"
+    ],
+    "organization_features": [
+      "Vše z Business",
+      "Pozvání více členů do organizace",
+      "Sdílení jednotlivých bankovních účtů s členy",
+      "Účetní rozhraní s hromadným ZIP exportem",
+      "Per-uživatelské oprávnění na úrovni účtů",
+      "API přístup pro vlastní integrace",
+      "Priority podpora"
+    ],
+    "faq_title": "Často kladené otázky",
+    "faq": [
+      {
+        "q": "Můžu zrušit kdykoliv?",
+        "a": "Ano, v libovolném okamžiku přes Nastavení → Předplatné → Zrušit. Budeš mít přístup do konce zaplaceného období. Žádné pokuty, žádné formuláře."
+      },
+      {
+        "q": "Co se stane s daty, když downgraduju na Free?",
+        "a": "Data zůstanou. Firemní profily přejdou do read-only režimu, takže si faktury pořád zobrazíš a exportuješ, ale nepřidáš nové. Kdykoli se vrátíš na Business, zase se odemknou."
+      },
+      {
+        "q": "Jak funguje 14-denní trial?",
+        "a": "Registraci na Personal, Business nebo Organization ti dá plný přístup na 14 dní bez karty. V den 14 ti pošleme připomínku — pokud pokračuješ, přidáš kartu, jinak se přepneš automaticky na Free."
+      },
+      {
+        "q": "Je Cointrack registrovaný u ČNB?",
+        "a": "Cointrack není platební instituce ani banka. Pro napojení bank přes PSD2 používáme licencované AIS poskytovatele (GoCardless Bank Account Data, Enable Banking), které drží licenci v EU."
+      },
+      {
+        "q": "Kde běží servery?",
+        "a": "WEDOS (Hluboká nad Vltavou, Česká republika) pro databázi a soubory. Web je na Vercel edge (Frankfurt). Zálohy na Backblaze B2 v EU. Žádná data neopouštějí Evropskou unii."
+      },
+      {
+        "q": "Jaký rozdíl mezi osobním a firemním profilem?",
+        "a": "Osobní profil nemá DPH, nepotřebuje IČO, jde do Free. Firemní profil má IČO/DIČ, přednastavené kategorie dle oboru (pohostinství, IT, zdravotnictví…), integraci s iDoklad a Pohoda, a je součástí Business tieru."
+      }
+    ]
+  },
   "auth": {
     "login": {
       "title": "Přihlášení",

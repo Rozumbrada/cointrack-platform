@@ -1,114 +1,85 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { Container } from "@/components/ui/container";
 import { Button } from "@/components/ui/button";
 import { Check, X } from "lucide-react";
 
-export const metadata: Metadata = {
-  title: "Ceník",
-  description:
-    "Free pro osobní použití, Business pro OSVČ a firmy. 14 dní zdarma na zkoušku, bez karty.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("pricing");
+  return {
+    title: t("meta_title"),
+    description: t("meta_description"),
+  };
+}
 
-type Tier = {
-  name: string;
-  price: string;
-  period?: string;
-  description: string;
-  cta: string;
-  ctaVariant: "outline" | "brand" | "primary";
-  features: string[];
-  missing?: string[];
-  badge?: string;
-};
+export default async function PricingPage() {
+  const t = await getTranslations("pricing");
 
-const tiers: Tier[] = [
-  {
-    name: "Free",
-    price: "0 Kč",
-    description: "Pro osobní použití, lokálně na Androidu.",
-    cta: "Stáhnout Android",
-    ctaVariant: "outline",
-    features: [
-      "Jeden osobní profil",
-      "Fio banka přes token",
-      "OCR účtenek (vlastní Gemini API klíč)",
-      "Offline provoz + Google Drive zálohy",
-      "Kategorie, rozpočty, cíle",
-      "Export do ZIP",
-    ],
-    missing: ["Cloud sync", "Web přístup", "Firemní profily"],
-  },
-  {
-    name: "Personal",
-    price: "69 Kč",
-    period: "/měsíc",
-    description: "Osobní profil napříč zařízeními (Android + web + iOS).",
-    cta: "14 dní zdarma",
-    ctaVariant: "primary",
-    features: [
-      "Vše z Free",
-      "Cloud sync mezi Androidem, webem a iOS",
-      "Napojení bank přes PSD2 (ČSOB, KB, ČS, Air Bank…)",
-      "OCR účtenek bez vlastního API klíče",
-      "Web aplikace (cointrack.cz/app)",
-      "Priority podpora",
-    ],
-  },
-  {
-    name: "Business",
-    price: "199 Kč",
-    period: "/měsíc",
-    description: "Pro OSVČ a s.r.o. Firemní profily.",
-    cta: "14 dní zdarma",
-    ctaVariant: "brand",
-    badge: "Nejoblíbenější",
-    features: [
-      "Vše z Personal",
-      "Neomezený počet firemních profilů",
-      "Přednastavené kategorie dle oboru",
-      "iDoklad integrace (vystavení faktur)",
-      "Fio platby napřímo přes API",
-      "Sdílený přístup pro účetního (read-only)",
-      "Export do Pohoda XML",
-      "ARES automatická doplnění firemních dat",
-    ],
-  },
-  {
-    name: "Organization",
-    price: "399 Kč",
-    period: "/měsíc",
-    description: "Pro firmy s více členy a sdílenou účetní.",
-    cta: "14 dní zdarma",
-    ctaVariant: "brand",
-    features: [
-      "Vše z Business",
-      "Pozvání více členů do organizace",
-      "Sdílení jednotlivých bankovních účtů s členy",
-      "Účetní rozhraní s hromadným ZIP exportem",
-      "Per-uživatelské oprávnění na úrovni účtů",
-      "API přístup pro vlastní integrace",
-      "Priority podpora",
-    ],
-  },
-];
+  type Tier = {
+    name: string;
+    price: string;
+    period?: string;
+    description: string;
+    cta: string;
+    ctaVariant: "outline" | "brand" | "primary";
+    features: string[];
+    missing?: string[];
+    badge?: string;
+  };
 
-export default function PricingPage() {
+  const tiers: Tier[] = [
+    {
+      name: t("free_name"),
+      price: t("free_price"),
+      description: t("free_desc"),
+      cta: t("free_cta"),
+      ctaVariant: "outline",
+      features: t.raw("free_features") as string[],
+      missing: t.raw("free_missing") as string[],
+    },
+    {
+      name: t("personal_name"),
+      price: t("personal_price"),
+      period: t("per_month"),
+      description: t("personal_desc"),
+      cta: t("trial_cta"),
+      ctaVariant: "primary",
+      features: t.raw("personal_features") as string[],
+    },
+    {
+      name: t("business_name"),
+      price: t("business_price"),
+      period: t("per_month"),
+      description: t("business_desc"),
+      cta: t("trial_cta"),
+      ctaVariant: "brand",
+      badge: t("popular"),
+      features: t.raw("business_features") as string[],
+    },
+    {
+      name: t("organization_name"),
+      price: t("organization_price"),
+      period: t("per_month"),
+      description: t("organization_desc"),
+      cta: t("trial_cta"),
+      ctaVariant: "brand",
+      features: t.raw("organization_features") as string[],
+    },
+  ];
+
+  const faqs = t.raw("faq") as { q: string; a: string }[];
+
   return (
     <>
       <section className="pt-20 pb-12">
         <Container>
           <div className="max-w-3xl">
             <h1 className="text-5xl font-semibold tracking-tight text-ink-900">
-              Ceník, který nepřekvapí.
+              {t("title")}
             </h1>
-            <p className="mt-6 text-xl text-ink-600">
-              Začni zdarma, plať měsíčně, zruš kdykoliv.
-              Žádné smluvní pokuty, žádné aktivační poplatky.
-            </p>
-            <p className="mt-3 text-sm text-ink-500">
-              Ceny jsou s DPH pro ČR. B2B ceny vidíš po zadání DIČ v checkoutu.
-            </p>
+            <p className="mt-6 text-xl text-ink-600">{t("subtitle")}</p>
+            <p className="mt-3 text-sm text-ink-500">{t("vat_note")}</p>
           </div>
         </Container>
       </section>
@@ -163,8 +134,8 @@ export default function PricingPage() {
           {/* Yearly discount */}
           <div className="mt-8 rounded-xl bg-ink-100 p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
-              <p className="font-semibold text-ink-900">Platíš ročně? Dostaneš 2 měsíce zdarma.</p>
-              <p className="text-sm text-ink-600 mt-1">Personal za 690 Kč/rok, Business za 1990 Kč/rok, Organization za 3990 Kč/rok.</p>
+              <p className="font-semibold text-ink-900">{t("yearly_title")}</p>
+              <p className="text-sm text-ink-600 mt-1">{t("yearly_desc")}</p>
             </div>
           </div>
         </Container>
@@ -175,46 +146,19 @@ export default function PricingPage() {
         <Container>
           <div className="max-w-3xl">
             <h2 className="text-4xl font-semibold tracking-tight text-ink-900 mb-12">
-              Často kladené otázky
+              {t("faq_title")}
             </h2>
             <div className="space-y-8">
-              <Faq
-                q="Můžu zrušit kdykoliv?"
-                a="Ano, v libovolném okamžiku přes Nastavení → Předplatné → Zrušit. Budeš mít přístup do konce zaplaceného období. Žádné pokuty, žádné formuláře."
-              />
-              <Faq
-                q="Co se stane s daty, když downgraduju na Free?"
-                a="Data zůstanou. Firemní profily přejdou do read-only režimu, takže si faktury pořád zobrazíš a exportuješ, ale nepřidáš nové. Kdykoli se vrátíš na Business, zase se odemknou."
-              />
-              <Faq
-                q="Jak funguje 14-denní trial?"
-                a="Registraci na Personal, Business nebo Organization ti dá plný přístup na 14 dní bez karty. V den 14 ti pošleme připomínku — pokud pokračuješ, přidáš kartu, jinak se přepneš automaticky na Free."
-              />
-              <Faq
-                q="Je Cointrack registrovaný u ČNB?"
-                a="Cointrack není platební instituce ani banka. Pro napojení bank přes PSD2 používáme licencované AIS poskytovatele (GoCardless Bank Account Data, Enable Banking), které drží licenci v EU."
-              />
-              <Faq
-                q="Kde běží servery?"
-                a="WEDOS (Hluboká nad Vltavou, Česká republika) pro databázi a soubory. Web je na Vercel edge (Frankfurt). Zálohy na Backblaze B2 v EU. Žádná data neopouštějí Evropskou unii."
-              />
-              <Faq
-                q="Jaký rozdíl mezi osobním a firemním profilem?"
-                a="Osobní profil nemá DPH, nepotřebuje IČO, jde do Free. Firemní profil má IČO/DIČ, přednastavené kategorie dle oboru (pohostinství, IT, zdravotnictví…), integraci s iDoklad a Pohoda, a je součástí Business tieru."
-              />
+              {faqs.map((f, i) => (
+                <div key={i}>
+                  <h3 className="text-lg font-semibold text-ink-900 mb-2">{f.q}</h3>
+                  <p className="text-ink-600 leading-relaxed">{f.a}</p>
+                </div>
+              ))}
             </div>
           </div>
         </Container>
       </section>
     </>
-  );
-}
-
-function Faq({ q, a }: { q: string; a: string }) {
-  return (
-    <div>
-      <h3 className="text-lg font-semibold text-ink-900 mb-2">{q}</h3>
-      <p className="text-ink-600 leading-relaxed">{a}</p>
-    </div>
   );
 }

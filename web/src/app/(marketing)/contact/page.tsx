@@ -1,51 +1,39 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import { Container } from "@/components/ui/container";
 import { Mail, MessageSquare, Shield } from "lucide-react";
 
-export const metadata: Metadata = {
-  title: "Kontakt",
-  description: "Napiš nám na support@cointrack.cz. Odpovídáme do 1 pracovního dne.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("contact");
+  return {
+    title: t("meta_title"),
+    description: t("meta_description"),
+  };
+}
 
-export default function ContactPage() {
+export default async function ContactPage() {
+  const t = await getTranslations("contact");
   return (
     <section className="pt-20 pb-24">
       <Container>
         <div className="max-w-3xl">
           <h1 className="text-5xl font-semibold tracking-tight text-ink-900 mb-6">
-            Kontakt.
+            {t("title")}
           </h1>
-          <p className="text-xl text-ink-600 mb-12">
-            Nejjednodušší cesta je email. Odpovídáme do 1 pracovního dne, obvykle mnohem dřív.
-          </p>
+          <p className="text-xl text-ink-600 mb-12">{t("subtitle")}</p>
 
           <div className="grid gap-4">
-            <ContactCard
-              icon={Mail}
-              title="Běžná podpora"
-              email="support@cointrack.cz"
-              description="Dotazy k používání, bug reporty, žádosti o funkce."
-            />
-            <ContactCard
-              icon={MessageSquare}
-              title="Obchodní dotazy"
-              email="sales@cointrack.cz"
-              description="Team tier, custom integrace, white-label řešení."
-            />
-            <ContactCard
-              icon={Shield}
-              title="Bezpečnost"
-              email="security@cointrack.cz"
-              description="Responsible disclosure bezpečnostních zranitelností. PGP klíč na vyžádání."
-            />
+            <ContactCard icon={Mail} title={t("support_title")} email="support@cointrack.cz" description={t("support_desc")} />
+            <ContactCard icon={MessageSquare} title={t("sales_title")} email="sales@cointrack.cz" description={t("sales_desc")} />
+            <ContactCard icon={Shield} title={t("security_title")} email="security@cointrack.cz" description={t("security_desc")} />
           </div>
 
           <div className="mt-16 rounded-xl bg-ink-100 p-6">
-            <h2 className="font-semibold text-ink-900 mb-2">Provozovatel</h2>
+            <h2 className="font-semibold text-ink-900 mb-2">{t("operator_title")}</h2>
             <div className="text-sm text-ink-600 space-y-1">
-              <p>Cointrack — provozovatel bude doplněn po registraci entity.</p>
-              <p>Česká republika</p>
-              <p>IČO: bude doplněno</p>
+              <p>{t("operator_line1")}</p>
+              <p>{t("operator_line2")}</p>
+              <p>{t("operator_line3")}</p>
             </div>
           </div>
         </div>

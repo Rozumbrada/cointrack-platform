@@ -116,6 +116,276 @@
       "pricing": "Detailed pricing →"
     }
   },
+  "for_business": {
+    "meta_title": "For business and freelancers",
+    "meta_description": "Cointrack for freelancers, LLCs and small business owners. iDoklad integration, Fio payments, accountant export, industry-tailored categories.",
+    "badge": "Cointrack Business",
+    "title": "Stop wrestling with invoices and Excel.",
+    "subtitle": "For freelancers, LLCs and small business owners. Scan a receipt, issue an invoice, send to your accountant. All in one app, connected to your bank and iDoklad.",
+    "cta_trial": "14 days free",
+    "use_cases_title": "What Cointrack does for you.",
+    "use_cases": [
+      { "title": "Open accounts in the morning, invoice by evening", "text": "Transactions from ČSOB, KB or Fio are synced automatically. Lunch receipts photographed in 5 seconds. Issue a client invoice on the way home." },
+      { "title": "Accountant gets a quarterly ZIP", "text": "Export of all invoices (received + issued) and receipts as a ZIP. Includes CSV with variable symbol, company ID, amounts and PDF links. Accountant only calls when something's missing." },
+      { "title": "Pay invoices directly", "text": "Invoice arrives, click Pay, Fio API sends the payment. Authorize in Smartbanking SMS or push. No copying IBAN and variable symbol." },
+      { "title": "Know your cash flow in real time", "text": "Dashboard shows incoming client payments this month, what you've spent on goods, and upcoming due dates." }
+    ],
+    "focuses_title": "Categories tailored to your industry.",
+    "focuses_subtitle": "When creating a business profile, you pick a focus. Cointrack seeds relevant expense and income categories so you don't have to invent anything.",
+    "focuses": [
+      { "name": "Hospitality and restaurants", "categories": "Ingredients, beverages, staff, utilities, kitchen equipment" },
+      { "name": "IT and software", "categories": "Licenses, cloud, hardware, subcontractors, marketing" },
+      { "name": "Healthcare", "categories": "Lab, medical supplies, medications, office rent" },
+      { "name": "Construction", "categories": "Materials, tools, fuel, PPE, equipment rental" },
+      { "name": "Retail and e-commerce", "categories": "Goods, logistics, packaging, marketing, rent" },
+      { "name": "Consulting and legal", "categories": "Reference books, insurance, travel, conferences" },
+      { "name": "Agriculture", "categories": "Seeds, fuel, machinery repairs, vet, insurance" },
+      { "name": "Education", "categories": "Course materials, venue rental, lecturer fees" },
+      { "name": "Real estate", "categories": "Repairs, insurance, taxes, utilities, management" },
+      { "name": "Transport and logistics", "categories": "Fuel, service, tolls, insurance, leasing" }
+    ],
+    "integrations_title": "Integrations you'll actually use.",
+    "integrations": [
+      { "name": "iDoklad", "description": "Add ClientID and ClientSecret from your iDoklad dashboard, Cointrack handles the rest. Issue an invoice, push to iDoklad, download PDF." },
+      { "name": "Fio API", "description": "Token from Fio internet banking. Read transactions and submit payments. Authorize in Smartbanking." },
+      { "name": "PSD2 Open Banking", "description": "ČSOB, KB, ČS, Air Bank, Raiffeisen, UniCredit, mBank and 2500+ others. Through regulated AIS providers." },
+      { "name": "ARES", "description": "Type a company ID, ARES returns the name, address, VAT number. Business details filled in 2 seconds." },
+      { "name": "Pohoda XML", "description": "Export receipts and invoices in the format used by Pohoda accounting software. Everything required for the tax return." },
+      { "name": "Google Drive", "description": "Automatic backups with AES-256-GCM encryption. Export of accounting documents to a separate folder for accountant sharing." }
+    ],
+    "cta_title": "Business CZK 199 / month.",
+    "cta_subtitle": "Unlimited business profiles, all integrations, shared accountant access, priority support.",
+    "cta_features": [
+      "14 days free, no credit card",
+      "Monthly billing, cancel anytime",
+      "Czech support in Czech",
+      "GDPR + EU-hosted data"
+    ],
+    "cta_signup": "Try free",
+    "cta_pricing": "All tiers →"
+  },
+  "features_page": {
+    "meta_title": "Features",
+    "meta_description": "AI receipt scanning, bank account connections, invoices, iDoklad, QR payments, statistics and more.",
+    "title": "What Cointrack does.",
+    "subtitle": "From a manual Excel sheet to a complete finance system. Everything you actually use — nothing extra.",
+    "sections": [
+      {
+        "title": "Bank account connections",
+        "paragraphs": [
+          "Through PSD2 Open Banking you connect to Fio, Česká spořitelna, ČSOB, KB, Air Bank, Raiffeisen and 2500+ other EU banks. No CSV imports, no retyping.",
+          "Authorization happens in your bank's app — we never see your credentials. Data flows through a regulated PSD2 provider approved by the central bank.",
+          "Transactions are pulled up to 90 days back. Automatic sync at 1 / 3 / 6 / 12 hour intervals."
+        ]
+      },
+      {
+        "title": "AI receipt and invoice scanning",
+        "paragraphs": [
+          "Snap a café receipt or upload a supplier PDF. Google Gemini AI extracts merchant, company ID, date, total, VAT and individual items.",
+          "The system detects whether it's a receipt or invoice and files it correctly. It links the receipt to a bank transaction — no input from you needed.",
+          "Supports Czech and English. Works on short, four-year-old photos."
+        ]
+      },
+      {
+        "title": "Invoices — incoming and outgoing",
+        "paragraphs": [
+          "Tracking incoming and outgoing invoices with a due-date overview. Variable symbol, IBAN, total, VAT — all in one place.",
+          "SPAYD QR code is generated automatically. Open any banking app, scan, pay.",
+          "For Fio Bank: send the payment directly via Fio API — the invoice is paid before you close it. Authorize in Fio Smartbanking."
+        ]
+      },
+      {
+        "title": "Personal and business profiles under one account",
+        "paragraphs": [
+          "One Cointrack account, multiple profiles. Family budget, freelancer, side gig, LLC — each with its own accounts, categories, VAT settings, company ID and VAT number.",
+          "Business profile comes with industry-tailored category presets: hospitality, IT, healthcare, construction, education, transport, real estate, agriculture and more.",
+          "Accountant access: share invoice and receipt exports without exposing your personal finances."
+        ]
+      },
+      {
+        "title": "iDoklad and Pohoda integration",
+        "paragraphs": [
+          "iDoklad API connection — issue an invoice in Cointrack, push it to iDoklad in one click. Add Client ID and Client Secret, the app handles the rest.",
+          "Pohoda XML export for traditional accounting systems. ZIP export for an accountant who wants everything in one folder."
+        ]
+      },
+      {
+        "title": "Statistics that actually mean something",
+        "paragraphs": [
+          "Expense categories ranked by spend. Monthly and quarterly comparisons. Donut and trend charts.",
+          "Category budgets — alerts when you're under the line. Planned payments, debtors, savings goals."
+        ]
+      },
+      {
+        "title": "Backups and sync across devices",
+        "paragraphs": [
+          "Automatic Google Drive backups — AES-256 encrypted with your password. Even if Google opened the file, nothing readable would come out.",
+          "Sync across Android, iOS and web. Add an invoice on your laptop, send the QR from your phone.",
+          "ZIP export with everything needed for device migration or for your accountant."
+        ]
+      },
+      {
+        "title": "Security as priority",
+        "paragraphs": [
+          "Database encrypted with SQLCipher (AES-256-GCM). Biometric unlock (Face ID, fingerprint). API keys and tokens in Android Keystore / iOS Keychain.",
+          "All servers in the Czech Republic (WEDOS / Hetzner DE). GDPR-compliant, EU data stays in the EU.",
+          "No data sharing with third parties. No ads. No Facebook pixels."
+        ]
+      },
+      {
+        "title": "Loyalty cards and barcodes",
+        "paragraphs": [
+          "Scan loyalty cards from your wallet — Tesco Clubcard, Rohlík, Alza Plus. In-store, open the card in the app, point it at the scanner.",
+          "Dominant logo color is extracted automatically — cards look like the real thing."
+        ]
+      },
+      {
+        "title": "Smart home friendly",
+        "paragraphs": [
+          "Home-screen widget with account balance. Quick receipt upload from ShareSheet. Planned payments as reminders.",
+          "Android Auto support for quick balance display in the car."
+        ]
+      },
+      {
+        "title": "Full localization in Czech and English",
+        "paragraphs": [
+          "Language switcher right in the app. No new instance created when switching.",
+          "English variant for foreign colleagues or while traveling."
+        ]
+      }
+    ]
+  },
+  "about": {
+    "meta_title": "About",
+    "meta_description": "Who stands behind Cointrack and why we're building a finance app for the Czech market.",
+    "title": "Why Cointrack exists.",
+    "intro": "Most finance apps are either foreign and don't know Fio Bank, or Czech and look like 2015. We wanted something that does both and looks good on phone, tablet and laptop.",
+    "for_whom_title": "Who it's for",
+    "for_whom_text": "For people who use multiple Czech and foreign accounts, occasionally issue or receive an invoice, and occasionally want to know where their money flows. For freelancers who must track VAT and due dates themselves. For families who want to understand why this year's electricity bill is higher.",
+    "how_title": "How we do it",
+    "how_item1_b": "We're not a bank",
+    "how_item1": "— we read your data from your existing bank. For connections we use licensed PSD2 providers.",
+    "how_item2_b": "Everything in the EU",
+    "how_item2": "— servers in the Czech Republic and Germany. Data doesn't leave the EU; GDPR is the baseline.",
+    "how_item3_b": "Open source components",
+    "how_item3": "— database (Postgres), encryption (SQLCipher), UI framework (Compose). No black boxes.",
+    "how_item4_b": "No ads, no data sharing",
+    "how_item4": "— your data is yours. Not the product.",
+    "roadmap_title": "Roadmap",
+    "roadmap_q2_b": "Q2 2026",
+    "roadmap_q2": ": Android ✓, web beta, Czech bank PSD2 connections",
+    "roadmap_q3_b": "Q3 2026",
+    "roadmap_q3": ": iOS beta, multi-tenant for accountants",
+    "roadmap_q4_b": "Q4 2026",
+    "roadmap_q4": ": Public API, export to more accounting systems",
+    "contact_title": "Contact",
+    "contact_text_before": "Question, feedback or bug? Email",
+    "contact_text_after": ". We reply within 1 business day."
+  },
+  "contact": {
+    "meta_title": "Contact",
+    "meta_description": "Email support@cointrack.cz. We reply within 1 business day.",
+    "title": "Contact.",
+    "subtitle": "The easiest way is email. We reply within 1 business day, usually much sooner.",
+    "support_title": "General support",
+    "support_desc": "Usage questions, bug reports, feature requests.",
+    "sales_title": "Sales inquiries",
+    "sales_desc": "Team tier, custom integrations, white-label solutions.",
+    "security_title": "Security",
+    "security_desc": "Responsible disclosure of security vulnerabilities. PGP key on request.",
+    "operator_title": "Operator",
+    "operator_line1": "Cointrack — operator will be filled in after entity registration.",
+    "operator_line2": "Czech Republic",
+    "operator_line3": "Company ID: to be filled"
+  },
+  "pricing": {
+    "meta_title": "Pricing",
+    "meta_description": "Free for personal use, Business for freelancers and companies. 14 days free trial, no credit card.",
+    "title": "Pricing without surprises.",
+    "subtitle": "Start free, pay monthly, cancel anytime. No contract penalties, no setup fees.",
+    "vat_note": "Prices include VAT for the Czech Republic. B2B pricing shows after entering your VAT ID at checkout.",
+    "popular": "Most popular",
+    "per_month": "/month",
+    "yearly_title": "Pay yearly and get 2 months free.",
+    "yearly_desc": "Personal CZK 690/year, Business CZK 1990/year, Organization CZK 3990/year.",
+    "free_name": "Free",
+    "free_price": "CZK 0",
+    "free_desc": "For personal use, locally on Android.",
+    "free_cta": "Download Android",
+    "personal_name": "Personal",
+    "personal_price": "CZK 69",
+    "personal_desc": "Personal profile across devices (Android + web + iOS).",
+    "business_name": "Business",
+    "business_price": "CZK 199",
+    "business_desc": "For freelancers and companies. Business profiles.",
+    "organization_name": "Organization",
+    "organization_price": "CZK 399",
+    "organization_desc": "For companies with multiple members and shared accountant.",
+    "trial_cta": "14 days free",
+    "free_features": [
+      "One personal profile",
+      "Fio Bank via token",
+      "Receipt OCR (bring your own Gemini API key)",
+      "Offline operation + Google Drive backups",
+      "Categories, budgets, goals",
+      "ZIP export"
+    ],
+    "free_missing": ["Cloud sync", "Web access", "Business profiles"],
+    "personal_features": [
+      "Everything in Free",
+      "Cloud sync across Android, web and iOS",
+      "Bank connections via PSD2 (ČSOB, KB, ČS, Air Bank…)",
+      "Receipt OCR without your own API key",
+      "Web app (cointrack.cz/app)",
+      "Priority support"
+    ],
+    "business_features": [
+      "Everything in Personal",
+      "Unlimited business profiles",
+      "Industry-tailored category presets",
+      "iDoklad integration (invoice issuing)",
+      "Fio payments directly via API",
+      "Shared read-only access for accountant",
+      "Pohoda XML export",
+      "Automatic ARES company data lookup"
+    ],
+    "organization_features": [
+      "Everything in Business",
+      "Invite multiple members to your organization",
+      "Share individual bank accounts with members",
+      "Accountant interface with bulk ZIP export",
+      "Per-user account-level permissions",
+      "API access for custom integrations",
+      "Priority support"
+    ],
+    "faq_title": "Frequently asked questions",
+    "faq": [
+      {
+        "q": "Can I cancel anytime?",
+        "a": "Yes, anytime via Settings → Subscription → Cancel. You'll keep access until the end of the paid period. No penalties, no forms."
+      },
+      {
+        "q": "What happens to my data if I downgrade to Free?",
+        "a": "Data stays. Business profiles switch to read-only — you can still view and export invoices, just can't add new ones. They unlock again whenever you return to Business."
+      },
+      {
+        "q": "How does the 14-day trial work?",
+        "a": "Signing up for Personal, Business or Organization gives full access for 14 days without a card. On day 14 we send a reminder — if you continue, add a card; otherwise you switch automatically to Free."
+      },
+      {
+        "q": "Is Cointrack registered with the central bank?",
+        "a": "Cointrack is not a payment institution or bank. For bank connections via PSD2 we use licensed AIS providers (GoCardless Bank Account Data, Enable Banking) holding EU licenses."
+      },
+      {
+        "q": "Where do the servers run?",
+        "a": "WEDOS (Hluboká nad Vltavou, Czech Republic) for database and files. Web is on Vercel edge (Frankfurt). Backups on Backblaze B2 in the EU. No data leaves the European Union."
+      },
+      {
+        "q": "What's the difference between personal and business profiles?",
+        "a": "Personal profile has no VAT, no need for company ID, fits in Free. Business profile has company ID/VAT, industry-tailored categories (hospitality, IT, healthcare…), iDoklad and Pohoda integration, and is part of the Business tier."
+      }
+    ]
+  },
   "auth": {
     "login": {
       "title": "Sign in",
