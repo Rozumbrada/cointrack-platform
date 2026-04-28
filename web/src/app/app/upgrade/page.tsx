@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useLocale, useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 
@@ -44,6 +45,8 @@ const TIER_LABELS: Record<Tier, string> = {
 };
 
 export default function UpgradePage() {
+  const t = useTranslations("upgrade");
+  const locale = useLocale();
   const [tier, setTier] = useState<Tier>("BUSINESS");
   const [period, setPeriod] = useState<Period>("MONTHLY");
   const [billingType, setBillingType] = useState<"PERSON" | "COMPANY">("PERSON");
@@ -60,24 +63,24 @@ export default function UpgradePage() {
   async function startPayment() {
     setError(null);
     if (!billingName.trim()) {
-      setError(billingType === "COMPANY" ? "Vyplň název firmy." : "Vyplň jméno a příjmení.");
+      setError(billingType === "COMPANY" ? t("fill_company_name") : t("fill_person_name"));
       return;
     }
     if (!billingAddress.trim()) {
-      setError("Vyplň fakturační adresu (ulice, město, PSČ).");
+      setError(t("fill_address"));
       return;
     }
     if (billingType === "COMPANY" && !companyIco.trim()) {
-      setError("Vyplň IČO firmy.");
+      setError(t("fill_ico"));
       return;
     }
 
     setCreating(true);
     try {
-      const res = await withAuth((t) =>
+      const res = await withAuth((tk) =>
         api<StartResponse>("/api/v1/payments/start", {
           method: "POST",
-          token: t,
+          token: tk,
           body: {
             tier, period,
             companyName: billingName.trim(),
@@ -102,8 +105,8 @@ export default function UpgradePage() {
     const tick = async () => {
       if (cancelled) return;
       try {
-        const s = await withAuth((t) =>
-          api<StatusResponse>(`/api/v1/payments/${payment.paymentId}/status`, { token: t }),
+        const s = await withAuth((tk) =>
+          api<StatusResponse>(`/api/v1/payments/${payment.paymentId}/status`, { token: tk }),
         );
         if (!cancelled) setStatus(s);
         if (s.status === "PAID" || s.status === "EXPIRED" || s.status === "CANCELLED") return;
@@ -114,7 +117,6 @@ export default function UpgradePage() {
     return () => { cancelled = true; };
   }, [payment]);
 
-  // SPAYD QR rendering — server-side přes externí service
   const qrUrl = payment
     ? `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(payment.spayd)}`
     : null;
@@ -122,11 +124,8 @@ export default function UpgradePage() {
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
-        <h1 className="text-2xl font-semibold text-ink-900">Upgrade předplatného</h1>
-        <p className="text-sm text-ink-600 mt-1">
-          Platba převodem nebo QR kódem. Po připsání platby se tier aktivuje automaticky
-          (do 24 hodin podle tvé banky).
-        </p>
+        <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
+        <p className="text-sm text-ink-600 mt-1">{t("subtitle")}</p>
       </div>
 
       {error && (
@@ -135,34 +134,29 @@ export default function UpgradePage() {
         </div>
       )}
 
-      {/* Stav PAID */}
       {status?.status === "PAID" ? (
         <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center space-y-3">
           <div className="text-5xl">✓</div>
-          <div className="font-semibold text-emerald-900 text-lg">Platba přijata</div>
-          <p className="text-emerald-800">
-            Předplatné <strong>{TIER_LABELS[status.tier as Tier]}</strong> je aktivní.
-            Tier se promítne při dalším přihlášení / sync.
-          </p>
+          <div className="font-semibold text-emerald-900 text-lg">{t("paid_title")}</div>
+          <p className="text-emerald-800">{t("paid_desc", { tier: TIER_LABELS[status.tier as Tier] })}</p>
           <Link href="/app/dashboard" className="inline-block mt-2 text-brand-600 hover:text-brand-700">
-            Přejít na přehled →
+            {t("go_dashboard")}
           </Link>
         </div>
       ) : payment ? (
-        // Stav s vygenerovaným QR — čekáme na platbu
         <div className="bg-white rounded-2xl border border-ink-200 p-6 space-y-5">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
-              <div className="text-sm text-ink-500">Předplatné</div>
+              <div className="text-sm text-ink-500">{t("subscription")}</div>
               <div className="text-xl font-semibold text-ink-900">
                 {TIER_LABELS[payment.spayd.includes("PERSONAL") ? "PERSONAL" :
                   payment.spayd.includes("BUSINESS") ? "BUSINESS" : "ORGANIZATION"]}
                 {" — "}
-                {period === "MONTHLY" ? "měsíčně" : "ročně"}
+                {period === "MONTHLY" ? t("monthly_label") : t("yearly_label")}
               </div>
             </div>
             <div className="text-right">
-              <div className="text-sm text-ink-500">K úhradě</div>
+              <div className="text-sm text-ink-500">{t("to_pay")}</div>
               <div className="text-3xl font-semibold text-ink-900 tabular-nums">
                 {payment.amount} {payment.currency}
               </div>
@@ -173,114 +167,110 @@ export default function UpgradePage() {
             {qrUrl && (
               <div className="text-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={qrUrl} alt="QR platba" className="mx-auto rounded-lg border border-ink-200" />
-                <p className="text-xs text-ink-500 mt-2">
-                  Naskenuj QR mobilním bankovnictvím (Fio, Air Bank, ČSOB, KB…)
-                </p>
+                <img src={qrUrl} alt={t("qr_alt")} className="mx-auto rounded-lg border border-ink-200" />
+                <p className="text-xs text-ink-500 mt-2">{t("qr_hint")}</p>
               </div>
             )}
 
             <div className="space-y-3 text-sm">
-              <div className="font-medium text-ink-900">Nebo zadej převod ručně:</div>
-              <FieldDisplay label="Číslo účtu" value={payment.bankAccount} />
-              <FieldDisplay label="IBAN" value={payment.iban} />
-              <FieldDisplay label="Variabilní symbol" value={payment.variableSymbol} highlight />
-              <FieldDisplay label="Částka" value={`${payment.amount} ${payment.currency}`} />
-              <FieldDisplay label="Zpráva pro příjemce" value={`Cointrack ${tier}`} />
+              <div className="font-medium text-ink-900">{t("manual_transfer")}</div>
+              <FieldDisplay label={t("field_account")} value={payment.bankAccount} title={t("click_to_copy")} />
+              <FieldDisplay label={t("field_iban")} value={payment.iban} title={t("click_to_copy")} />
+              <FieldDisplay label={t("field_vs")} value={payment.variableSymbol} highlight title={t("click_to_copy")} />
+              <FieldDisplay label={t("field_amount")} value={`${payment.amount} ${payment.currency}`} title={t("click_to_copy")} />
+              <FieldDisplay label={t("field_message")} value={`Cointrack ${tier}`} title={t("click_to_copy")} />
             </div>
           </div>
 
           <div className="border-t border-ink-100 pt-4 flex items-center justify-between flex-wrap gap-3">
             <div className="text-sm">
-              <div className="font-medium text-ink-900">Stav: {status?.status === "PENDING" ? "⏳ Čekáme na platbu" : status?.status ?? "PENDING"}</div>
+              <div className="font-medium text-ink-900">
+                {t("status_label")} {status?.status === "PENDING" ? t("status_pending") : status?.status ?? "PENDING"}
+              </div>
               <div className="text-xs text-ink-500 mt-1">
-                Platnost QR do {new Date(payment.expiresAt).toLocaleDateString("cs-CZ")}.
-                Stránku můžeš nechat otevřenou — automaticky obnoví, jakmile platba dorazí.
+                {t("validity_until", { date: new Date(payment.expiresAt).toLocaleDateString(locale) })}
               </div>
             </div>
             <button
               onClick={() => { setPayment(null); setStatus(null); }}
               className="text-sm text-red-600 hover:text-red-700"
             >
-              Zrušit a začít znovu
+              {t("cancel_restart")}
             </button>
           </div>
         </div>
       ) : (
-        // Formulář pro start platby
         <div className="bg-white rounded-2xl border border-ink-200 p-6 space-y-5">
           <div>
-            <label className="block text-sm font-medium text-ink-900 mb-2">Vyberte tier</label>
+            <label className="block text-sm font-medium text-ink-900 mb-2">{t("select_tier")}</label>
             <div className="grid grid-cols-3 gap-3">
-              {(["PERSONAL", "BUSINESS", "ORGANIZATION"] as const).map((t) => (
+              {(["PERSONAL", "BUSINESS", "ORGANIZATION"] as const).map((tk) => (
                 <button
-                  key={t}
+                  key={tk}
                   type="button"
-                  onClick={() => setTier(t)}
+                  onClick={() => setTier(tk)}
                   className={`p-4 rounded-lg border text-center ${
-                    tier === t ? "border-brand-600 bg-brand-50" : "border-ink-200 hover:bg-ink-50"
+                    tier === tk ? "border-brand-600 bg-brand-50" : "border-ink-200 hover:bg-ink-50"
                   }`}
                 >
-                  <div className="font-semibold text-ink-900">{TIER_LABELS[t]}</div>
-                  <div className="text-sm text-ink-600 mt-1">{PRICES[t][period]}</div>
+                  <div className="font-semibold text-ink-900">{TIER_LABELS[tk]}</div>
+                  <div className="text-sm text-ink-600 mt-1">{PRICES[tk][period]}</div>
                 </button>
               ))}
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-ink-900 mb-2">Perioda</label>
+            <label className="block text-sm font-medium text-ink-900 mb-2">{t("period")}</label>
             <div className="flex rounded-lg border border-ink-300 overflow-hidden text-sm">
               <button
                 type="button"
                 onClick={() => setPeriod("MONTHLY")}
                 className={`flex-1 py-2 ${period === "MONTHLY" ? "bg-brand-50 text-brand-700 font-medium" : "text-ink-700 hover:bg-ink-50"}`}
               >
-                Měsíčně
+                {t("period_monthly")}
               </button>
               <button
                 type="button"
                 onClick={() => setPeriod("YEARLY")}
                 className={`flex-1 py-2 ${period === "YEARLY" ? "bg-brand-50 text-brand-700 font-medium" : "text-ink-700 hover:bg-ink-50"}`}
               >
-                Ročně (2 měsíce zdarma)
+                {t("period_yearly")}
               </button>
             </div>
           </div>
 
           <div className="border border-ink-200 rounded-lg p-4 space-y-4">
             <div>
-              <div className="text-sm font-medium text-ink-900 mb-2">Fakturační údaje</div>
-              <p className="text-xs text-ink-500 mb-3">
-                Vyplň prosím — bez nich nemůžeme vystavit fakturu (zákonný požadavek).
-              </p>
+              <div className="text-sm font-medium text-ink-900 mb-2">{t("billing_section")}</div>
+              <p className="text-xs text-ink-500 mb-3">{t("billing_required")}</p>
               <div className="flex rounded-lg border border-ink-300 overflow-hidden text-sm mb-3">
                 <button
                   type="button"
                   onClick={() => setBillingType("PERSON")}
                   className={`flex-1 py-2 ${billingType === "PERSON" ? "bg-brand-50 text-brand-700 font-medium" : "text-ink-700 hover:bg-ink-50"}`}
                 >
-                  👤 Fyzická osoba
+                  {t("billing_person")}
                 </button>
                 <button
                   type="button"
                   onClick={() => setBillingType("COMPANY")}
                   className={`flex-1 py-2 ${billingType === "COMPANY" ? "bg-brand-50 text-brand-700 font-medium" : "text-ink-700 hover:bg-ink-50"}`}
                 >
-                  🏢 Firma
+                  {t("billing_company")}
                 </button>
               </div>
             </div>
 
             <div>
               <label className="block text-xs font-medium text-ink-700 mb-1">
-                {billingType === "COMPANY" ? "Název firmy *" : "Jméno a příjmení *"}
+                {billingType === "COMPANY" ? t("company_name_label") : t("person_name_label")}
               </label>
               <input
                 type="text"
                 value={billingName}
                 onChange={(e) => setBillingName(e.target.value)}
-                placeholder={billingType === "COMPANY" ? "Acme s.r.o." : "Jan Novák"}
+                placeholder={billingType === "COMPANY" ? t("company_name_placeholder") : t("person_name_placeholder")}
                 className="w-full h-10 rounded-lg border border-ink-300 px-3 text-sm"
               />
             </div>
@@ -288,22 +278,22 @@ export default function UpgradePage() {
             {billingType === "COMPANY" && (
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-ink-700 mb-1">IČO *</label>
+                  <label className="block text-xs font-medium text-ink-700 mb-1">{t("ico_label")}</label>
                   <input
                     type="text"
                     value={companyIco}
                     onChange={(e) => setCompanyIco(e.target.value)}
-                    placeholder="12345678"
+                    placeholder={t("ico_placeholder")}
                     className="w-full h-10 rounded-lg border border-ink-300 px-3 text-sm font-mono"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-ink-700 mb-1">DIČ</label>
+                  <label className="block text-xs font-medium text-ink-700 mb-1">{t("dic_label")}</label>
                   <input
                     type="text"
                     value={companyDic}
                     onChange={(e) => setCompanyDic(e.target.value)}
-                    placeholder="CZ12345678"
+                    placeholder={t("dic_placeholder")}
                     className="w-full h-10 rounded-lg border border-ink-300 px-3 text-sm font-mono"
                   />
                 </div>
@@ -311,14 +301,12 @@ export default function UpgradePage() {
             )}
 
             <div>
-              <label className="block text-xs font-medium text-ink-700 mb-1">
-                Adresa (ulice, město, PSČ) *
-              </label>
+              <label className="block text-xs font-medium text-ink-700 mb-1">{t("address_label")}</label>
               <input
                 type="text"
                 value={billingAddress}
                 onChange={(e) => setBillingAddress(e.target.value)}
-                placeholder="Václavské náměstí 1, 110 00 Praha 1"
+                placeholder={t("address_placeholder")}
                 className="w-full h-10 rounded-lg border border-ink-300 px-3 text-sm"
               />
             </div>
@@ -329,27 +317,31 @@ export default function UpgradePage() {
             disabled={creating}
             className="h-11 px-6 rounded-lg bg-brand-600 hover:bg-brand-700 text-white font-medium disabled:opacity-50"
           >
-            {creating ? "Generuji platbu…" : `Vygenerovat QR platbu (${PRICES[tier][period]})`}
+            {creating ? t("generating") : t("generate_qr", { price: PRICES[tier][period] })}
           </button>
 
-          <p className="text-xs text-ink-500">
-            Platí 7 dní. Po připsání platby na náš účet (Fio 2601115347/2010)
-            se tvůj tier automaticky aktivuje. Faktura ti přijde do emailu.
-          </p>
+          <p className="text-xs text-ink-500">{t("validity_note")}</p>
         </div>
       )}
     </div>
   );
 }
 
-function FieldDisplay({ label, value, highlight = false }: { label: string; value: string; highlight?: boolean }) {
+function FieldDisplay({
+  label, value, highlight = false, title,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+  title: string;
+}) {
   return (
     <div className="flex items-baseline justify-between gap-3">
       <span className="text-ink-500">{label}:</span>
       <span
         className={`font-mono ${highlight ? "font-semibold text-brand-700" : "text-ink-900"}`}
         onClick={() => navigator.clipboard?.writeText(value)}
-        title="Klikni pro zkopírování"
+        title={title}
         style={{ cursor: "pointer" }}
       >
         {value}
