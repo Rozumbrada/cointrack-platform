@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { Button } from "@/components/ui/button";
 import { Container } from "@/components/ui/container";
 import { PhoneFrame } from "@/components/marketing/PhoneFrame";
@@ -7,7 +8,8 @@ import {
   Smartphone, Building2, Sparkles,
 } from "lucide-react";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const t = await getTranslations("marketing");
   return (
     <>
       {/* ─── HERO ───────────────────────────────────────────────────── */}
@@ -17,32 +19,28 @@ export default function HomePage() {
             <div>
               <div className="inline-flex items-center gap-2 rounded-full bg-brand-100 px-3 py-1 text-sm text-brand-700 mb-6">
                 <Sparkles size={14} />
-                <span>Beta — nové funkce každý týden</span>
+                <span>{t("hero.badge")}</span>
               </div>
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-semibold tracking-tight text-ink-900 leading-[1.05]">
-                Přestaň ručně přepisovat účtenky do Excelu.
+                {t("hero.title")}
               </h1>
               <p className="mt-6 text-lg md:text-xl text-ink-600 leading-relaxed">
-                Cointrack sám stáhne transakce z tvé banky, vyfotí účtenky do systému
-                a spočítá, kolik jsi utratil za benzín. Pro osobní rozpočet i
-                firemní účetnictví.
+                {t("hero.subtitle")}
               </p>
               <div className="mt-10 flex flex-col sm:flex-row gap-3">
                 <Button asChild variant="brand" size="lg">
-                  <Link href="/signup">Vyzkoušet zdarma 14 dní</Link>
+                  <Link href="/signup">{t("hero.cta_signup")}</Link>
                 </Button>
                 <Button asChild variant="outline" size="lg">
-                  <Link href="/features">Jak to funguje</Link>
+                  <Link href="/features">{t("hero.cta_features")}</Link>
                 </Button>
               </div>
-              <p className="mt-4 text-sm text-ink-500">
-                Bez karty na začátek. Android, web, iOS v přípravě.
-              </p>
+              <p className="mt-4 text-sm text-ink-500">{t("hero.cta_note")}</p>
             </div>
             <div className="flex justify-center lg:justify-end">
               <PhoneFrame
                 src="/screenshots/01-home.jpg"
-                alt="Cointrack — hlavní přehled na Androidu"
+                alt={t("hero.phone_alt")}
                 priority
               />
             </div>
@@ -53,9 +51,7 @@ export default function HomePage() {
       {/* ─── SOCIAL PROOF / TRUST ──────────────────────────────────── */}
       <section className="py-12 border-y border-ink-200 bg-white">
         <Container>
-          <p className="text-center text-sm text-ink-500 mb-6">
-            Napojení na bankovní účty přes regulované PSD2 poskytovatele
-          </p>
+          <p className="text-center text-sm text-ink-500 mb-6">{t("trust.title")}</p>
           <div className="flex flex-wrap justify-center items-center gap-x-10 gap-y-4 text-ink-700 font-medium">
             <span>Fio banka</span>
             <span>Česká spořitelna</span>
@@ -63,7 +59,7 @@ export default function HomePage() {
             <span>Komerční banka</span>
             <span>Air Bank</span>
             <span>Raiffeisen</span>
-            <span>+ 2500 bank v EU</span>
+            <span>{t("trust.more")}</span>
           </div>
         </Container>
       </section>
@@ -73,44 +69,18 @@ export default function HomePage() {
         <Container>
           <div className="max-w-2xl mb-16">
             <h2 className="text-4xl font-semibold tracking-tight text-ink-900">
-              Všechno, co potřebuješ, na jednom místě.
+              {t("features.title")}
             </h2>
-            <p className="mt-4 text-lg text-ink-600">
-              Osobní finance, firemní účetnictví, skenování, zálohy. Jeden účet napříč Androidem, webem i iOSem.
-            </p>
+            <p className="mt-4 text-lg text-ink-600">{t("features.subtitle")}</p>
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <FeatureCard
-              icon={CreditCard}
-              title="Automatické napojení bank"
-              description="Transakce z Fio, ČSOB, KB, Air Bank a dalších 2500 bank v EU přes PSD2. Bez ručního importu CSV."
-            />
-            <FeatureCard
-              icon={ScanLine}
-              title="AI skenování účtenek"
-              description="Vyfoť účtenku nebo nahraj PDF faktury. Gemini AI rozpozná prodejce, položky, DPH a zkategorizuje."
-            />
-            <FeatureCard
-              icon={ReceiptText}
-              title="Faktury a účtenky pod kontrolou"
-              description="Vydané i přijaté faktury, QR platby SPAYD, napojení na iDoklad, export pro účetní v ZIP."
-            />
-            <FeatureCard
-              icon={LineChart}
-              title="Přehledné statistiky"
-              description="Kde jsi utratil nejvíc? Jak se měsíc po měsíci mění výdaje na bydlení? Grafy a kategorizace."
-            />
-            <FeatureCard
-              icon={Building2}
-              title="Oddělené osobní a firemní profily"
-              description="Jeden účet, více profilů. OSVČ, s.r.o., rodinný rozpočet — každý se svými účty, kategoriemi, IČO a DIČ."
-            />
-            <FeatureCard
-              icon={ShieldCheck}
-              title="Bezpečnost jako v bance"
-              description="AES-256 šifrovaná DB, biometrie, šifrované zálohy na Google Drive, hostování v České republice."
-            />
+            <FeatureCard icon={CreditCard} title={t("features.banks_title")} description={t("features.banks_desc")} />
+            <FeatureCard icon={ScanLine} title={t("features.ai_title")} description={t("features.ai_desc")} />
+            <FeatureCard icon={ReceiptText} title={t("features.invoices_title")} description={t("features.invoices_desc")} />
+            <FeatureCard icon={LineChart} title={t("features.stats_title")} description={t("features.stats_desc")} />
+            <FeatureCard icon={Building2} title={t("features.profiles_title")} description={t("features.profiles_desc")} />
+            <FeatureCard icon={ShieldCheck} title={t("features.security_title")} description={t("features.security_desc")} />
           </div>
         </Container>
       </section>
@@ -120,26 +90,14 @@ export default function HomePage() {
         <Container>
           <div className="max-w-2xl mb-16">
             <h2 className="text-4xl font-semibold tracking-tight text-ink-900">
-              Z instalace do první synchronizace za 3 minuty.
+              {t("how_it_works.title")}
             </h2>
           </div>
 
           <div className="grid md:grid-cols-3 gap-10">
-            <Step
-              num="1"
-              title="Stáhni aplikaci"
-              text="Android z Google Play, iOS a web brzy. Zaregistruj se emailem."
-            />
-            <Step
-              num="2"
-              title="Připoj banku"
-              text="Klikni, ověř v IB své banky. Transakce se stáhnou zpět 90 dní."
-            />
-            <Step
-              num="3"
-              title="Hotovo"
-              text="Další synchronizace probíhá sama. Stačí jen fotit účtenky a dívat se na grafy."
-            />
+            <Step num="1" title={t("how_it_works.step1_title")} text={t("how_it_works.step1_text")} />
+            <Step num="2" title={t("how_it_works.step2_title")} text={t("how_it_works.step2_text")} />
+            <Step num="3" title={t("how_it_works.step3_title")} text={t("how_it_works.step3_text")} />
           </div>
         </Container>
       </section>
@@ -150,17 +108,15 @@ export default function HomePage() {
           <div className="rounded-3xl bg-ink-900 p-12 md:p-20 text-center">
             <Smartphone className="mx-auto mb-6 text-brand-400" size={40} />
             <h2 className="text-4xl font-semibold text-white tracking-tight max-w-2xl mx-auto">
-              Začni svým osobním rozpočtem. Nebo s fakturami pro svoji firmu.
+              {t("cta.title")}
             </h2>
-            <p className="mt-4 text-lg text-ink-300 max-w-xl mx-auto">
-              14 dní zdarma, bez karty. Kdykoliv zrušíš jedním klikem.
-            </p>
+            <p className="mt-4 text-lg text-ink-300 max-w-xl mx-auto">{t("cta.subtitle")}</p>
             <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
               <Button asChild variant="brand" size="lg">
-                <Link href="/signup">Vytvořit účet</Link>
+                <Link href="/signup">{t("cta.signup")}</Link>
               </Button>
               <Button asChild variant="ghost" size="lg" className="text-white hover:bg-ink-800">
-                <Link href="/pricing">Podrobný ceník →</Link>
+                <Link href="/pricing">{t("cta.pricing")}</Link>
               </Button>
             </div>
           </div>

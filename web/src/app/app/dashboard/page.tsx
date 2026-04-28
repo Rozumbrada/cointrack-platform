@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
 import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
@@ -19,6 +20,12 @@ import { ExpenseDonut, categoryColor } from "@/components/app/ExpenseDonut";
 
 export default function DashboardPage() {
   const router = useRouter();
+  const t = useTranslations("dashboard");
+  const locale = useLocale();
+  const monthLabel = useMemo(
+    () => new Intl.DateTimeFormat(locale, { month: "long" }).format(new Date()),
+    [locale],
+  );
   const { loading, error, entitiesByProfile, rawEntities, reload } = useSyncData();
   const [pickerFor, setPickerFor] = useState<{
     txSyncId: string;
@@ -178,24 +185,22 @@ export default function DashboardPage() {
 
   const allCats = categoryEntities;
 
-  if (loading) return <Loading />;
-  if (error) return <ErrorState message={error} />;
+  if (loading) return <div className="grid place-items-center py-20 text-ink-500 text-sm">{t("loading")}</div>;
+  if (error) return <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">{t("error_prefix")} {error}</div>;
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-ink-900">Přehled</h1>
-        <p className="text-sm text-ink-600 mt-1">
-          Přehled financí pro aktivní profil.
-        </p>
+        <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
+        <p className="text-sm text-ink-600 mt-1">{t("subtitle")}</p>
       </div>
 
-      {/* KPI + 6-měsíční trend bok po boku */}
+      {/* KPI + trend */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <section className="bg-white rounded-2xl border border-ink-200 p-5 space-y-4">
           <div>
             <div className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-1">
-              Celkový zůstatek
+              {t("total_balance")}
             </div>
             <div className="space-y-0.5">
               {Object.entries(totalBalance).length === 0 ? (
@@ -212,7 +217,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-2 gap-3 pt-3 border-t border-ink-100">
             <div>
               <div className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-1">
-                Příjmy ({monthLabel()})
+                {t("income_for_month", { month: monthLabel })}
               </div>
               <div className="text-xl font-semibold text-emerald-700 tabular-nums">
                 +{fmt(monthlyStats.income, "CZK")}
@@ -220,7 +225,7 @@ export default function DashboardPage() {
             </div>
             <div>
               <div className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-1">
-                Výdaje ({monthLabel()})
+                {t("expense_for_month", { month: monthLabel })}
               </div>
               <div className="text-xl font-semibold text-red-700 tabular-nums">
                 −{fmt(monthlyStats.expense, "CZK")}
@@ -230,7 +235,7 @@ export default function DashboardPage() {
         </section>
 
         <section className="bg-white rounded-2xl border border-ink-200 p-5">
-          <h2 className="font-semibold text-ink-900 mb-4">6-měsíční trend</h2>
+          <h2 className="font-semibold text-ink-900 mb-4">{t("trend_6m")}</h2>
           <div className="flex gap-2 items-end h-40">
             {trend.map((m) => {
               const hIn = (m.income / maxTrend) * 100;
@@ -241,12 +246,12 @@ export default function DashboardPage() {
                     <div
                       className="flex-1 bg-emerald-500 rounded-t min-h-[2px]"
                       style={{ height: `${Math.max(hIn, m.income > 0 ? 4 : 0)}%` }}
-                      title={`Příjmy: ${fmt(m.income, "CZK")}`}
+                      title={`${t("income")}: ${fmt(m.income, "CZK")}`}
                     />
                     <div
                       className="flex-1 bg-red-500 rounded-t min-h-[2px]"
                       style={{ height: `${Math.max(hEx, m.expense > 0 ? 4 : 0)}%` }}
-                      title={`Výdaje: ${fmt(m.expense, "CZK")}`}
+                      title={`${t("expense")}: ${fmt(m.expense, "CZK")}`}
                     />
                   </div>
                   <div className="text-[10px] text-ink-500">
@@ -258,10 +263,10 @@ export default function DashboardPage() {
           </div>
           <div className="flex gap-4 mt-3 text-xs">
             <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 bg-emerald-500 rounded" /> Příjmy
+              <div className="w-3 h-3 bg-emerald-500 rounded" /> {t("income")}
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 bg-red-500 rounded" /> Výdaje
+              <div className="w-3 h-3 bg-red-500 rounded" /> {t("expense")}
             </div>
           </div>
         </section>
@@ -270,14 +275,14 @@ export default function DashboardPage() {
       {/* Donut + top výdaje */}
       <section className="bg-white rounded-2xl border border-ink-200 p-5">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-ink-900">Výdaje podle kategorií ({monthLabel()})</h2>
+          <h2 className="font-semibold text-ink-900">{t("expenses_by_category", { month: monthLabel })}</h2>
           <Link href="/app/statistics" className="text-sm text-brand-600 hover:text-brand-700">
-            Detail →
+            {t("detail")}
           </Link>
         </div>
         {topExpenseCats.length === 0 || monthlyStats.expense === 0 ? (
           <div className="py-6 text-center text-ink-500 text-sm">
-            Žádné výdaje tento měsíc.
+            {t("no_expenses")}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 items-center">
@@ -308,7 +313,7 @@ export default function DashboardPage() {
                         />
                         {row.category?.icon && <CategoryIcon name={row.category.icon} size="sm" />}
                         <span className="text-ink-900 truncate">
-                          {row.category?.name || "Bez kategorie"}
+                          {row.category?.name || t("no_category")}
                         </span>
                       </div>
                       <div className="tabular-nums font-medium text-ink-900 shrink-0">
@@ -329,9 +334,9 @@ export default function DashboardPage() {
       {/* Recent transactions */}
       <section className="bg-white rounded-2xl border border-ink-200">
         <div className="px-6 py-4 border-b border-ink-200 flex items-center justify-between">
-          <h2 className="font-semibold text-ink-900">Poslední transakce</h2>
+          <h2 className="font-semibold text-ink-900">{t("recent_transactions")}</h2>
           <Link href="/app/transactions" className="text-sm text-brand-600 hover:text-brand-700">
-            Všechny →
+            {t("all_transactions")}
           </Link>
         </div>
         {pickerError && (
@@ -341,7 +346,7 @@ export default function DashboardPage() {
         )}
         {recent.length === 0 ? (
           <div className="p-8 text-center text-ink-500 text-sm">
-            Žádné transakce. Napoj banku nebo naskenuj účtenku v mobilu.
+            {t("no_transactions")}
           </div>
         ) : (
           <ul className="divide-y divide-ink-100">
@@ -364,7 +369,7 @@ export default function DashboardPage() {
                         currentCatSyncId: tx.categorySyncId,
                       })
                     }
-                    title="Změnit kategorii"
+                    title={t("change_category")}
                     disabled={tx.type === "TRANSFER"}
                     className="w-9 h-9 rounded-full grid place-items-center shrink-0 hover:ring-2 hover:ring-brand-500/40 transition-all disabled:opacity-60 disabled:cursor-default"
                     style={{
@@ -385,7 +390,7 @@ export default function DashboardPage() {
                   >
                     <div className="flex-1 min-w-0">
                       <div className="text-sm text-ink-900 truncate">
-                        {tx.description || tx.merchant || "(bez popisu)"}
+                        {tx.description || tx.merchant || t("no_description")}
                       </div>
                       <div className="text-xs text-ink-500 flex items-center gap-2">
                         <span>{formatDate(tx.date)}</span>
@@ -425,21 +430,6 @@ export default function DashboardPage() {
   );
 }
 
-function monthLabel(): string {
-  return new Intl.DateTimeFormat("cs-CZ", { month: "long" }).format(new Date());
-}
-
-function Loading() {
-  return <div className="grid place-items-center py-20 text-ink-500 text-sm">Načítám data…</div>;
-}
-
-function ErrorState({ message }: { message: string }) {
-  return (
-    <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">
-      Chyba: {message}
-    </div>
-  );
-}
 
 function fmt(amount: number, currency: string): string {
   return new Intl.NumberFormat("cs-CZ", {

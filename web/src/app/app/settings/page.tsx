@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { auth, gdpr, DeletionStatusDto, UserDto } from "@/lib/api";
 import { clearAuth, getAccessToken } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
@@ -13,6 +14,8 @@ import {
 
 export default function SettingsPage() {
   const router = useRouter();
+  const t = useTranslations("settings");
+  const tc = useTranslations("common");
   const [user, setUser] = useState<UserDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [deletion, setDeletion] = useState<DeletionStatusDto | null>(null);
@@ -60,28 +63,21 @@ export default function SettingsPage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (e) {
-      setError(`Export selhal: ${e}`);
+      setError(t("export_failed", { error: String(e) }));
     }
   }
 
   async function onRequestDeletion() {
     const token = getAccessToken();
     if (!token) return;
-    if (!confirm(
-      "Opravdu chceš smazat účet?\n\n" +
-      "• Účet bude označen ke smazání\n" +
-      "• Po 30 dnech budou všechna data nenávratně smazána\n" +
-      "• V této době se můžeš znovu přihlásit a smazání zrušit\n" +
-      "• Hned budeš odhlášen ze všech zařízení",
-    )) return;
+    if (!confirm(t("delete_confirm"))) return;
     setDeletionBusy(true);
     try {
       const res = await gdpr.requestDeletion(token);
       setDeletion(res);
-      // Po smazání se musíš odhlásit — backend zneplatnil sessions
       setTimeout(() => onLogout(), 2000);
     } catch (e) {
-      setError(`Smazání selhalo: ${e}`);
+      setError(t("delete_failed", { error: String(e) }));
     } finally {
       setDeletionBusy(false);
     }
@@ -96,7 +92,7 @@ export default function SettingsPage() {
       const fresh = await gdpr.deletionStatus(token);
       setDeletion(fresh);
     } catch (e) {
-      setError(`Zrušení selhalo: ${e}`);
+      setError(t("cancel_failed", { error: String(e) }));
     } finally {
       setDeletionBusy(false);
     }
@@ -114,8 +110,8 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
-        <h1 className="text-2xl font-semibold text-ink-900">Nastavení</h1>
-        <p className="text-sm text-ink-600 mt-1">Tvůj účet a předplatné.</p>
+        <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
+        <p className="text-sm text-ink-600 mt-1">{t("subtitle")}</p>
       </div>
 
       {error && (
@@ -125,13 +121,13 @@ export default function SettingsPage() {
       )}
 
       <section className="bg-white rounded-2xl border border-ink-200 p-6">
-        <h2 className="font-semibold text-ink-900 mb-4">Účet</h2>
+        <h2 className="font-semibold text-ink-900 mb-4">{t("account_section")}</h2>
         <dl className="space-y-3 text-sm">
-          <Row label="Email" value={user?.email} />
-          <Row label="Jméno" value={user?.displayName ?? "—"} />
-          <Row label="Jazyk" value={user?.locale ?? "—"} />
+          <Row label={tc("email")} value={user?.email} />
+          <Row label={t("name_field")} value={user?.displayName ?? "—"} />
+          <Row label={t("language_field")} value={user?.locale ?? "—"} />
           <Row
-            label="Tier"
+            label={t("tier_field")}
             value={
               <span className="inline-block text-[10px] uppercase tracking-wide bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded">
                 {user?.tier ?? "free"}
@@ -139,25 +135,21 @@ export default function SettingsPage() {
             }
           />
           <Row
-            label="Ověřený email"
-            value={user?.emailVerified ? "✓ ano" : "ne"}
+            label={t("verified_email")}
+            value={user?.emailVerified ? t("yes_verified") : t("not_verified")}
           />
         </dl>
       </section>
 
       <section className="bg-white rounded-2xl border border-ink-200 p-6">
-        <h2 className="font-semibold text-ink-900 mb-2">Doklady</h2>
-        <p className="text-sm text-ink-600 mb-3">
-          Výchozí účet pro naskenované a nahrané účtenky/faktury (kromě hotovostních
-          — ty jdou vždy na účet Hotovost). Nastavení je uloženo lokálně v prohlížeči
-          a platí jen pro aktuálně vybraný profil.
-        </p>
+        <h2 className="font-semibold text-ink-900 mb-2">{t("default_account_section")}</h2>
+        <p className="text-sm text-ink-600 mb-3">{t("default_account_desc")}</p>
         <select
           value={defaultAccount}
           onChange={(e) => onChangeDefaultAccount(e.target.value)}
           className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900"
         >
-          <option value="">— bez defaultu (první účet v seznamu) —</option>
+          <option value="">{t("default_account_none")}</option>
           {nonCashAccounts.map((a) => (
             <option key={a.syncId} value={a.syncId}>
               {a.data.name} ({a.data.currency})
@@ -167,40 +159,34 @@ export default function SettingsPage() {
       </section>
 
       <section className="bg-white rounded-2xl border border-ink-200 p-6">
-        <h2 className="font-semibold text-ink-900 mb-2">Mobilní aplikace</h2>
-        <p className="text-sm text-ink-600 mb-4">
-          Stáhni si Android aplikaci pro plnou funkcionalitu (scan účtenek, faktury, OCR,
-          věrnostní karty, Pohoda export).
-        </p>
+        <h2 className="font-semibold text-ink-900 mb-2">{t("mobile_section")}</h2>
+        <p className="text-sm text-ink-600 mb-4">{t("mobile_desc")}</p>
         <a
           href="/download/latest.apk"
           className="inline-block h-10 px-4 rounded-lg border border-ink-300 bg-white hover:bg-ink-50 text-sm font-medium text-ink-900"
         >
-          Stáhnout APK
+          {t("mobile_download")}
         </a>
       </section>
 
       <section className="bg-white rounded-2xl border border-ink-200 p-6">
-        <h2 className="font-semibold text-ink-900 mb-2">Tvá data (GDPR)</h2>
-        <p className="text-sm text-ink-600 mb-4">
-          Na základě GDPR (čl. 20) máš právo stáhnout si všechna svá data ve strojově čitelném formátu (JSON).
-          Soubor obsahuje profily, účty, transakce, účtenky, faktury, věrnostní karty atd.
-        </p>
+        <h2 className="font-semibold text-ink-900 mb-2">{t("gdpr_section")}</h2>
+        <p className="text-sm text-ink-600 mb-4">{t("gdpr_desc")}</p>
         <button
           onClick={onExportData}
           className="h-10 px-4 rounded-lg border border-ink-300 bg-white hover:bg-ink-50 text-sm font-medium text-ink-900"
         >
-          📥 Stáhnout moje data (JSON)
+          {t("gdpr_download")}
         </button>
       </section>
 
       {deletion?.requestedAt ? (
         <section className="bg-amber-50 rounded-2xl border border-amber-300 p-6">
-          <h2 className="font-semibold text-amber-900 mb-2">⚠️ Účet je označen ke smazání</h2>
+          <h2 className="font-semibold text-amber-900 mb-2">{t("delete_pending_title")}</h2>
           <p className="text-sm text-amber-900 mb-4">
-            Smazání bylo zažádáno {new Date(deletion.requestedAt).toLocaleString("cs-CZ")}.
-            Data budou nenávratně smazána <b>{deletion.deleteAfterAt && new Date(deletion.deleteAfterAt).toLocaleDateString("cs-CZ")}</b>.
-            Pokud sis to rozmyslel, můžeš smazání zrušit:
+            {t("delete_pending_requested", { date: new Date(deletion.requestedAt).toLocaleString() })}{" "}
+            <b>{deletion.deleteAfterAt && new Date(deletion.deleteAfterAt).toLocaleDateString()}</b>.{" "}
+            {t("delete_pending_changed_mind")}
           </p>
           {deletion.canCancel && (
             <button
@@ -208,38 +194,32 @@ export default function SettingsPage() {
               disabled={deletionBusy}
               className="h-10 px-4 rounded-lg bg-amber-700 hover:bg-amber-800 disabled:bg-amber-400 text-white text-sm font-medium"
             >
-              Zrušit smazání účtu
+              {t("cancel_deletion")}
             </button>
           )}
         </section>
       ) : (
         <section className="bg-white rounded-2xl border border-red-200 p-6">
-          <h2 className="font-semibold text-red-800 mb-2">Smazat účet</h2>
-          <p className="text-sm text-ink-600 mb-4">
-            Na základě GDPR (čl. 17) máš právo na úplné smazání svých dat. Účet bude označen
-            a po 30denní lhůtě budou data <b>nenávratně smazána</b>. V této lhůtě je možné
-            smazání ještě zrušit (přihlášením se zpět).
-          </p>
+          <h2 className="font-semibold text-red-800 mb-2">{t("delete_account_section")}</h2>
+          <p className="text-sm text-ink-600 mb-4">{t("delete_account_desc")}</p>
           <button
             onClick={onRequestDeletion}
             disabled={deletionBusy}
             className="h-10 px-4 rounded-lg border border-red-300 bg-white hover:bg-red-50 text-sm font-medium text-red-800 disabled:opacity-50"
           >
-            🗑️ Smazat můj účet
+            {t("delete_account_btn")}
           </button>
         </section>
       )}
 
       <section className="bg-white rounded-2xl border border-red-200 p-6">
-        <h2 className="font-semibold text-red-800 mb-2">Odhlášení</h2>
-        <p className="text-sm text-ink-600 mb-4">
-          Odhlásíš se z webu. Mobilní aplikace zůstane přihlášená.
-        </p>
+        <h2 className="font-semibold text-red-800 mb-2">{t("logout_section")}</h2>
+        <p className="text-sm text-ink-600 mb-4">{t("logout_desc")}</p>
         <button
           onClick={onLogout}
           className="h-10 px-4 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium"
         >
-          Odhlásit se
+          {t("logout_btn")}
         </button>
       </section>
     </div>
