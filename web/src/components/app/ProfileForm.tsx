@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { api, sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 
@@ -11,14 +12,6 @@ const COLORS = [
   0xff9c27b0, 0xff009688, 0xff795548, 0xff607d8b,
 ];
 
-const TYPES = [
-  { value: "PERSONAL", label: "Hlavní", desc: "Tvůj osobní profil — můžeš vyplnit i firemní údaje (IČO/DIČ)" },
-  { value: "BUSINESS", label: "Firemní", desc: "OSVČ / s.r.o. — stejné údaje jako hlavní" },
-  { value: "ORGANIZATION", label: "Organizace", desc: "Sdílený profil pro tým — pozvánky a role členů" },
-  { value: "GROUP", label: "Skupinový", desc: "Sdílené výdaje mezi členy skupiny (dovolená, spolubydlení)" },
-];
-
-/** Typy, u kterých se zobrazují firemní údaje (IČO, DIČ, název firmy, plátce DPH). */
 const BUSINESS_FIELD_TYPES = new Set(["PERSONAL", "BUSINESS", "ORGANIZATION"]);
 
 interface ProfileFormProps {
@@ -37,12 +30,20 @@ interface ProfileData {
   defaultCurrency?: string;
   organizationId?: string;
   cointrackUserId?: string;
-  [key: string]: unknown;  // pro zachování ostatních fields při editu
+  [key: string]: unknown;
 }
 
 export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
+  const t = useTranslations("profile_form");
   const router = useRouter();
   const isEdit = mode === "edit";
+
+  const TYPES = [
+    { value: "PERSONAL", label: t("type_personal"), desc: t("type_personal_desc") },
+    { value: "BUSINESS", label: t("type_business"), desc: t("type_business_desc") },
+    { value: "ORGANIZATION", label: t("type_organization"), desc: t("type_organization_desc") },
+    { value: "GROUP", label: t("type_group"), desc: t("type_group_desc") },
+  ];
 
   const [name, setName] = useState("");
   const [type, setType] = useState("PERSONAL");
@@ -62,10 +63,10 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
     if (!isEdit || !syncId) return;
     (async () => {
       try {
-        const res = await withAuth((t) => sync.pull(t));
+        const res = await withAuth((tk) => sync.pull(tk));
         const entity = (res.entities["profiles"] ?? []).find((e) => e.syncId === syncId);
         if (!entity) {
-          setError("Profil nenalezen.");
+          setError(t("profile_not_found"));
           setLoading(false);
           return;
         }
@@ -85,12 +86,12 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
         setLoading(false);
       }
     })();
-  }, [isEdit, syncId]);
+  }, [isEdit, syncId, t]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) {
-      setError("Vyplň název profilu.");
+      setError(t("fill_name"));
       return;
     }
     setError(null);
@@ -100,15 +101,13 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
       const now = new Date().toISOString();
       const targetSyncId = isEdit ? syncId! : crypto.randomUUID();
 
-      // Pokud se zakládá ORGANIZATION, nejprve vytvořit organizaci přes REST,
-      // a teprve pak profil s odkazem na ni přes organizationId.
       let organizationId = originalData?.organizationId;
       if (!isEdit && type === "ORGANIZATION") {
         try {
-          const orgRes = await withAuth((t) =>
+          const orgRes = await withAuth((tk) =>
             api<{ id: string }>("/api/v1/org", {
               method: "POST",
-              token: t,
+              token: tk,
               body: {
                 name: name.trim(),
                 type: "B2B",
@@ -119,17 +118,14 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
           );
           organizationId = orgRes.id;
         } catch (e) {
-          setError(
-            "Nepodařilo se vytvořit organizaci: " +
-              (e instanceof Error ? e.message : String(e)),
-          );
+          setError(t("create_org_failed", { error: e instanceof Error ? e.message : String(e) }));
           setSaving(false);
           return;
         }
       }
 
       const data: ProfileData = {
-        ...(originalData ?? {}),  // zachování dalších polí (např. cointrackUserId)
+        ...(originalData ?? {}),
         name: name.trim(),
         type,
         color,
@@ -141,8 +137,8 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
         organizationId,
       };
 
-      await withAuth((t) =>
-        sync.push(t, {
+      await withAuth((tk) =>
+        sync.push(tk, {
           entities: {
             profiles: [
               {
@@ -156,7 +152,6 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
         }),
       );
 
-      // Po vytvoření organizace nasměruj na její správu (členové, pozvánky)
       if (!isEdit && type === "ORGANIZATION") {
         router.push("/app/organizations");
       } else {
@@ -169,17 +164,17 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
   }
 
   if (loading) {
-    return <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>;
+    return <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>;
   }
 
   return (
     <div className="max-w-2xl space-y-6">
       <div>
         <Link href="/app/profiles" className="text-sm text-brand-600 hover:text-brand-700">
-          ← Zpět na profily
+          {t("back")}
         </Link>
         <h1 className="text-2xl font-semibold text-ink-900 mt-2">
-          {isEdit ? "Upravit profil" : "Nový profil"}
+          {isEdit ? t("edit_title") : t("new_title")}
         </h1>
       </div>
 
@@ -190,15 +185,14 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
       )}
 
       <form onSubmit={onSubmit} className="bg-white rounded-2xl border border-ink-200 p-6 space-y-5">
-        {/* Type — disabled v edit, protože změna typu by měla nepříjemné side effecty */}
         {!isEdit && (
-          <Field label="Typ profilu">
+          <Field label={t("type_label")}>
             <div className="space-y-2">
-              {TYPES.map((t) => (
+              {TYPES.map((typ) => (
                 <label
-                  key={t.value}
+                  key={typ.value}
                   className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-colors ${
-                    type === t.value
+                    type === typ.value
                       ? "border-brand-500 bg-brand-50"
                       : "border-ink-200 hover:border-ink-300"
                   }`}
@@ -206,14 +200,14 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
                   <input
                     type="radio"
                     name="type"
-                    value={t.value}
-                    checked={type === t.value}
+                    value={typ.value}
+                    checked={type === typ.value}
                     onChange={(e) => setType(e.target.value)}
                     className="mt-1"
                   />
                   <div>
-                    <div className="font-medium text-ink-900 text-sm">{t.label}</div>
-                    <div className="text-xs text-ink-600">{t.desc}</div>
+                    <div className="font-medium text-ink-900 text-sm">{typ.label}</div>
+                    <div className="text-xs text-ink-600">{typ.desc}</div>
                   </div>
                 </label>
               ))}
@@ -221,18 +215,18 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
           </Field>
         )}
 
-        <Field label="Název profilu *">
+        <Field label={t("name_label")}>
           <input
             type="text"
             autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="např. Osobní, Firma s.r.o., Domácnost"
+            placeholder={t("name_placeholder")}
             className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
           />
         </Field>
 
-        <Field label="Barva">
+        <Field label={t("color_label")}>
           <div className="flex gap-2 flex-wrap">
             {COLORS.map((c) => (
               <button
@@ -243,43 +237,42 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
                   color === c ? "border-ink-900 scale-110" : "border-transparent"
                 }`}
                 style={{ backgroundColor: argbToCss(c) }}
-                aria-label="Vybrat barvu"
+                aria-label={t("select_color_aria")}
               />
             ))}
           </div>
         </Field>
 
-        <Field label="Měna">
+        <Field label={t("currency_label")}>
           <select
             value={defaultCurrency}
             onChange={(e) => setDefaultCurrency(e.target.value)}
             className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900"
           >
-            <option value="CZK">CZK — Česká koruna</option>
-            <option value="EUR">EUR — Euro</option>
-            <option value="USD">USD — US Dollar</option>
-            <option value="GBP">GBP — British Pound</option>
+            <option value="CZK">{t("currency_czk")}</option>
+            <option value="EUR">{t("currency_eur")}</option>
+            <option value="USD">{t("currency_usd")}</option>
+            <option value="GBP">{t("currency_gbp")}</option>
           </select>
         </Field>
 
-        {/* Firemní údaje — pro PERSONAL, BUSINESS i ORGANIZATION (vše kromě GROUP) */}
         {BUSINESS_FIELD_TYPES.has(type) && (
           <div className="border-t border-ink-200 pt-5">
             <h3 className="text-sm font-medium text-ink-900 mb-3">
-              {type === "PERSONAL" ? "Volitelné firemní údaje" : "Firemní údaje"}
+              {type === "PERSONAL" ? t("company_section_optional") : t("company_section")}
             </h3>
             <div className="space-y-4">
-              <Field label="Název firmy">
+              <Field label={t("company_name_label")}>
                 <input
                   type="text"
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
-                  placeholder="např. Cointrack s.r.o."
+                  placeholder={t("company_name_placeholder")}
                   className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900"
                 />
               </Field>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="IČO">
+                <Field label={t("ico_label")}>
                   <input
                     type="text"
                     value={ico}
@@ -288,7 +281,7 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
                     className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900 tabular-nums"
                   />
                 </Field>
-                <Field label="DIČ">
+                <Field label={t("dic_label")}>
                   <input
                     type="text"
                     value={dic}
@@ -304,28 +297,25 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
                   checked={isVatPayer}
                   onChange={(e) => setIsVatPayer(e.target.checked)}
                 />
-                <span className="text-sm text-ink-900">Plátce DPH</span>
+                <span className="text-sm text-ink-900">{t("vat_payer")}</span>
               </label>
             </div>
           </div>
         )}
 
-        {/* Org-only info — pozvánky a role členů se spravují na /app/organizations */}
         {type === "ORGANIZATION" && (
           <div className="border-t border-ink-200 pt-5">
             <div className="bg-brand-50 border border-brand-200 rounded-lg p-3 text-sm text-brand-800 space-y-1">
-              <div className="font-medium">Pozvánky a role členů</div>
+              <div className="font-medium">{t("org_invites_title")}</div>
               <p className="text-xs">
-                {isEdit
-                  ? `Členy a pozvánky spravuj na stránce „Organizace a skupiny“.`
-                  : "Po vytvoření organizace tě přesměrujeme do správy, kde můžeš pozvat členy a nastavit role."}
+                {isEdit ? t("org_invites_edit_desc") : t("org_invites_create_desc")}
               </p>
               {isEdit && (
                 <Link
                   href="/app/organizations"
                   className="inline-block mt-1 text-xs underline hover:no-underline"
                 >
-                  Spravovat členy →
+                  {t("manage_members")}
                 </Link>
               )}
             </div>
@@ -337,14 +327,14 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
             href="/app/profiles"
             className="flex-1 h-11 rounded-lg border border-ink-300 bg-white hover:bg-ink-50 grid place-items-center text-sm font-medium text-ink-900"
           >
-            Zrušit
+            {t("cancel")}
           </Link>
           <button
             type="submit"
             disabled={saving}
             className="flex-1 h-11 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white text-sm font-medium"
           >
-            {saving ? "Ukládám…" : isEdit ? "Uložit změny" : "Vytvořit profil"}
+            {saving ? t("saving") : isEdit ? t("save_edit") : t("save_create")}
           </button>
         </div>
       </form>
