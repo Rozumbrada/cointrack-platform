@@ -66,7 +66,7 @@ class BillingExpiryWorker(
         val windowEnd = now.plus(7, ChronoUnit.DAYS)
         val recentlySentCutoff = now.minus(14, ChronoUnit.DAYS)
 
-        data class Target(val userId: UUID, val email: String, val tier: String, val expires: Instant)
+        data class Target(val userId: UUID, val email: String, val tier: String, val expires: Instant, val locale: String?)
 
         val targets = db {
             Users.selectAll().where {
@@ -82,6 +82,7 @@ class BillingExpiryWorker(
                     email = it[Users.email],
                     tier = it[Users.tier],
                     expires = it[Users.tierExpiresAt]!!,
+                    locale = it[Users.locale],
                 )
             }
         }
@@ -96,8 +97,8 @@ class BillingExpiryWorker(
                 val renewUrl = "$webBaseUrl/app/upgrade"
                 email.send(
                     to = t.email,
-                    subject = "Cointrack — předplatné vyprší za $daysLeft ${if (daysLeft == 1) "den" else "dny"}",
-                    htmlBody = EmailTemplates.tierExpiryReminder(t.tier, expiresDate, daysLeft, renewUrl),
+                    subject = EmailTemplates.tierExpiryReminderSubject(daysLeft, t.locale),
+                    htmlBody = EmailTemplates.tierExpiryReminder(t.tier, expiresDate, daysLeft, renewUrl, t.locale),
                 )
                 db {
                     Users.update({ Users.id eq t.userId }) {
@@ -116,7 +117,7 @@ class BillingExpiryWorker(
     private suspend fun autoDowngrade(): Int {
         val now = Instant.now()
 
-        data class Target(val userId: UUID, val email: String)
+        data class Target(val userId: UUID, val email: String, val locale: String?)
 
         val targets = db {
             Users.selectAll().where {
@@ -128,6 +129,7 @@ class BillingExpiryWorker(
                 Target(
                     userId = it[Users.id].value,
                     email = it[Users.email],
+                    locale = it[Users.locale],
                 )
             }
         }
@@ -149,8 +151,8 @@ class BillingExpiryWorker(
                     runCatching {
                         em.send(
                             to = t.email,
-                            subject = "Cointrack — přepnuto na FREE",
-                            htmlBody = EmailTemplates.tierDowngradedToFree("$webBaseUrl/app/upgrade"),
+                            subject = EmailTemplates.tierDowngradedSubject(t.locale),
+                            htmlBody = EmailTemplates.tierDowngradedToFree("$webBaseUrl/app/upgrade", t.locale),
                         )
                     }.onFailure { log.warn("Downgrade email send failed for ${t.userId}: ${it.message}") }
                 }

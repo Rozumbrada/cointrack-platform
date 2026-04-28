@@ -359,17 +359,28 @@ class OrgService(
             )
         }
 
-        // Odeslání e-mailu — best-effort, selhání nerozbijí vytvoření pozvánky
+        // Odeslání e-mailu — best-effort, selhání nerozbijí vytvoření pozvánky.
+        // Locale: pokud už má adresát účet, použijeme jeho. Jinak inviter's.
         val acceptUrl = "$webBaseUrl/invite?token=$token"
+        val recipientLocale = db {
+            Users.selectAll().where { Users.email.lowerCase() eq normalizedEmail }
+                .singleOrNull()?.get(Users.locale)
+                ?: Users.selectAll().where { Users.id eq callerUserId }
+                    .singleOrNull()?.get(Users.locale)
+        }
         try {
             email.send(
                 to = normalizedEmail,
-                subject = "Pozvánka do organizace $orgName — Cointrack",
+                subject = if (recipientLocale?.startsWith("en") == true)
+                    "Invitation to $orgName — Cointrack"
+                else
+                    "Pozvánka do organizace $orgName — Cointrack",
                 htmlBody = EmailTemplates.organizationInvite(
                     organizationName = orgName,
                     inviterEmail = inviterEmail ?: "admin",
                     role = inviteDto.role,
                     acceptUrl = acceptUrl,
+                    locale = recipientLocale,
                 ),
             )
         } catch (e: Exception) {

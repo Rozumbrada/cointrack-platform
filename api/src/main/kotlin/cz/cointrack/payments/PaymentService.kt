@@ -198,7 +198,7 @@ class PaymentService(
      * Upgrade tieru se aplikuje hned: tier_expires_at = max(now, current) + period.
      */
     suspend fun markPaid(paymentId: UUID, matchedTxId: String? = null) {
-        var emailToSend: Pair<String, EmailTemplates.InvoiceData>? = null
+        var emailToSend: Triple<String, EmailTemplates.InvoiceData, String?>? = null
         db {
             val row = Payments.selectAll().where { Payments.id eq paymentId }.singleOrNull()
                 ?: throw ApiException(HttpStatusCode.NotFound, "not_found", "Platba nenalezena.")
@@ -253,16 +253,18 @@ class PaymentService(
                     supplierDic = supplier.dic,
                     supplierBankAccount = supplier.bankAccount,
                 )
-                emailToSend = customerEmail to data
+                val userLocale = Users.selectAll().where { Users.id eq userId }
+                    .singleOrNull()?.get(Users.locale)
+                emailToSend = Triple(customerEmail, data, userLocale)
             }
         }
 
-        emailToSend?.let { (toEmail, data) ->
+        emailToSend?.let { (toEmail, data, locale) ->
             try {
                 email!!.send(
                     to = toEmail,
-                    subject = "Cointrack — Faktura ${data.invoiceNumber}",
-                    htmlBody = EmailTemplates.paymentInvoice(data),
+                    subject = EmailTemplates.paymentInvoiceSubject(data.invoiceNumber, locale),
+                    htmlBody = EmailTemplates.paymentInvoice(data, locale),
                 )
                 db {
                     Payments.update({ Payments.id eq paymentId }) {

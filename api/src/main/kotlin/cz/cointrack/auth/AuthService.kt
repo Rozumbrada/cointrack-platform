@@ -184,11 +184,11 @@ class AuthService(
 
     suspend fun forgotPassword(emailAddr: String) {
         val normalizedEmail = emailAddr.trim().lowercase()
-        val (userId, userEmail) = db {
+        val (userId, userEmail, userLocale) = db {
             val row = Users.selectAll()
                 .where { (Users.email.lowerCase() eq normalizedEmail) and Users.deletedAt.isNull() }
                 .singleOrNull()
-            row?.let { it[Users.id].value to it[Users.email] }
+            row?.let { Triple(it[Users.id].value, it[Users.email], it[Users.locale]) }
         } ?: return  // Záměrně neprozrazujeme, že email neexistuje
 
         val token = TokenGenerator.newToken()
@@ -206,7 +206,11 @@ class AuthService(
         // Email send je best-effort — endpoint vrací 200 i když SMTP selže
         // (už jen z principu "neprozrazovat jestli email existuje").
         try {
-            email.send(userEmail, "Obnova hesla Cointrack", EmailTemplates.passwordReset(resetUrl))
+            email.send(
+                userEmail,
+                EmailTemplates.passwordResetSubject(userLocale),
+                EmailTemplates.passwordReset(resetUrl, userLocale),
+            )
         } catch (e: Exception) {
             log.warn("Failed to send password reset email to $userEmail: ${e.message}")
         }
@@ -328,19 +332,22 @@ class AuthService(
     private suspend fun sendVerifyEmail(userId: UUID, toEmail: String) {
         val token = TokenGenerator.newToken()
         val now = Instant.now()
-        db {
+        val userLocale = db {
             EmailVerifications.insertAndGetId {
                 it[this.userId] = userId
                 it[tokenHash] = TokenGenerator.hash(token)
                 it[expiresAt] = now.plusSeconds(verifyTtlHours * 3600L)
                 it[createdAt] = now
             }
+            Users.selectAll().where { Users.id eq userId }.singleOrNull()?.get(Users.locale)
         }
         val verifyUrl = "$webBaseUrl/verify?token=$token"
-        // Email send je best-effort — pokud SMTP nefunguje, registrace stále projde.
-        // Uživatel si může vyžádat resend verifikačního emailu později.
         try {
-            email.send(toEmail, "Ověř svůj email pro Cointrack", EmailTemplates.verifyEmail(verifyUrl))
+            email.send(
+                toEmail,
+                EmailTemplates.verifyEmailSubject(userLocale),
+                EmailTemplates.verifyEmail(verifyUrl, userLocale),
+            )
         } catch (e: Exception) {
             log.warn("Failed to send verification email to $toEmail (user still registered): ${e.message}")
         }
