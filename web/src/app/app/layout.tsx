@@ -91,6 +91,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/app/exchange-rates", label: "Kurzy měn", section: "Nástroje" },
     { href: "/app/import", label: "Import CSV" },
     { href: "/app/organizations", label: "Organizace a skupiny", section: "Sociální" },
+    { href: "/app/upgrade", label: "💎 Upgrade", section: "Účet" },
     { href: "/app/settings", label: "Nastavení" },
   ];
 

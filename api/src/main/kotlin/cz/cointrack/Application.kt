@@ -15,6 +15,8 @@ import cz.cointrack.email.EmailConfig
 import cz.cointrack.email.EmailService
 import cz.cointrack.idoklad.IDokladService
 import cz.cointrack.idoklad.idokladRoutes
+import cz.cointrack.payments.PaymentService
+import cz.cointrack.payments.paymentRoutes
 import cz.cointrack.org.AccountantService
 import cz.cointrack.org.accountantRoutes
 import cz.cointrack.org.OrgService
@@ -77,6 +79,7 @@ fun Application.module() {
     val permissionService = PermissionService()
     val accountantService = AccountantService()
     val idokladService = IDokladService()
+    val paymentService = PaymentService(loadPaymentConfig())
 
     // Banking — pro teď jen Salt Edge. Pokud není nakonfigurovaný, bankService je null.
     val bankService: BankService? = loadBankService()
@@ -111,6 +114,7 @@ fun Application.module() {
             permissionRoutes(permissionService)
             accountantRoutes(accountantService)
             idokladRoutes(idokladService)
+            paymentRoutes(paymentService)
             if (bankService != null) bankRoutes(bankService)
             geminiRoutes(geminiService)
             exportRoutes()
@@ -193,5 +197,19 @@ private fun Application.loadStorageConfig(): StorageConfig {
         secretKey = cfg.property("secretKey").getString(),
         bucket = cfg.property("bucket").getString(),
         region = cfg.property("region").getString(),
+    )
+}
+
+private fun Application.loadPaymentConfig(): PaymentService.PaymentConfig {
+    val iban = System.getenv("PAYMENT_IBAN")
+        ?: environment.config.propertyOrNull("payment.iban")?.getString()
+        ?: "CZ1520100000002601115347"   // fallback — Cointrack Fio účet
+    val bankAcc = System.getenv("PAYMENT_BANK_ACCOUNT")
+        ?: environment.config.propertyOrNull("payment.bankAccount")?.getString()
+        ?: "2601115347/2010"
+    return PaymentService.PaymentConfig(
+        iban = iban,
+        bankAccountDisplay = bankAcc,
+        expirationDays = 7,
     )
 }

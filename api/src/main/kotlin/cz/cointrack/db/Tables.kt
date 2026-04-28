@@ -16,6 +16,7 @@ object Users : UUIDTable("users") {
     val displayName      = varchar("display_name", 128).nullable()
     val locale           = varchar("locale", 8).default("cs")
     val tier             = varchar("tier", 32).default("FREE")
+    val tierExpiresAt    = timestamp("tier_expires_at").nullable()
     val createdAt        = timestamp("created_at")
     val updatedAt        = timestamp("updated_at")
     val deletedAt        = timestamp("deleted_at").nullable()
@@ -77,4 +78,30 @@ object AuditLog : Table("audit_log") {
     val createdAt        = timestamp("created_at")
 
     override val primaryKey = PrimaryKey(id)
+}
+
+// ─── Payments (V16) ───────────────────────────────────────────────
+object Payments : org.jetbrains.exposed.dao.id.UUIDTable("payments") {
+    val userId           = reference("user_id", Users)
+    val tier             = varchar("tier", 16)             // PERSONAL/BUSINESS/ORGANIZATION
+    val period           = varchar("period", 8)            // MONTHLY/YEARLY
+    val amount           = decimal("amount", 10, 2)
+    val currency         = varchar("currency", 3).default("CZK")
+    val variableSymbol   = varchar("variable_symbol", 10).uniqueIndex()
+    val iban             = varchar("iban", 64)
+    val bankAccount      = varchar("bank_account", 40).nullable()
+    val status           = varchar("status", 16).default("PENDING")
+    val companyName      = varchar("company_name", 256).nullable()
+    val companyIco       = varchar("company_ico", 16).nullable()
+    val companyDic       = varchar("company_dic", 32).nullable()
+    val companyAddress   = varchar("company_address", 512).nullable()
+    val customerEmail    = varchar("customer_email", 255).nullable()
+    val note             = text("note").nullable()
+    val idokladInvoiceId = varchar("idoklad_invoice_id", 64).nullable()
+    val invoicePdfKey    = varchar("invoice_pdf_key", 256).nullable()
+    val createdAt        = timestamp("created_at")
+    val expiresAt        = timestamp("expires_at")
+    val paidAt           = timestamp("paid_at").nullable()
+    val matchedTxId      = varchar("matched_tx_id", 64).nullable()
+    val emailSentAt      = timestamp("email_sent_at").nullable()
 }
