@@ -529,15 +529,31 @@
       "to_login": "Přejít na přihlášení"
     },
     "magic": {
-      "title": "Přihlašování…",
-      "subtitle": "Ověřuji magický odkaz.",
-      "failure": "Odkaz vypršel nebo už byl použit. Přihlas se ručně."
+      "exchanging_title": "Přihlašuji…",
+      "exchanging_subtitle": "Auto-login z mobilní aplikace.",
+      "ok_title": "Přihlášen",
+      "ok_redirect": "Pokračuji na {next}…",
+      "fail_title": "Auto-login selhal",
+      "fail_default": "Magic link nelze ověřit. Možná expiroval (5 min platnost) nebo už byl použit.",
+      "fail_no_token": "Chybí magic token v URL.",
+      "manual_signin": "Přihlásit se manuálně"
     },
     "invite": {
       "title": "Pozvánka do organizace",
-      "accept": "Přijmout pozvánku",
-      "preview_loading": "Načítám detaily pozvánky…",
-      "expired": "Pozvánka už není platná."
+      "intro": "Byl jsi pozván do organizace v Cointracku. Pro přijetí otevři pozvánku v mobilní aplikaci.",
+      "open_app": "Otevřít v aplikaci",
+      "no_app_title": "Nemáš aplikaci?",
+      "no_app_desc": "Stáhni Cointrack a přihlaš se e-mailem, na který byla pozvánka zaslána. Pozvánka bude čekat 14 dní.",
+      "play_download": "Stáhnout z Google Play",
+      "cant_open": "Nejde to otevřít?",
+      "manual_help_pre": "Spusť aplikaci →",
+      "manual_help_cloud": "Cloud",
+      "manual_help_arrow": " → ",
+      "manual_help_org": "Organizace",
+      "manual_help_post": "→ menu „Přijmout pozvánku\" a vlož tento token:",
+      "invalid_title": "Chybná pozvánka",
+      "invalid_desc": "Odkaz neobsahuje platný token. Zkontroluj e-mail s pozvánkou.",
+      "go_home": "Na hlavní stránku"
     }
   },
   "sidebar": {

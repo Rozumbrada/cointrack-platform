@@ -529,15 +529,31 @@
       "to_login": "Go to sign in"
     },
     "magic": {
-      "title": "Signing in…",
-      "subtitle": "Validating magic link.",
-      "failure": "The link has expired or was already used. Please sign in manually."
+      "exchanging_title": "Signing in…",
+      "exchanging_subtitle": "Auto-login from the mobile app.",
+      "ok_title": "Signed in",
+      "ok_redirect": "Redirecting to {next}…",
+      "fail_title": "Auto-login failed",
+      "fail_default": "Cannot verify magic link. It may have expired (5 min validity) or already been used.",
+      "fail_no_token": "No magic token in URL.",
+      "manual_signin": "Sign in manually"
     },
     "invite": {
       "title": "Organization invitation",
-      "accept": "Accept invitation",
-      "preview_loading": "Loading invitation details…",
-      "expired": "This invitation is no longer valid."
+      "intro": "You've been invited to an organization in Cointrack. To accept, open the invitation in the mobile app.",
+      "open_app": "Open in app",
+      "no_app_title": "Don't have the app?",
+      "no_app_desc": "Download Cointrack and sign in with the email the invitation was sent to. The invitation waits 14 days.",
+      "play_download": "Download from Google Play",
+      "cant_open": "Can't open?",
+      "manual_help_pre": "Open the app →",
+      "manual_help_cloud": "Cloud",
+      "manual_help_arrow": " → ",
+      "manual_help_org": "Organizations",
+      "manual_help_post": "→ menu \"Accept invitation\" and paste this token:",
+      "invalid_title": "Invalid invitation",
+      "invalid_desc": "The link doesn't contain a valid token. Check the invitation email.",
+      "go_home": "Back to home"
     }
   },
   "sidebar": {
