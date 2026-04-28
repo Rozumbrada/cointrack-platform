@@ -116,6 +116,16 @@
       "pricing": "Detailed pricing →"
     }
   },
+  "exchange_rates_page": {
+    "title": "Exchange rates",
+    "subtitle": "Current currency rates from ExchangeRate-API.",
+    "date_label": "Date:",
+    "load_failed": "Failed to load rates: {error}",
+    "loading": "Loading…",
+    "th_currency": "Currency",
+    "th_rate_to": "1 {base} =",
+    "th_rate_from": "1 foreign ="
+  },
   "categories_page": {
     "title": "Categories",
     "subtitle": "The same category can be used for both income and expense — it follows the transaction direction.",

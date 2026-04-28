@@ -116,6 +116,16 @@
       "pricing": "Podrobný ceník →"
     }
   },
+  "exchange_rates_page": {
+    "title": "Kurzy měn",
+    "subtitle": "Aktuální měnové kurzy z ExchangeRate-API.",
+    "date_label": "Datum:",
+    "load_failed": "Nepodařilo se načíst kurzy: {error}",
+    "loading": "Načítám…",
+    "th_currency": "Měna",
+    "th_rate_to": "1 {base} =",
+    "th_rate_from": "1 cizí měna ="
+  },
   "categories_page": {
     "title": "Kategorie",
     "subtitle": "Stejnou kategorii lze použít na příjem i výdaj — řídí se to směrem transakce.",

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 
 interface RatesResponse {
   base: string;
@@ -11,6 +12,8 @@ interface RatesResponse {
 const POPULAR = ["EUR", "USD", "GBP", "CHF", "PLN", "HUF", "JPY", "AUD", "CAD", "DKK", "NOK", "SEK"];
 
 export default function ExchangeRatesPage() {
+  const t = useTranslations("exchange_rates_page");
+  const locale = useLocale();
   const [data, setData] = useState<RatesResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,10 +42,10 @@ export default function ExchangeRatesPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold text-ink-900">Kurzy měn</h1>
+          <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
           <p className="text-sm text-ink-600 mt-1">
-            Aktuální měnové kurzy z ExchangeRate-API.
-            {data?.date && <span className="ml-2">Datum: {data.date}</span>}
+            {t("subtitle")}
+            {data?.date && <span className="ml-2">{t("date_label")} {data.date}</span>}
           </p>
         </div>
         <div className="flex rounded-lg border border-ink-300 bg-white overflow-hidden text-sm">
@@ -62,20 +65,20 @@ export default function ExchangeRatesPage() {
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">
-          Nepodařilo se načíst kurzy: {error}
+          {t("load_failed", { error })}
         </div>
       )}
 
       {loading ? (
-        <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>
+        <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>
       ) : data ? (
         <div className="bg-white rounded-2xl border border-ink-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-ink-50 text-ink-600 text-left text-xs uppercase tracking-wide">
               <tr>
-                <th className="px-6 py-3 font-medium">Měna</th>
-                <th className="px-6 py-3 font-medium text-right">1 {base} =</th>
-                <th className="px-6 py-3 font-medium text-right">1 cizí měna =</th>
+                <th className="px-6 py-3 font-medium">{t("th_currency")}</th>
+                <th className="px-6 py-3 font-medium text-right">{t("th_rate_to", { base })}</th>
+                <th className="px-6 py-3 font-medium text-right">{t("th_rate_from")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-100">
@@ -83,10 +86,10 @@ export default function ExchangeRatesPage() {
                 <tr key={c}>
                   <td className="px-6 py-3 font-medium text-ink-900">{c}</td>
                   <td className="px-6 py-3 text-right tabular-nums text-ink-700">
-                    {data.rates[c].toLocaleString("cs-CZ", { maximumFractionDigits: 4 })} {c}
+                    {data.rates[c].toLocaleString(locale, { maximumFractionDigits: 4 })} {c}
                   </td>
                   <td className="px-6 py-3 text-right tabular-nums text-ink-700">
-                    {(1 / data.rates[c]).toLocaleString("cs-CZ", { maximumFractionDigits: 4 })} {base}
+                    {(1 / data.rates[c]).toLocaleString(locale, { maximumFractionDigits: 4 })} {base}
                   </td>
                 </tr>
               ))}
