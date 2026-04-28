@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { auth, ApiError } from "@/lib/api";
 
@@ -10,6 +11,7 @@ function ResetForm() {
   const router = useRouter();
   const params = useSearchParams();
   const token = params.get("token") ?? "";
+  const t = useTranslations("auth.reset");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -20,11 +22,11 @@ function ResetForm() {
     e.preventDefault();
     setError(null);
     if (password.length < 8) {
-      setError("Heslo musí mít aspoň 8 znaků.");
+      setError(t("password_too_short"));
       return;
     }
     if (password !== passwordConfirm) {
-      setError("Hesla se neshodují.");
+      setError(t("password_mismatch"));
       return;
     }
     setLoading(true);
@@ -34,7 +36,7 @@ function ResetForm() {
       setTimeout(() => router.push("/login"), 2000);
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
-      else setError("Nepodařilo se nastavit nové heslo.");
+      else setError(t("failed"));
     } finally {
       setLoading(false);
     }
@@ -43,12 +45,10 @@ function ResetForm() {
   if (!token) {
     return (
       <div className="bg-white rounded-2xl border border-ink-200 p-8 shadow-sm text-center">
-        <h1 className="text-xl font-semibold text-ink-900 mb-2">Chybný odkaz</h1>
-        <p className="text-ink-600 mb-6">
-          Odkaz pro obnovu hesla neobsahuje platný token.
-        </p>
+        <h1 className="text-xl font-semibold text-ink-900 mb-2">{t("invalid_token_title")}</h1>
+        <p className="text-ink-600 mb-6">{t("invalid_token_desc")}</p>
         <Button asChild variant="outline" className="w-full">
-          <Link href="/forgot">Požádat o nový odkaz</Link>
+          <Link href="/forgot">{t("request_new")}</Link>
         </Button>
       </div>
     );
@@ -57,19 +57,19 @@ function ResetForm() {
   if (done) {
     return (
       <div className="bg-white rounded-2xl border border-ink-200 p-8 shadow-sm text-center">
-        <h1 className="text-xl font-semibold text-ink-900 mb-2">Heslo změněno</h1>
-        <p className="text-ink-600">Přesměrujeme tě na přihlášení…</p>
+        <h1 className="text-xl font-semibold text-ink-900 mb-2">{t("success_title")}</h1>
+        <p className="text-ink-600">{t("success_redirect")}</p>
       </div>
     );
   }
 
   return (
     <div className="bg-white rounded-2xl border border-ink-200 p-8 shadow-sm">
-      <h1 className="text-2xl font-semibold text-ink-900 mb-6">Nastavit nové heslo</h1>
+      <h1 className="text-2xl font-semibold text-ink-900 mb-6">{t("title")}</h1>
       <form onSubmit={onSubmit} className="space-y-4">
         <div>
           <label htmlFor="password" className="block text-sm font-medium text-ink-900 mb-1.5">
-            Nové heslo
+            {t("new_password")}
           </label>
           <input
             id="password"
@@ -80,11 +80,11 @@ function ResetForm() {
             minLength={8}
             className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
           />
-          <p className="text-xs text-ink-500 mt-1">Aspoň 8 znaků.</p>
+          <p className="text-xs text-ink-500 mt-1">{t("password_min")}</p>
         </div>
         <div>
           <label htmlFor="passwordConfirm" className="block text-sm font-medium text-ink-900 mb-1.5">
-            Heslo znovu
+            {t("password_confirm")}
           </label>
           <input
             id="passwordConfirm"
@@ -96,7 +96,7 @@ function ResetForm() {
             className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
           />
           {passwordConfirm.length > 0 && passwordConfirm !== password && (
-            <p className="text-xs text-red-600 mt-1">Hesla se neshodují.</p>
+            <p className="text-xs text-red-600 mt-1">{t("password_mismatch")}</p>
           )}
         </div>
         {error && (
@@ -105,16 +105,21 @@ function ResetForm() {
           </div>
         )}
         <Button type="submit" variant="brand" className="w-full" disabled={loading}>
-          {loading ? "Ukládám…" : "Nastavit heslo"}
+          {loading ? t("saving") : t("submit")}
         </Button>
       </form>
     </div>
   );
 }
 
+function ResetFallback() {
+  // Only outside Suspense boundary, no hooks needed
+  return <div className="text-center text-ink-500">…</div>;
+}
+
 export default function ResetPage() {
   return (
-    <Suspense fallback={<div className="text-center text-ink-500">Načítám…</div>}>
+    <Suspense fallback={<ResetFallback />}>
       <ResetForm />
     </Suspense>
   );

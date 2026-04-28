@@ -2,10 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { auth } from "@/lib/api";
 
 export default function ForgotPage() {
+  const t = useTranslations("auth.forgot");
+  const tc = useTranslations("common");
   const [email, setEmail] = useState("");
   const [done, setDone] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -24,13 +27,10 @@ export default function ForgotPage() {
   if (done) {
     return (
       <div className="bg-white rounded-2xl border border-ink-200 p-8 shadow-sm text-center">
-        <h1 className="text-2xl font-semibold text-ink-900 mb-2">Zkontroluj email</h1>
-        <p className="text-ink-600 mb-6">
-          Pokud je <strong>{email}</strong> zaregistrovaný, poslali jsme odkaz na obnovu hesla.
-          Platí 1 hodinu.
-        </p>
+        <h1 className="text-2xl font-semibold text-ink-900 mb-2">{t("check_email")}</h1>
+        <p className="text-ink-600 mb-6">{t("sent", { email })}</p>
         <Button asChild variant="outline" className="w-full">
-          <Link href="/login">Zpět na přihlášení</Link>
+          <Link href="/login">{t("back_login_full")}</Link>
         </Button>
       </div>
     );
@@ -38,15 +38,13 @@ export default function ForgotPage() {
 
   return (
     <div className="bg-white rounded-2xl border border-ink-200 p-8 shadow-sm">
-      <h1 className="text-2xl font-semibold text-ink-900 mb-1">Zapomenuté heslo</h1>
-      <p className="text-ink-600 text-sm mb-6">
-        Zadej email a pošleme ti odkaz na nastavení nového hesla.
-      </p>
+      <h1 className="text-2xl font-semibold text-ink-900 mb-1">{t("title")}</h1>
+      <p className="text-ink-600 text-sm mb-6">{t("subtitle")}</p>
 
       <form onSubmit={onSubmit} className="space-y-4">
         <div>
           <label htmlFor="email" className="block text-sm font-medium text-ink-900 mb-1.5">
-            Email
+            {tc("email")}
           </label>
           <input
             id="email"
@@ -58,12 +56,12 @@ export default function ForgotPage() {
           />
         </div>
         <Button type="submit" variant="brand" className="w-full" disabled={loading}>
-          {loading ? "Posílám…" : "Poslat odkaz"}
+          {loading ? t("sending") : t("submit")}
         </Button>
       </form>
 
       <p className="text-center text-sm text-ink-600 mt-6">
-        <Link href="/login" className="text-brand-600 hover:text-brand-700">← Zpět</Link>
+        <Link href="/login" className="text-brand-600 hover:text-brand-700">{t("back_login")}</Link>
       </p>
     </div>
   );

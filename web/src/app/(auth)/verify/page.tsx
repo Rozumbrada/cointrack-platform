@@ -3,12 +3,14 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { auth, ApiError } from "@/lib/api";
 
 function VerifyInner() {
   const params = useSearchParams();
   const token = params.get("token");
+  const t = useTranslations("auth.verify");
 
   const [state, setState] = useState<"verifying" | "ok" | "error">("verifying");
   const [error, setError] = useState<string | null>(null);
@@ -16,7 +18,7 @@ function VerifyInner() {
   useEffect(() => {
     if (!token) {
       setState("error");
-      setError("Chybí ověřovací token v URL.");
+      setError(t("fail_no_token"));
       return;
     }
     let cancelled = false;
@@ -28,11 +30,11 @@ function VerifyInner() {
         if (cancelled) return;
         setState("error");
         if (e instanceof ApiError) setError(e.message);
-        else setError("Ověření selhalo. Zkus to znovu nebo požádej o nový odkaz.");
+        else setError(t("fail_default"));
       }
     })();
     return () => { cancelled = true; };
-  }, [token]);
+  }, [token, t]);
 
   if (state === "verifying") {
     return (
@@ -40,8 +42,8 @@ function VerifyInner() {
         <div className="w-12 h-12 mx-auto rounded-full bg-brand-100 text-brand-600 flex items-center justify-center mb-4 animate-pulse">
           ⏳
         </div>
-        <h1 className="text-xl font-semibold text-ink-900 mb-2">Ověřuji email…</h1>
-        <p className="text-ink-600 text-sm">Chvilku to trvá.</p>
+        <h1 className="text-xl font-semibold text-ink-900 mb-2">{t("verifying_title")}</h1>
+        <p className="text-ink-600 text-sm">{t("verifying_desc")}</p>
       </div>
     );
   }
@@ -52,10 +54,10 @@ function VerifyInner() {
         <div className="w-12 h-12 mx-auto rounded-full bg-green-100 text-green-600 flex items-center justify-center mb-4">
           ✓
         </div>
-        <h1 className="text-2xl font-semibold text-ink-900 mb-2">Email ověřen</h1>
-        <p className="text-ink-600 mb-6">Účet je aktivován. Můžeš se přihlásit.</p>
+        <h1 className="text-2xl font-semibold text-ink-900 mb-2">{t("success_title")}</h1>
+        <p className="text-ink-600 mb-6">{t("success_desc")}</p>
         <Button asChild variant="brand" className="w-full">
-          <Link href="/login">Přihlásit se</Link>
+          <Link href="/login">{t("go_login")}</Link>
         </Button>
       </div>
     );
@@ -66,14 +68,14 @@ function VerifyInner() {
       <div className="w-12 h-12 mx-auto rounded-full bg-red-100 text-red-600 flex items-center justify-center mb-4">
         ✕
       </div>
-      <h1 className="text-2xl font-semibold text-ink-900 mb-2">Ověření selhalo</h1>
+      <h1 className="text-2xl font-semibold text-ink-900 mb-2">{t("fail_title")}</h1>
       <p className="text-ink-600 mb-6">{error}</p>
       <div className="space-y-2">
         <Button asChild variant="brand" className="w-full">
-          <Link href="/login">Přejít na přihlášení</Link>
+          <Link href="/login">{t("to_login")}</Link>
         </Button>
         <Button asChild variant="outline" className="w-full">
-          <Link href="/forgot">Požádat o nový odkaz</Link>
+          <Link href="/forgot">{t("request_new")}</Link>
         </Button>
       </div>
     </div>
@@ -82,7 +84,7 @@ function VerifyInner() {
 
 export default function VerifyPage() {
   return (
-    <Suspense fallback={<div className="bg-white rounded-2xl border border-ink-200 p-8 text-center text-ink-600">Načítám…</div>}>
+    <Suspense fallback={<div className="bg-white rounded-2xl border border-ink-200 p-8 text-center text-ink-600">…</div>}>
       <VerifyInner />
     </Suspense>
   );

@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { auth, ApiError } from "@/lib/api";
 
 export default function SignupPage() {
-  const router = useRouter();
+  const t = useTranslations("auth.signup");
+  const tc = useTranslations("common");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
@@ -20,11 +21,11 @@ export default function SignupPage() {
     e.preventDefault();
     setError(null);
     if (password.length < 8) {
-      setError("Heslo musí mít aspoň 8 znaků.");
+      setError(t("password_too_short"));
       return;
     }
     if (password !== passwordConfirm) {
-      setError("Hesla se neshodují.");
+      setError(t("password_mismatch"));
       return;
     }
     setLoading(true);
@@ -33,7 +34,7 @@ export default function SignupPage() {
       setDone(true);
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
-      else setError("Registrace se nezdařila. Zkus to znovu.");
+      else setError(t("register_failed"));
     } finally {
       setLoading(false);
     }
@@ -45,13 +46,12 @@ export default function SignupPage() {
         <div className="w-12 h-12 mx-auto rounded-full bg-green-100 text-green-600 flex items-center justify-center mb-4">
           ✓
         </div>
-        <h1 className="text-2xl font-semibold text-ink-900 mb-2">Téměř hotovo</h1>
+        <h1 className="text-2xl font-semibold text-ink-900 mb-2">{t("almost_done")}</h1>
         <p className="text-ink-600 mb-6">
-          Poslali jsme ti ověřovací email na <strong>{email}</strong>. Klikni na odkaz
-          a můžeš se přihlásit.
+          {t("verify_sent", { email })}
         </p>
         <Button asChild variant="outline" className="w-full">
-          <Link href="/login">Přihlásit se</Link>
+          <Link href="/login">{t("login_link")}</Link>
         </Button>
       </div>
     );
@@ -59,13 +59,13 @@ export default function SignupPage() {
 
   return (
     <div className="bg-white rounded-2xl border border-ink-200 p-8 shadow-sm">
-      <h1 className="text-2xl font-semibold text-ink-900 mb-1">Vytvořit účet</h1>
-      <p className="text-ink-600 text-sm mb-6">14 dní zdarma. Bez karty.</p>
+      <h1 className="text-2xl font-semibold text-ink-900 mb-1">{t("title")}</h1>
+      <p className="text-ink-600 text-sm mb-6">{t("subtitle")}</p>
 
       <form onSubmit={onSubmit} className="space-y-4">
         <div>
           <label htmlFor="name" className="block text-sm font-medium text-ink-900 mb-1.5">
-            Jméno <span className="text-ink-400 font-normal">(volitelné)</span>
+            {t("display_name")} <span className="text-ink-400 font-normal">{t("display_name_optional")}</span>
           </label>
           <input
             id="name"
@@ -78,7 +78,7 @@ export default function SignupPage() {
         </div>
         <div>
           <label htmlFor="email" className="block text-sm font-medium text-ink-900 mb-1.5">
-            Email
+            {tc("email")}
           </label>
           <input
             id="email"
@@ -92,7 +92,7 @@ export default function SignupPage() {
         </div>
         <div>
           <label htmlFor="password" className="block text-sm font-medium text-ink-900 mb-1.5">
-            Heslo
+            {tc("password")}
           </label>
           <input
             id="password"
@@ -104,11 +104,11 @@ export default function SignupPage() {
             minLength={8}
             className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
           />
-          <p className="text-xs text-ink-500 mt-1">Aspoň 8 znaků.</p>
+          <p className="text-xs text-ink-500 mt-1">{t("password_min")}</p>
         </div>
         <div>
           <label htmlFor="passwordConfirm" className="block text-sm font-medium text-ink-900 mb-1.5">
-            Heslo znovu
+            {t("password_confirm")}
           </label>
           <input
             id="passwordConfirm"
@@ -121,7 +121,7 @@ export default function SignupPage() {
             className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
           />
           {passwordConfirm.length > 0 && passwordConfirm !== password && (
-            <p className="text-xs text-red-600 mt-1">Hesla se neshodují.</p>
+            <p className="text-xs text-red-600 mt-1">{t("password_mismatch")}</p>
           )}
         </div>
 
@@ -132,26 +132,26 @@ export default function SignupPage() {
         )}
 
         <Button type="submit" variant="brand" className="w-full" disabled={loading}>
-          {loading ? "Zakládám účet…" : "Zaregistrovat"}
+          {loading ? t("creating") : t("submit")}
         </Button>
 
         <p className="text-xs text-ink-500 text-center">
-          Registrací souhlasíš s{" "}
+          {t("terms_agreement")}{" "}
           <Link href="/terms" className="text-brand-600 hover:text-brand-700">
-            podmínkami
+            {t("terms_link")}
           </Link>{" "}
-          a{" "}
+          {t("and")}{" "}
           <Link href="/privacy" className="text-brand-600 hover:text-brand-700">
-            zpracováním osobních údajů
+            {t("privacy_link")}
           </Link>
           .
         </p>
       </form>
 
       <p className="text-center text-sm text-ink-600 mt-6">
-        Už máš účet?{" "}
+        {t("have_account")}{" "}
         <Link href="/login" className="text-brand-600 hover:text-brand-700 font-medium">
-          Přihlásit
+          {t("login_link")}
         </Link>
       </p>
     </div>

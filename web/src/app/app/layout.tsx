@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import {
   clearAuth,
   getAccessToken,
@@ -11,10 +12,13 @@ import {
 import { auth, UserDto } from "@/lib/api";
 import ProfileSwitcher from "@/components/app/ProfileSwitcher";
 import { QuickActionFab } from "@/components/app/QuickActionFab";
+import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const ts = useTranslations("sidebar");
+  const tc = useTranslations("common");
   const [user, setUser] = useState<UserDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -62,7 +66,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (loading && !user) {
     return (
       <div className="min-h-screen grid place-items-center bg-ink-50">
-        <div className="text-ink-600 text-sm">Načítám…</div>
+        <div className="text-ink-600 text-sm">{tc("loading")}</div>
       </div>
     );
   }
@@ -71,28 +75,28 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const isProfileSelection = pathname?.startsWith("/app/profiles");
 
   const nav: Array<{ href: string; label: string; section?: string }> = [
-    { href: "/app/dashboard", label: "Přehled" },
-    { href: "/app/accounts", label: "Bankovní účty / hotovost" },
-    { href: "/app/banks", label: "Bankovní spojení" },
-    { href: "/app/transactions", label: "Transakce" },
-    { href: "/app/categories", label: "Kategorie" },
-    { href: "/app/statistics", label: "Statistiky a grafy" },
-    { href: "/app/receipts", label: "Účtenky", section: "Doklady" },
-    { href: "/app/invoices", label: "Faktury" },
-    { href: "/app/idoklad", label: "iDoklad" },
-    { href: "/app/warranties", label: "Záruky" },
-    { href: "/app/loyalty-cards", label: "Věrnostní karty" },
-    { href: "/app/budgets", label: "Rozpočty", section: "Plánování" },
-    { href: "/app/planned", label: "Plánované platby" },
-    { href: "/app/debts", label: "Dluhy" },
-    { href: "/app/goals", label: "Cíle" },
-    { href: "/app/shopping", label: "Nákupní seznamy" },
-    { href: "/app/investments", label: "Investice", section: "Majetek" },
-    { href: "/app/exchange-rates", label: "Kurzy měn", section: "Nástroje" },
-    { href: "/app/import", label: "Import CSV" },
-    { href: "/app/organizations", label: "Organizace a skupiny", section: "Sociální" },
-    { href: "/app/upgrade", label: "💎 Upgrade", section: "Účet" },
-    { href: "/app/settings", label: "Nastavení" },
+    { href: "/app/dashboard", label: ts("dashboard") },
+    { href: "/app/accounts", label: ts("accounts") },
+    { href: "/app/banks", label: ts("banks") },
+    { href: "/app/transactions", label: ts("transactions") },
+    { href: "/app/categories", label: ts("categories") },
+    { href: "/app/statistics", label: ts("statistics") },
+    { href: "/app/receipts", label: ts("receipts"), section: ts("section_documents") },
+    { href: "/app/invoices", label: ts("invoices") },
+    { href: "/app/idoklad", label: ts("idoklad") },
+    { href: "/app/warranties", label: ts("warranties") },
+    { href: "/app/loyalty-cards", label: ts("loyalty_cards") },
+    { href: "/app/budgets", label: ts("budgets"), section: ts("section_planning") },
+    { href: "/app/planned", label: ts("planned") },
+    { href: "/app/debts", label: ts("debts") },
+    { href: "/app/goals", label: ts("goals") },
+    { href: "/app/shopping", label: ts("shopping") },
+    { href: "/app/investments", label: ts("investments"), section: ts("section_assets") },
+    { href: "/app/exchange-rates", label: ts("exchange_rates"), section: ts("section_tools") },
+    { href: "/app/import", label: ts("import_csv") },
+    { href: "/app/organizations", label: ts("organizations"), section: ts("section_social") },
+    { href: "/app/upgrade", label: ts("upgrade"), section: ts("section_account") },
+    { href: "/app/settings", label: ts("settings") },
   ];
 
   // Pro profile selection — minimální layout, bez navigace
@@ -108,11 +112,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <div className="text-xs text-ink-600 hidden sm:block">
                 {user?.email}
               </div>
+              <LocaleSwitcher />
               <button
                 onClick={onLogout}
                 className="text-sm text-ink-700 hover:text-ink-900"
               >
-                Odhlásit
+                {ts("logout")}
               </button>
             </div>
           </div>
@@ -138,7 +143,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             href="/app/profiles"
             className="block mt-2 text-xs text-brand-600 hover:text-brand-700 px-2"
           >
-            Spravovat profily →
+            {ts("manage_profiles")}
           </Link>
         </div>
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
@@ -177,11 +182,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               {user?.tier ?? "free"}
             </div>
           </div>
+          <div className="px-3 pb-2">
+            <LocaleSwitcher />
+          </div>
           <button
             onClick={onLogout}
             className="w-full text-left rounded-lg px-3 py-2 text-sm text-ink-700 hover:bg-ink-100"
           >
-            Odhlásit
+            {ts("logout")}
           </button>
         </div>
       </aside>
@@ -195,7 +203,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <button
             onClick={() => setDrawerOpen(true)}
             className="w-9 h-9 grid place-items-center rounded-lg hover:bg-ink-100"
-            aria-label="Otevřít menu"
+            aria-label={ts("open_menu")}
           >
             <span className="block w-5 space-y-[5px]">
               <span className="block h-0.5 bg-ink-700 rounded" />
@@ -217,11 +225,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           />
           <aside className="md:hidden fixed top-0 right-0 z-50 h-screen w-72 bg-white shadow-xl flex flex-col animate-[slideIn_0.2s_ease-out]">
             <div className="h-14 flex items-center justify-between px-4 border-b border-ink-200">
-              <span className="font-semibold text-ink-900">Menu</span>
+              <span className="font-semibold text-ink-900">{ts("open_menu")}</span>
               <button
                 onClick={() => setDrawerOpen(false)}
                 className="text-ink-400 hover:text-ink-600 text-2xl leading-none w-8 h-8 grid place-items-center"
-                aria-label="Zavřít"
+                aria-label={tc("close")}
               >
                 ×
               </button>
