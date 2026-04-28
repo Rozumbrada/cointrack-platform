@@ -3,6 +3,7 @@ package cz.cointrack.payments
 import cz.cointrack.db.Payments
 import cz.cointrack.db.Users
 import cz.cointrack.db.db
+import cz.cointrack.email.EmailTemplates
 import cz.cointrack.plugins.ApiException
 import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.Serializable
@@ -19,9 +20,31 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 
-class PaymentService(private val config: PaymentConfig) {
+class PaymentService(
+    private val config: PaymentConfig,
+    private val email: cz.cointrack.email.EmailService? = null,
+    private val supplier: SupplierConfig = SupplierConfig.default(),
+) {
     private val log = LoggerFactory.getLogger(PaymentService::class.java)
     private val rng = SecureRandom()
+
+    data class SupplierConfig(
+        val name: String,
+        val address: String,
+        val ico: String,
+        val dic: String?,
+        val bankAccount: String,
+    ) {
+        companion object {
+            fun default() = SupplierConfig(
+                name = System.getenv("SUPPLIER_NAME") ?: "Cointrack",
+                address = System.getenv("SUPPLIER_ADDRESS") ?: "—",
+                ico = System.getenv("SUPPLIER_ICO") ?: "—",
+                dic = System.getenv("SUPPLIER_DIC")?.takeIf { it.isNotBlank() },
+                bankAccount = System.getenv("PAYMENT_BANK_ACCOUNT") ?: "—",
+            )
+        }
+    }
 
     @Serializable
     data class PaymentConfig(
@@ -175,6 +198,7 @@ class PaymentService(private val config: PaymentConfig) {
      * Upgrade tieru se aplikuje hned: tier_expires_at = max(now, current) + period.
      */
     suspend fun markPaid(paymentId: UUID, matchedTxId: String? = null) {
+        var emailToSend: Pair<String, EmailTemplates.InvoiceData>? = null
         db {
             val row = Payments.selectAll().where { Payments.id eq paymentId }.singleOrNull()
                 ?: throw ApiException(HttpStatusCode.NotFound, "not_found", "Platba nenalezena.")
@@ -185,7 +209,6 @@ class PaymentService(private val config: PaymentConfig) {
             val months = Pricing.monthsFor(period)
 
             val now = Instant.now()
-            // Stávající expirace nebo teď, podle toho co je pozdější
             val currentExpires = Users.selectAll().where { Users.id eq userId }
                 .singleOrNull()?.get(Users.tierExpiresAt)
             val baseExpires = if (currentExpires != null && currentExpires.isAfter(now)) currentExpires else now
@@ -196,13 +219,75 @@ class PaymentService(private val config: PaymentConfig) {
                 it[tierExpiresAt] = newExpires
                 it[updatedAt] = now
             }
+
+            // Generování invoice number — DB sequence
+            val seq = org.jetbrains.exposed.sql.Database.connect("dummy")
+                .let { _ -> }   // placeholder — actual nextval below
+            val invoiceNum = nextInvoiceNumber(now)
+
             Payments.update({ Payments.id eq paymentId }) {
                 it[status] = "PAID"
                 it[paidAt] = now
+                it[invoiceNumber] = invoiceNum
                 if (matchedTxId != null) it[Payments.matchedTxId] = matchedTxId
             }
+
+            // Sestav data pro email
+            val customerEmail = row[Payments.customerEmail]
+            if (customerEmail != null && email != null) {
+                val data = EmailTemplates.InvoiceData(
+                    invoiceNumber = invoiceNum,
+                    issuedAt = java.time.LocalDate.now().toString(),
+                    customerName = row[Payments.companyName] ?: customerEmail,
+                    customerAddress = row[Payments.companyAddress] ?: "—",
+                    customerIco = row[Payments.companyIco],
+                    customerDic = row[Payments.companyDic],
+                    tier = tier,
+                    period = period.name,
+                    amount = row[Payments.amount].toPlainString(),
+                    currency = row[Payments.currency],
+                    variableSymbol = row[Payments.variableSymbol],
+                    supplierName = supplier.name,
+                    supplierAddress = supplier.address,
+                    supplierIco = supplier.ico,
+                    supplierDic = supplier.dic,
+                    supplierBankAccount = supplier.bankAccount,
+                )
+                emailToSend = customerEmail to data
+            }
         }
+
+        emailToSend?.let { (toEmail, data) ->
+            try {
+                email!!.send(
+                    to = toEmail,
+                    subject = "Cointrack — Faktura ${data.invoiceNumber}",
+                    htmlBody = EmailTemplates.paymentInvoice(data),
+                )
+                db {
+                    Payments.update({ Payments.id eq paymentId }) {
+                        it[emailSentAt] = Instant.now()
+                    }
+                }
+            } catch (e: Exception) {
+                log.warn("Nepodařilo se odeslat fakturu emailem: ${e.message}")
+            }
+        }
+
         log.info("Payment $paymentId marked as PAID (matchedTxId=$matchedTxId)")
+    }
+
+    /**
+     * Vrací invoice number ve formátu `YYYY/000001` z DB sekvence
+     * `payment_invoice_seq`. Volat **uvnitř** db {} bloku.
+     */
+    private fun nextInvoiceNumber(now: Instant): String {
+        val year = now.atZone(java.time.ZoneId.systemDefault()).year
+        val seq = org.jetbrains.exposed.sql.transactions.TransactionManager
+            .current().exec("SELECT nextval('payment_invoice_seq')") { rs ->
+                if (rs.next()) rs.getLong(1) else 0L
+            } ?: 0L
+        return "%d/%06d".format(year, seq)
     }
 
     /** Najde PENDING platbu s daným VS a přibližně sedící částkou. Pro Fio reconciliation worker. */

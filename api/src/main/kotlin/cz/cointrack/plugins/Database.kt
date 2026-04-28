@@ -92,6 +92,7 @@ private val MIGRATIONS: List<Pair<String, String>> = listOf(
     "15.0" to "/db/migration/V15.0__profile_idoklad_credentials.sql",
     "16.0" to "/db/migration/V16.0__payments.sql",
     "17.0" to "/db/migration/V17.0__magic_tokens.sql",
+    "18.0" to "/db/migration/V18.0__payment_invoice_number.sql",
 )
 
 private fun runMigrations(dataSource: DataSource) {

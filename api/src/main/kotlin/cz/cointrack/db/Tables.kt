@@ -114,4 +114,5 @@ object Payments : org.jetbrains.exposed.dao.id.UUIDTable("payments") {
     val paidAt           = timestamp("paid_at").nullable()
     val matchedTxId      = varchar("matched_tx_id", 64).nullable()
     val emailSentAt      = timestamp("email_sent_at").nullable()
+    val invoiceNumber    = varchar("invoice_number", 32).nullable()
 }

@@ -15,6 +15,7 @@ import cz.cointrack.email.EmailConfig
 import cz.cointrack.email.EmailService
 import cz.cointrack.idoklad.IDokladService
 import cz.cointrack.idoklad.idokladRoutes
+import cz.cointrack.payments.FioReconciler
 import cz.cointrack.payments.PaymentService
 import cz.cointrack.payments.paymentRoutes
 import cz.cointrack.org.AccountantService
@@ -79,7 +80,17 @@ fun Application.module() {
     val permissionService = PermissionService()
     val accountantService = AccountantService()
     val idokladService = IDokladService()
-    val paymentService = PaymentService(loadPaymentConfig())
+    val paymentService = PaymentService(
+        config = loadPaymentConfig(),
+        email = emailService,
+    )
+    // Fio reconciliation worker — auto mark-paid při spárování VS+částka.
+    val fioReconciler = FioReconciler(
+        token = System.getenv("COINTRACK_FIO_TOKEN").orEmpty(),
+        payments = paymentService,
+    )
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+    fioReconciler.start(scope = kotlinx.coroutines.GlobalScope)
 
     // Banking — pro teď jen Salt Edge. Pokud není nakonfigurovaný, bankService je null.
     val bankService: BankService? = loadBankService()
