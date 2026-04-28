@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { auth, UserDto, api } from "@/lib/api";
 import { clearAuth, getAccessToken, withAuth } from "@/lib/auth-store";
 
@@ -15,6 +16,9 @@ interface AccountantOrg {
 export default function AccountantLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const t = useTranslations("accounting_layout");
+  const tc = useTranslations("common");
+  const ts = useTranslations("sidebar");
   const [user, setUser] = useState<UserDto | null>(null);
   const [orgs, setOrgs] = useState<AccountantOrg[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,7 +57,7 @@ export default function AccountantLayout({ children }: { children: React.ReactNo
   if (loading && !user) {
     return (
       <div className="min-h-screen grid place-items-center bg-ink-50">
-        <div className="text-ink-600 text-sm">Načítám…</div>
+        <div className="text-ink-600 text-sm">{tc("loading")}</div>
       </div>
     );
   }
@@ -64,17 +68,14 @@ export default function AccountantLayout({ children }: { children: React.ReactNo
         <div className="max-w-lg bg-white rounded-2xl border border-ink-200 p-8 text-center">
           <div className="text-4xl mb-3">🧮</div>
           <h1 className="text-xl font-semibold text-ink-900 mb-2">
-            Účetní rozhraní
+            {t("no_orgs_title")}
           </h1>
-          <p className="text-sm text-ink-600 mb-6">
-            Nejsi pozvaná/ý jako účetní v žádné organizaci. Požádej majitele firmy, aby ti
-            udělil roli <strong>accountant</strong>.
-          </p>
+          <p className="text-sm text-ink-600 mb-6">{t("no_orgs_desc")}</p>
           <Link
             href="/app/dashboard"
             className="inline-block h-10 px-4 rounded-lg border border-ink-300 bg-white hover:bg-ink-50 grid place-items-center text-sm font-medium text-ink-900"
           >
-            Zpět do appky
+            {t("back_to_app")}
           </Link>
         </div>
       </div>
@@ -86,12 +87,12 @@ export default function AccountantLayout({ children }: { children: React.ReactNo
       <aside className="w-64 bg-white border-r border-ink-200 hidden md:flex flex-col">
         <div className="h-16 flex items-center px-6 border-b border-ink-200">
           <Link href="/accounting" className="font-semibold text-ink-900 text-lg">
-            Cointrack <span className="text-brand-600">účto</span>
+            Cointrack <span className="text-brand-600">{t("logo_suffix")}</span>
           </Link>
         </div>
         <nav className="flex-1 p-3 space-y-1">
           <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-500 px-3 py-1">
-            Organizace
+            {t("section_orgs")}
           </div>
           {orgs.map((o) => (
             <div key={o.orgId} className="rounded-lg overflow-hidden">
@@ -103,7 +104,7 @@ export default function AccountantLayout({ children }: { children: React.ReactNo
                     : "text-ink-700 hover:bg-ink-100"
                 }`}
               >
-                {o.orgName} — Účtenky
+                {t("org_receipts", { name: o.orgName })}
               </Link>
               <Link
                 href={`/accounting/${o.orgId}/invoices`}
@@ -113,7 +114,7 @@ export default function AccountantLayout({ children }: { children: React.ReactNo
                     : "text-ink-700 hover:bg-ink-100"
                 }`}
               >
-                {o.orgName} — Faktury
+                {t("org_invoices", { name: o.orgName })}
               </Link>
             </div>
           ))}
@@ -122,20 +123,20 @@ export default function AccountantLayout({ children }: { children: React.ReactNo
           <div className="px-3 py-2 text-xs">
             <div className="font-medium text-ink-900 truncate">{user?.email}</div>
             <div className="text-[10px] uppercase tracking-wide text-ink-500 mt-0.5">
-              Role: účetní
+              {t("role_accountant")}
             </div>
           </div>
           <Link
             href="/app/dashboard"
             className="block rounded-lg px-3 py-2 text-xs text-ink-600 hover:bg-ink-100"
           >
-            ← Zpět do mé appky
+            {t("back_my_app")}
           </Link>
           <button
             onClick={onLogout}
             className="w-full text-left rounded-lg px-3 py-2 text-sm text-ink-700 hover:bg-ink-100"
           >
-            Odhlásit
+            {ts("logout")}
           </button>
         </div>
       </aside>

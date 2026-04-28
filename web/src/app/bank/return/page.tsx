@@ -9,8 +9,10 @@
 "use client";
 
 import { useEffect } from "react";
+import { useTranslations } from "next-intl";
 
 export default function BankReturnPage() {
+  const t = useTranslations("bank_return");
   useEffect(() => {
     // Pokud jsme v popup okně otevřeném z /app/banks, zavřeme se —
     // hlavní stránka se sama obnoví (lifecycle observer na mobilu,
@@ -36,11 +38,10 @@ export default function BankReturnPage() {
       <div className="max-w-md text-center bg-white rounded-2xl border border-ink-200 p-8 shadow-sm">
         <div className="text-5xl mb-4">✓</div>
         <h1 className="text-xl font-semibold text-ink-900 mb-2">
-          Připojení dokončeno
+          {t("title")}
         </h1>
         <p className="text-sm text-ink-600">
-          Transakce se stahují na pozadí. Můžeš toto okno zavřít — během chvíle se
-          objeví v přehledu.
+          {t("subtitle")}
         </p>
       </div>
     </div>

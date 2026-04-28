@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { api, sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
@@ -23,6 +24,7 @@ interface LoyaltyCardData {
 type LoyaltyCardRow = { syncId: string; data: LoyaltyCardData };
 
 export default function LoyaltyCardsPage() {
+  const t = useTranslations("loyalty_cards_page");
   const { loading, error, entitiesByProfile, profileSyncId, reload } = useSyncData();
   const cards = entitiesByProfile<LoyaltyCardData>("loyalty_cards");
   const [query, setQuery] = useState("");
@@ -30,7 +32,7 @@ export default function LoyaltyCardsPage() {
   const [editing, setEditing] = useState<LoyaltyCardRow | "new" | null>(null);
 
   async function onDelete(row: LoyaltyCardRow) {
-    if (!confirm(`Smazat kartu „${row.data.storeName}"?`)) return;
+    if (!confirm(t("delete_confirm", { name: row.data.storeName }))) return;
     const now = new Date().toISOString();
     await withAuth((t) =>
       sync.push(t, {
@@ -66,42 +68,38 @@ export default function LoyaltyCardsPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold text-ink-900">Věrnostní karty</h1>
-          <p className="text-sm text-ink-600 mt-1">
-            Tvoje karty z mobilní aplikace. Klikni pro zobrazení čárového kódu.
-          </p>
+          <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
+          <p className="text-sm text-ink-600 mt-1">{t("subtitle")}</p>
         </div>
         <button
           onClick={() => setEditing("new")}
           className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
         >
-          + Nová karta
+          {t("new_card")}
         </button>
       </div>
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">
-          Chyba: {error}
+          {error}
         </div>
       )}
 
       <input
         type="text"
-        placeholder="Hledat obchod nebo číslo karty…"
+        placeholder={t("search_placeholder")}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
       />
 
       {loading ? (
-        <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>
+        <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>
       ) : filtered.length === 0 ? (
         <div className="bg-white rounded-2xl border border-ink-200 p-12 text-center">
           <div className="text-4xl mb-3">💳</div>
-          <div className="font-medium text-ink-900">Žádné věrnostní karty</div>
-          <p className="text-sm text-ink-600 mt-2">
-            Naskenuj kartu v mobilní aplikaci v sekci Věrnostní karty.
-          </p>
+          <div className="font-medium text-ink-900">{t("empty_title")}</div>
+          <p className="text-sm text-ink-600 mt-2">{t("empty_desc")}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -149,6 +147,7 @@ function CardEditor({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations("loyalty_cards_page");
   const [storeName, setStoreName] = useState(initial?.data.storeName ?? "");
   const [cardNumber, setCardNumber] = useState(initial?.data.cardNumber ?? "");
   const [barcodeFormat, setBarcodeFormat] = useState(initial?.data.barcodeFormat ?? "CODE_128");
@@ -158,9 +157,9 @@ function CardEditor({
   const [err, setErr] = useState<string | null>(null);
 
   async function save() {
-    if (!profileSyncId) return setErr("Není vybraný profil.");
-    if (!storeName.trim()) return setErr("Vyplň název obchodu.");
-    if (!cardNumber.trim()) return setErr("Vyplň číslo karty.");
+    if (!profileSyncId) return setErr(t("no_profile"));
+    if (!storeName.trim()) return setErr(t("fill_store"));
+    if (!cardNumber.trim()) return setErr(t("fill_card_number"));
 
     setSaving(true);
     setErr(null);
@@ -200,25 +199,25 @@ function CardEditor({
   }
 
   const presetColors: Array<{ label: string; value: number }> = [
-    { label: "Indigo", value: 0xff5c6bc0 },
-    { label: "Modrá", value: 0xff3b82f6 },
-    { label: "Zelená", value: 0xff10b981 },
-    { label: "Červená", value: 0xffef4444 },
-    { label: "Oranžová", value: 0xfff59e0b },
-    { label: "Růžová", value: 0xffec4899 },
-    { label: "Fialová", value: 0xff8b5cf6 },
-    { label: "Šedá", value: 0xff6b7280 },
+    { label: t("color_indigo"), value: 0xff5c6bc0 },
+    { label: t("color_blue"), value: 0xff3b82f6 },
+    { label: t("color_green"), value: 0xff10b981 },
+    { label: t("color_red"), value: 0xffef4444 },
+    { label: t("color_orange"), value: 0xfff59e0b },
+    { label: t("color_pink"), value: 0xffec4899 },
+    { label: t("color_purple"), value: 0xff8b5cf6 },
+    { label: t("color_gray"), value: 0xff6b7280 },
   ];
 
   return (
     <FormDialog
-      title={initial ? "Upravit kartu" : "Nová karta"}
+      title={initial ? t("edit_title") : t("new_title")}
       onClose={onClose}
       onSave={save}
       saving={saving}
       error={err}
     >
-      <Field label="Název obchodu">
+      <Field label={t("field_store")}>
         <input
           type="text"
           value={storeName}
@@ -227,7 +226,7 @@ function CardEditor({
           className={inputClass}
         />
       </Field>
-      <Field label="Číslo karty">
+      <Field label={t("field_card_number")}>
         <input
           type="text"
           value={cardNumber}
@@ -235,7 +234,7 @@ function CardEditor({
           className={inputClass}
         />
       </Field>
-      <Field label="Typ kódu">
+      <Field label={t("field_barcode_format")}>
         <select
           value={barcodeFormat}
           onChange={(e) => setBarcodeFormat(e.target.value)}
@@ -250,13 +249,13 @@ function CardEditor({
           <option value="UPC_E">UPC-E</option>
           <option value="ITF">ITF (Interleaved 2/5)</option>
           <option value="CODABAR">Codabar (Tesco)</option>
-          <option value="QR_CODE">QR kód</option>
+          <option value="QR_CODE">QR</option>
           <option value="PDF_417">PDF417</option>
           <option value="AZTEC">Aztec</option>
           <option value="DATA_MATRIX">Data Matrix</option>
         </select>
       </Field>
-      <Field label="Barva">
+      <Field label={t("field_color")}>
         <div className="flex flex-wrap gap-2">
           {presetColors.map((c) => (
             <button
@@ -272,7 +271,7 @@ function CardEditor({
           ))}
         </div>
       </Field>
-      <Field label="Poznámka">
+      <Field label={t("field_note")}>
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -359,6 +358,7 @@ function CardModal({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const t = useTranslations("loyalty_cards_page");
   const d = card.data;
 
   return (
@@ -373,10 +373,10 @@ function CardModal({
         <div className="flex items-center justify-between px-5 py-3 border-b border-ink-100">
           <h2 className="text-lg font-semibold text-ink-900">{d.storeName}</h2>
           <div className="flex items-center gap-2">
-            <button onClick={onEdit} className="text-ink-500 hover:text-ink-700 text-sm" title="Upravit">
+            <button onClick={onEdit} className="text-ink-500 hover:text-ink-700 text-sm" title={t("edit")}>
               ✏️
             </button>
-            <button onClick={onDelete} className="text-red-500 hover:text-red-700 text-sm" title="Smazat">
+            <button onClick={onDelete} className="text-red-500 hover:text-red-700 text-sm" title={t("delete")}>
               🗑
             </button>
             <button
@@ -395,7 +395,7 @@ function CardModal({
           />
 
           <div className="text-center">
-            <div className="text-xs text-ink-500 uppercase tracking-wide mb-1">Číslo karty</div>
+            <div className="text-xs text-ink-500 uppercase tracking-wide mb-1">{t("card_number_label")}</div>
             <div className="text-lg font-mono tracking-wider text-ink-900">
               {formatCardNumber(d.cardNumber)}
             </div>
@@ -420,6 +420,7 @@ function CardModal({
 }
 
 function Barcode({ value, format }: { value: string; format: string }) {
+  const t = useTranslations("loyalty_cards_page");
   // Renderuje čárák/QR přes barcode.tec-it.com — server-side rendered SVG, žádné cookie.
   // Mapování formátů na tec-it parametr `code`.
   const codeMap: Record<string, string> = {
@@ -444,7 +445,7 @@ function Barcode({ value, format }: { value: string; format: string }) {
   return (
     <div className="bg-white rounded-lg p-4 border border-ink-200 grid place-items-center min-h-[140px]">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={url} alt={`Čárový kód: ${value}`} className="max-w-full h-auto" />
+      <img src={url} alt={t("barcode_alt", { value })} className="max-w-full h-auto" />
     </div>
   );
 }
@@ -456,6 +457,8 @@ function CardPhotos({
   frontKey?: string;
   backKey?: string;
 }) {
+  const t = useTranslations("loyalty_cards_page");
+  const tc = useTranslations("common");
   const [urls, setUrls] = useState<{ front?: string; back?: string }>({});
   const [errs, setErrs] = useState<{ front?: string; back?: string }>({});
 
@@ -489,8 +492,8 @@ function CardPhotos({
   }, [frontKey, backKey]);
 
   const sides: Array<{ side: "front" | "back"; label: string; key?: string }> = [
-    { side: "front", label: "Přední strana", key: frontKey },
-    { side: "back", label: "Zadní strana", key: backKey },
+    { side: "front", label: t("front_side"), key: frontKey },
+    { side: "back", label: t("back_side"), key: backKey },
   ];
 
   return (
@@ -516,7 +519,7 @@ function CardPhotos({
                 </div>
               ) : (
                 <div className="w-full h-full grid place-items-center text-xs text-ink-400">
-                  Načítám…
+                  {tc("loading")}
                 </div>
               )}
             </div>
