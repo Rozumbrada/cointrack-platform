@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { sync, api } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
@@ -45,6 +46,7 @@ interface ReceiptItemData {
 
 export default function ReceiptDetailPage() {
   const router = useRouter();
+  const t = useTranslations("receipt_detail");
   const params = useParams<{ syncId: string }>();
   const { loading, error, entitiesByProfile, rawEntities, reload } = useSyncData();
 
@@ -95,7 +97,7 @@ export default function ReceiptDetailPage() {
         return diffMs <= 2 * 24 * 3600 * 1000;
       });
       if (!match) {
-        alert("Žádná odpovídající transakce nenalezena (±2 dny, ±0.01 Kč).");
+        alert(t("no_match"));
         return;
       }
       const now = new Date().toISOString();
@@ -122,7 +124,7 @@ export default function ReceiptDetailPage() {
 
   async function onDelete() {
     if (!receipt) return;
-    const ok = confirm(`Smazat účtenku "${receipt.data.merchantName ?? ""}"?`);
+    const ok = confirm(t("delete_confirm", { name: receipt.data.merchantName ?? "" }));
     if (!ok) return;
     try {
       const now = new Date().toISOString();
@@ -147,21 +149,21 @@ export default function ReceiptDetailPage() {
     }
   }
 
-  if (loading) return <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>;
+  if (loading) return <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>;
   if (error)
     return (
       <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">
-        Chyba: {error}
+        {t("error_prefix")} {error}
       </div>
     );
   if (!receipt) {
     return (
       <div className="space-y-4">
         <Link href="/app/receipts" className="text-sm text-brand-600 hover:text-brand-700">
-          ← Zpět
+          {t("back_short")}
         </Link>
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-          Účtenku <code>{params.syncId}</code> jsem nenašel.
+          {t("not_found", { id: params.syncId })}
         </div>
       </div>
     );
@@ -175,17 +177,17 @@ export default function ReceiptDetailPage() {
     <div className="space-y-6 max-w-3xl">
       <div className="flex items-start justify-between gap-4">
         <Link href="/app/receipts" className="text-sm text-brand-600 hover:text-brand-700">
-          ← Zpět na účtenky
+          {t("back")}
         </Link>
         <div className="flex items-center gap-3">
           <button
             onClick={() => setEditing(true)}
             className="text-sm text-brand-700 hover:text-brand-800"
           >
-            ✎ Upravit
+            {t("edit")}
           </button>
           <button onClick={onDelete} className="text-sm text-red-600 hover:text-red-700">
-            🗑 Smazat
+            {t("delete")}
           </button>
         </div>
       </div>
@@ -203,7 +205,7 @@ export default function ReceiptDetailPage() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold text-ink-900">
-              {r.merchantName || "(bez názvu)"}
+              {r.merchantName || t("no_name")}
             </h1>
             <p className="text-sm text-ink-600 mt-1">
               {r.date}
@@ -211,7 +213,7 @@ export default function ReceiptDetailPage() {
             </p>
             {r.transactionId ? (
               <p className="text-xs text-emerald-700 mt-1">
-                ✓ Spárováno s bankovní transakcí
+                {t("linked_to_tx")}
               </p>
             ) : (
               <button
@@ -219,18 +221,18 @@ export default function ReceiptDetailPage() {
                 disabled={linking}
                 className="text-xs mt-1 text-brand-700 hover:text-brand-800 disabled:opacity-50"
               >
-                🔗 {linking ? "Hledám…" : "Propojit s transakcí"}
+                {linking ? t("linking") : t("find_link")}
               </button>
             )}
           </div>
           <div className="text-right">
-            <div className="text-xs text-ink-500 uppercase tracking-wide">Celkem</div>
+            <div className="text-xs text-ink-500 uppercase tracking-wide">{t("total")}</div>
             <div className="text-2xl font-semibold text-ink-900 tabular-nums">
               {fmtAmt(r.totalWithVat, currency)}
             </div>
             {r.totalWithoutVat && (
               <div className="text-xs text-ink-500 mt-1">
-                bez DPH: {fmtAmt(r.totalWithoutVat, currency)}
+                {t("without_vat")} {fmtAmt(r.totalWithoutVat, currency)}
               </div>
             )}
           </div>
@@ -238,13 +240,13 @@ export default function ReceiptDetailPage() {
 
         {(r.paymentMethod || r.merchantIco || r.merchantDic || r.merchantStreet) && (
           <div className="mt-4 pt-4 border-t border-ink-100 grid grid-cols-2 gap-2 text-sm">
-            {r.paymentMethod && <Field label="Platba" value={labelPayment(r.paymentMethod)} />}
-            {r.merchantIco && <Field label="IČO obchodníka" value={r.merchantIco} />}
-            {r.merchantDic && <Field label="DIČ obchodníka" value={r.merchantDic} />}
-            {r.merchantStreet && <Field label="Ulice" value={r.merchantStreet} />}
+            {r.paymentMethod && <Field label={t("payment")} value={labelPayment(r.paymentMethod, t)} />}
+            {r.merchantIco && <Field label={t("merchant_ico")} value={r.merchantIco} />}
+            {r.merchantDic && <Field label={t("merchant_dic")} value={r.merchantDic} />}
+            {r.merchantStreet && <Field label={t("merchant_street")} value={r.merchantStreet} />}
             {(r.merchantCity || r.merchantZip) && (
               <Field
-                label="Město"
+                label={t("merchant_city")}
                 value={[r.merchantZip, r.merchantCity].filter(Boolean).join(" ")}
               />
             )}
@@ -259,16 +261,16 @@ export default function ReceiptDetailPage() {
       {items.length > 0 && (
         <section className="bg-white rounded-2xl border border-ink-200 overflow-hidden">
           <div className="px-6 py-3 border-b border-ink-200">
-            <h2 className="font-semibold text-ink-900">Položky</h2>
+            <h2 className="font-semibold text-ink-900">{t("items")}</h2>
           </div>
           <table className="w-full text-sm">
             <thead className="bg-ink-50 text-ink-600 text-left text-xs uppercase tracking-wide">
               <tr>
-                <th className="px-6 py-3 font-medium">Název</th>
-                <th className="px-6 py-3 font-medium text-right">Ks</th>
-                <th className="px-6 py-3 font-medium text-right">Jedn. cena</th>
-                <th className="px-6 py-3 font-medium text-right">DPH</th>
-                <th className="px-6 py-3 font-medium text-right">Celkem</th>
+                <th className="px-6 py-3 font-medium">{t("th_name")}</th>
+                <th className="px-6 py-3 font-medium text-right">{t("th_qty")}</th>
+                <th className="px-6 py-3 font-medium text-right">{t("th_unit_price")}</th>
+                <th className="px-6 py-3 font-medium text-right">{t("th_vat")}</th>
+                <th className="px-6 py-3 font-medium text-right">{t("th_total")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-100">
@@ -296,7 +298,7 @@ export default function ReceiptDetailPage() {
 
       {r.note && (
         <section className="bg-white rounded-2xl border border-ink-200 p-6">
-          <h2 className="font-semibold text-ink-900 mb-2">Poznámka</h2>
+          <h2 className="font-semibold text-ink-900 mb-2">{t("note")}</h2>
           <p className="text-sm text-ink-700 whitespace-pre-wrap">{r.note}</p>
         </section>
       )}
@@ -307,6 +309,7 @@ export default function ReceiptDetailPage() {
 // ─── File preview přes presigned URL ──────────────────────────────────
 
 function ReceiptPhotos({ keys }: { keys: string[] }) {
+  const t = useTranslations("receipt_detail");
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [done, setDone] = useState(false);
@@ -341,7 +344,7 @@ function ReceiptPhotos({ keys }: { keys: string[] }) {
 
   return (
     <section className="bg-white rounded-2xl border border-ink-200 p-6">
-      <h2 className="font-semibold text-ink-900 mb-3">Foto účtenky</h2>
+      <h2 className="font-semibold text-ink-900 mb-3">{t("photos_title")}</h2>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {keys.map((k) => (
           <div key={k} className="aspect-[3/4] bg-ink-100 rounded-lg overflow-hidden">
@@ -349,7 +352,7 @@ function ReceiptPhotos({ keys }: { keys: string[] }) {
               <a href={urls[k]} target="_blank" rel="noopener">
                 <img
                   src={urls[k]}
-                  alt="účtenka"
+                  alt={t("photo_alt")}
                   className="w-full h-full object-contain hover:scale-105 transition-transform"
                 />
               </a>
@@ -363,7 +366,7 @@ function ReceiptPhotos({ keys }: { keys: string[] }) {
               </div>
             ) : (
               <div className="w-full h-full grid place-items-center text-ink-400 text-xs">
-                Načítám…
+                {t("loading")}
               </div>
             )}
           </div>
@@ -397,10 +400,10 @@ function fmtNum(n: string | number | undefined): string {
   return v.toLocaleString("cs-CZ");
 }
 
-function labelPayment(p: string): string {
+function labelPayment(p: string, t: (key: string) => string): string {
   switch (p) {
-    case "CASH": return "Hotově";
-    case "CARD": return "Kartou";
+    case "CASH": return t("payment_cash");
+    case "CARD": return t("payment_card");
     default: return p;
   }
 }
