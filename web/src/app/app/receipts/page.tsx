@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import { sync, SyncEntity } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { getCurrentProfileSyncId } from "@/lib/profile-store";
@@ -33,6 +34,8 @@ interface AccountListEntry {
 }
 
 export default function ReceiptsPage() {
+  const t = useTranslations("receipts_page");
+  const locale = useLocale();
   const [receipts, setReceipts] = useState<SyncEntity[]>([]);
   const [accounts, setAccounts] = useState<AccountListEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,10 +106,8 @@ export default function ReceiptsPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold text-ink-900">Účtenky</h1>
-          <p className="text-sm text-ink-600 mt-1">
-            Naskenované účtenky. Klikni na řádek pro detail.
-          </p>
+          <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
+          <p className="text-sm text-ink-600 mt-1">{t("subtitle")}</p>
         </div>
         <div className="flex items-center gap-3">
           <PeriodSelector
@@ -120,7 +121,7 @@ export default function ReceiptsPage() {
             onClick={() => setCreating(true)}
             className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
           >
-            + Nová účtenka
+            {t("new_receipt")}
           </button>
         </div>
       </div>
@@ -141,7 +142,7 @@ export default function ReceiptsPage() {
       <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
         <input
           type="text"
-          placeholder="Hledat obchodníka…"
+          placeholder={t("search_placeholder")}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="flex-1 min-w-[14rem] h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
@@ -155,7 +156,7 @@ export default function ReceiptsPage() {
                 linkFilter === f ? "bg-brand-50 text-brand-700" : "text-ink-700 hover:bg-ink-50"
               }`}
             >
-              {f === "ALL" ? "Vše" : f === "LINKED" ? "Spárované" : "Nespárované"}
+              {f === "ALL" ? t("filter_all") : f === "LINKED" ? t("filter_linked") : t("filter_unlinked")}
             </button>
           ))}
         </div>
@@ -164,7 +165,7 @@ export default function ReceiptsPage() {
           onChange={(e) => setAccountFilter(e.target.value)}
           className="h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
         >
-          <option value="ALL">Všechny účty</option>
+          <option value="ALL">{t("filter_account_all")}</option>
           {accounts.map((a) => (
             <option key={a.syncId} value={a.syncId}>{a.data.name}</option>
           ))}
@@ -178,25 +179,23 @@ export default function ReceiptsPage() {
       )}
 
       {loading ? (
-        <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>
+        <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>
       ) : filtered.length === 0 ? (
         <div className="bg-white rounded-2xl border border-ink-200 p-12 text-center">
           <div className="text-4xl mb-3">🧾</div>
-          <div className="font-medium text-ink-900">Žádné účtenky</div>
-          <p className="text-sm text-ink-600 mt-2">
-            Naskenuj účtenku v mobilní aplikaci.
-          </p>
+          <div className="font-medium text-ink-900">{t("empty_title")}</div>
+          <p className="text-sm text-ink-600 mt-2">{t("empty_desc")}</p>
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-ink-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-ink-50 text-ink-600 text-left text-xs uppercase tracking-wide">
               <tr>
-                <th className="px-6 py-3 font-medium">Obchodník</th>
-                <th className="px-6 py-3 font-medium">Datum</th>
-                <th className="px-6 py-3 font-medium">Platba</th>
-                <th className="px-6 py-3 font-medium">Foto</th>
-                <th className="px-6 py-3 font-medium text-right">Částka</th>
+                <th className="px-6 py-3 font-medium">{t("th_merchant")}</th>
+                <th className="px-6 py-3 font-medium">{t("th_date")}</th>
+                <th className="px-6 py-3 font-medium">{t("th_payment")}</th>
+                <th className="px-6 py-3 font-medium">{t("th_photos")}</th>
+                <th className="px-6 py-3 font-medium text-right">{t("th_amount")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-100">
@@ -209,18 +208,18 @@ export default function ReceiptsPage() {
                     onClick={() => { window.location.href = `/app/receipts/${r.syncId}`; }}
                   >
                     <td className="px-6 py-3 font-medium text-ink-900">
-                      {r.data.merchantName || "(bez názvu)"}
+                      {r.data.merchantName || t("no_name")}
                     </td>
                     <td className="px-6 py-3 text-ink-600 whitespace-nowrap">
                       {r.data.date || "—"}
                       {r.data.time && <span className="text-ink-400 text-xs"> {r.data.time}</span>}
                     </td>
-                    <td className="px-6 py-3 text-ink-600">{labelPayment(r.data.paymentMethod)}</td>
+                    <td className="px-6 py-3 text-ink-600">{labelPayment(r.data.paymentMethod, t)}</td>
                     <td className="px-6 py-3 text-ink-600 text-xs">
                       {photos.length > 0 ? `📷 ${photos.length}` : "—"}
                     </td>
                     <td className="px-6 py-3 text-right font-semibold tabular-nums text-ink-900">
-                      {fmtAmt(r.data.totalWithVat, r.data.currency ?? "CZK")}
+                      {fmtAmt(r.data.totalWithVat, r.data.currency ?? "CZK", locale)}
                     </td>
                   </tr>
                 );
@@ -233,19 +232,19 @@ export default function ReceiptsPage() {
   );
 }
 
-function fmtAmt(amount: string | number | undefined, currency: string): string {
+function fmtAmt(amount: string | number | undefined, currency: string, locale: string = "cs-CZ"): string {
   const n = typeof amount === "string" ? parseFloat(amount) : (amount ?? 0);
-  return new Intl.NumberFormat("cs-CZ", {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
     maximumFractionDigits: 2,
   }).format(Number.isFinite(n) ? n : 0);
 }
 
-function labelPayment(p: string | undefined | null): string {
+function labelPayment(p: string | undefined | null, t: (k: string) => string): string {
   switch (p) {
-    case "CASH": return "Hotově";
-    case "CARD": return "Kartou";
+    case "CASH": return t("payment_cash");
+    case "CARD": return t("payment_card");
     default: return "—";
   }
 }
@@ -263,6 +262,7 @@ function ReceiptCreateDialog({
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
+  const t = useTranslations("receipts_page");
   const [merchantName, setMerchantName] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [totalWithVat, setTotalWithVat] = useState("");
@@ -274,8 +274,8 @@ function ReceiptCreateDialog({
   const [duplicate, setDuplicate] = useState<ReceiptData | null>(null);
 
   async function save(force = false) {
-    if (!merchantName.trim()) return setErr("Vyplň obchodníka.");
-    if (!totalWithVat.trim()) return setErr("Vyplň částku.");
+    if (!merchantName.trim()) return setErr(t("fill_merchant"));
+    if (!totalWithVat.trim()) return setErr(t("fill_amount"));
 
     setSaving(true);
     setErr(null);
@@ -334,35 +334,34 @@ function ReceiptCreateDialog({
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl border border-ink-200 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="px-6 py-4 border-b border-ink-200 flex items-center justify-between">
-          <h2 className="font-semibold text-ink-900">Nová účtenka</h2>
+          <h2 className="font-semibold text-ink-900">{t("dialog_title")}</h2>
           <button onClick={onClose} className="text-ink-500 hover:text-ink-900">✕</button>
         </div>
         <div className="p-6 space-y-4">
           {duplicate && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm space-y-2">
-              <div className="font-medium text-amber-900">Možná duplicita</div>
+              <div className="font-medium text-amber-900">{t("dup_title")}</div>
               <div className="text-amber-800">
-                Už existuje účtenka „{duplicate.merchantName}" z {duplicate.date} —{" "}
-                {String(duplicate.totalWithVat)} Kč. Uložit i tuto?
+                {t("dup_desc", { merchant: duplicate.merchantName ?? "", date: duplicate.date, amount: String(duplicate.totalWithVat) })}
               </div>
               <div className="flex gap-2">
                 <button
                   onClick={() => { setDuplicate(null); save(true); }}
                   className="px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium"
                 >
-                  Uložit přesto
+                  {t("dup_save_anyway")}
                 </button>
                 <button
                   onClick={() => setDuplicate(null)}
                   className="px-3 py-1.5 rounded border border-amber-300 text-amber-800 text-xs"
                 >
-                  Zrušit
+                  {t("dup_cancel")}
                 </button>
               </div>
             </div>
           )}
           <div>
-            <label className="block text-xs font-medium text-ink-700 mb-1">Obchodník *</label>
+            <label className="block text-xs font-medium text-ink-700 mb-1">{t("field_merchant")}</label>
             <input
               type="text"
               value={merchantName}
@@ -373,7 +372,7 @@ function ReceiptCreateDialog({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-ink-700 mb-1">Datum</label>
+              <label className="block text-xs font-medium text-ink-700 mb-1">{t("field_date")}</label>
               <input
                 type="date"
                 value={date}
@@ -382,21 +381,21 @@ function ReceiptCreateDialog({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-ink-700 mb-1">Platba</label>
+              <label className="block text-xs font-medium text-ink-700 mb-1">{t("field_payment")}</label>
               <select
                 value={paymentMethod}
                 onChange={(e) => setPaymentMethod(e.target.value)}
                 className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm"
               >
-                <option value="CASH">Hotově</option>
-                <option value="CARD">Kartou</option>
-                <option value="UNKNOWN">Převodem</option>
+                <option value="CASH">{t("payment_cash")}</option>
+                <option value="CARD">{t("payment_card")}</option>
+                <option value="UNKNOWN">{t("payment_transfer")}</option>
               </select>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-ink-700 mb-1">Celkem s DPH (Kč) *</label>
+              <label className="block text-xs font-medium text-ink-700 mb-1">{t("field_total")}</label>
               <input
                 type="text"
                 value={totalWithVat}
@@ -405,13 +404,13 @@ function ReceiptCreateDialog({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-ink-700 mb-1">Bankovní účet / hotovost</label>
+              <label className="block text-xs font-medium text-ink-700 mb-1">{t("field_account")}</label>
               <select
                 value={linkedAccountId}
                 onChange={(e) => setLinkedAccountId(e.target.value)}
                 className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm"
               >
-                <option value="">Nepřiřazeno</option>
+                <option value="">{t("account_unassigned")}</option>
                 {accounts.map((a) => (
                   <option key={a.syncId} value={a.syncId}>{a.data.name}</option>
                 ))}
@@ -419,7 +418,7 @@ function ReceiptCreateDialog({
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-ink-700 mb-1">Poznámka</label>
+            <label className="block text-xs font-medium text-ink-700 mb-1">{t("field_note")}</label>
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -439,14 +438,14 @@ function ReceiptCreateDialog({
             className="h-10 px-4 rounded-lg border border-ink-300 text-sm text-ink-700 hover:bg-ink-50"
             disabled={saving}
           >
-            Zrušit
+            {t("cancel")}
           </button>
           <button
             onClick={() => save(false)}
             className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-50"
             disabled={saving}
           >
-            {saving ? "Ukládám…" : "Uložit"}
+            {saving ? t("saving") : t("save")}
           </button>
         </div>
       </div>
