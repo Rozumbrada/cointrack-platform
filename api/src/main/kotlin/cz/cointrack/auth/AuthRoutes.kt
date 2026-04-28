@@ -66,6 +66,22 @@ fun Route.authRoutes(authService: AuthService) {
                 val user = authService.me(userId)
                 call.respond(user)
             }
+
+            // POST /auth/magic-link { nextPath?: "/app/upgrade" } → { url }
+            post("/magic-link") {
+                val principal = call.principal<JWTPrincipal>()!!
+                val userId = UUID.fromString(principal.subject)
+                val req = call.receive<MagicLinkRequest>()
+                val url = authService.createMagicLink(userId, req.nextPath)
+                call.respond(MagicLinkResponse(url))
+            }
+        }
+
+        // Public — magic exchange (no auth required, consumes token)
+        post("/magic-exchange") {
+            val req = call.receive<MagicExchangeRequest>()
+            val res = authService.exchangeMagic(req.token)
+            call.respond(res)
         }
     }
 }

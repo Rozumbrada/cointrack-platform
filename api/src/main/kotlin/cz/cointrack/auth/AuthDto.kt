@@ -60,3 +60,18 @@ data class UserDto(
 data class MessageResponse(
     val message: String,
 )
+
+@Serializable
+data class MagicLinkRequest(
+    val nextPath: String? = null,
+)
+
+@Serializable
+data class MagicLinkResponse(
+    val url: String,
+)
+
+@Serializable
+data class MagicExchangeRequest(
+    val token: String,
+)

@@ -46,10 +46,11 @@ const TIER_LABELS: Record<Tier, string> = {
 export default function UpgradePage() {
   const [tier, setTier] = useState<Tier>("BUSINESS");
   const [period, setPeriod] = useState<Period>("MONTHLY");
-  const [companyName, setCompanyName] = useState("");
+  const [billingType, setBillingType] = useState<"PERSON" | "COMPANY">("PERSON");
+  const [billingName, setBillingName] = useState("");
+  const [billingAddress, setBillingAddress] = useState("");
   const [companyIco, setCompanyIco] = useState("");
   const [companyDic, setCompanyDic] = useState("");
-  const [companyAddress, setCompanyAddress] = useState("");
 
   const [payment, setPayment] = useState<StartResponse | null>(null);
   const [status, setStatus] = useState<StatusResponse | null>(null);
@@ -57,8 +58,21 @@ export default function UpgradePage() {
   const [error, setError] = useState<string | null>(null);
 
   async function startPayment() {
-    setCreating(true);
     setError(null);
+    if (!billingName.trim()) {
+      setError(billingType === "COMPANY" ? "Vyplň název firmy." : "Vyplň jméno a příjmení.");
+      return;
+    }
+    if (!billingAddress.trim()) {
+      setError("Vyplň fakturační adresu (ulice, město, PSČ).");
+      return;
+    }
+    if (billingType === "COMPANY" && !companyIco.trim()) {
+      setError("Vyplň IČO firmy.");
+      return;
+    }
+
+    setCreating(true);
     try {
       const res = await withAuth((t) =>
         api<StartResponse>("/api/v1/payments/start", {
@@ -66,10 +80,10 @@ export default function UpgradePage() {
           token: t,
           body: {
             tier, period,
-            companyName: companyName.trim() || undefined,
-            companyIco: companyIco.trim() || undefined,
-            companyDic: companyDic.trim() || undefined,
-            companyAddress: companyAddress.trim() || undefined,
+            companyName: billingName.trim(),
+            companyIco: billingType === "COMPANY" ? companyIco.trim() : undefined,
+            companyDic: billingType === "COMPANY" ? (companyDic.trim() || undefined) : undefined,
+            companyAddress: billingAddress.trim(),
           },
         }),
       );
@@ -234,43 +248,81 @@ export default function UpgradePage() {
             </div>
           </div>
 
-          <details className="border border-ink-200 rounded-lg">
-            <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-ink-700">
-              Fakturační údaje (volitelné, pro firmu)
-            </summary>
-            <div className="px-4 pb-4 space-y-3">
-              <input
-                type="text"
-                placeholder="Název firmy"
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                className="w-full h-10 rounded-lg border border-ink-300 px-3 text-sm"
-              />
-              <div className="grid grid-cols-2 gap-3">
-                <input
-                  type="text"
-                  placeholder="IČO"
-                  value={companyIco}
-                  onChange={(e) => setCompanyIco(e.target.value)}
-                  className="w-full h-10 rounded-lg border border-ink-300 px-3 text-sm"
-                />
-                <input
-                  type="text"
-                  placeholder="DIČ"
-                  value={companyDic}
-                  onChange={(e) => setCompanyDic(e.target.value)}
-                  className="w-full h-10 rounded-lg border border-ink-300 px-3 text-sm"
-                />
+          <div className="border border-ink-200 rounded-lg p-4 space-y-4">
+            <div>
+              <div className="text-sm font-medium text-ink-900 mb-2">Fakturační údaje</div>
+              <p className="text-xs text-ink-500 mb-3">
+                Vyplň prosím — bez nich nemůžeme vystavit fakturu (zákonný požadavek).
+              </p>
+              <div className="flex rounded-lg border border-ink-300 overflow-hidden text-sm mb-3">
+                <button
+                  type="button"
+                  onClick={() => setBillingType("PERSON")}
+                  className={`flex-1 py-2 ${billingType === "PERSON" ? "bg-brand-50 text-brand-700 font-medium" : "text-ink-700 hover:bg-ink-50"}`}
+                >
+                  👤 Fyzická osoba
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBillingType("COMPANY")}
+                  className={`flex-1 py-2 ${billingType === "COMPANY" ? "bg-brand-50 text-brand-700 font-medium" : "text-ink-700 hover:bg-ink-50"}`}
+                >
+                  🏢 Firma
+                </button>
               </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-ink-700 mb-1">
+                {billingType === "COMPANY" ? "Název firmy *" : "Jméno a příjmení *"}
+              </label>
               <input
                 type="text"
-                placeholder="Adresa (ulice, město, PSČ)"
-                value={companyAddress}
-                onChange={(e) => setCompanyAddress(e.target.value)}
+                value={billingName}
+                onChange={(e) => setBillingName(e.target.value)}
+                placeholder={billingType === "COMPANY" ? "Acme s.r.o." : "Jan Novák"}
                 className="w-full h-10 rounded-lg border border-ink-300 px-3 text-sm"
               />
             </div>
-          </details>
+
+            {billingType === "COMPANY" && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-ink-700 mb-1">IČO *</label>
+                  <input
+                    type="text"
+                    value={companyIco}
+                    onChange={(e) => setCompanyIco(e.target.value)}
+                    placeholder="12345678"
+                    className="w-full h-10 rounded-lg border border-ink-300 px-3 text-sm font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-ink-700 mb-1">DIČ</label>
+                  <input
+                    type="text"
+                    value={companyDic}
+                    onChange={(e) => setCompanyDic(e.target.value)}
+                    placeholder="CZ12345678"
+                    className="w-full h-10 rounded-lg border border-ink-300 px-3 text-sm font-mono"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-medium text-ink-700 mb-1">
+                Adresa (ulice, město, PSČ) *
+              </label>
+              <input
+                type="text"
+                value={billingAddress}
+                onChange={(e) => setBillingAddress(e.target.value)}
+                placeholder="Václavské náměstí 1, 110 00 Praha 1"
+                className="w-full h-10 rounded-lg border border-ink-300 px-3 text-sm"
+              />
+            </div>
+          </div>
 
           <button
             onClick={startPayment}

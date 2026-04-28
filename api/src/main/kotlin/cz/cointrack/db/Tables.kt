@@ -68,6 +68,16 @@ object PasswordResets : UUIDTable("password_resets") {
     val createdAt        = timestamp("created_at")
 }
 
+/** V17 — krátkodobé tokeny pro deep-link auto-login z mobilní apky na web. */
+object MagicTokens : UUIDTable("magic_tokens") {
+    val userId           = reference("user_id", Users)
+    val tokenHash        = varchar("token_hash", 128).uniqueIndex()
+    val nextPath         = varchar("next_path", 256).nullable()
+    val createdAt        = timestamp("created_at")
+    val expiresAt        = timestamp("expires_at")
+    val usedAt           = timestamp("used_at").nullable()
+}
+
 object AuditLog : Table("audit_log") {
     val id               = long("id").autoIncrement()
     val userId           = uuid("user_id").nullable()

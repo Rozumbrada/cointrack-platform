@@ -113,6 +113,13 @@ export const auth = {
       method: "POST",
       body: { token, newPassword },
     }),
+
+  /** Vymění magic-link token za plnohodnotný JWT pair. Public endpoint. */
+  magicExchange: (token: string) =>
+    api<AuthResponse>("/api/v1/auth/magic-exchange", {
+      method: "POST",
+      body: { token },
+    }),
 };
 
 // ─── Sync pull (seznam všech entit) ─────────────────────────────────

@@ -245,6 +245,51 @@ class AuthService(
         }
     }
 
+    // ─── Magic link (deep-link auto-login z mobilu na web) ──────────────
+
+    /**
+     * Vytvoří jednorázový krátkodobý token (5 min, single-use), který může mobil
+     * zabudovat do URL: `cointrack.cz/auth/magic?t=<token>&next=/app/upgrade`.
+     * Web pak zavolá [exchangeMagic] a získá plnohodnotný JWT.
+     */
+    suspend fun createMagicLink(userId: UUID, nextPath: String?): String {
+        val token = TokenGenerator.newToken()
+        val now = Instant.now()
+        db {
+            cz.cointrack.db.MagicTokens.insertAndGetId {
+                it[this.userId] = userId
+                it[tokenHash] = TokenGenerator.hash(token)
+                it[this.nextPath] = nextPath?.takeIf { p -> p.startsWith("/") }
+                it[expiresAt] = now.plusSeconds(5 * 60L)
+                it[createdAt] = now
+            }
+        }
+        val safeNext = nextPath?.takeIf { it.startsWith("/") }?.let { "&next=$it" } ?: ""
+        return "$webBaseUrl/auth/magic?t=$token$safeNext"
+    }
+
+    /** Vymění magic token za AuthResponse (JWT + refresh). Single-use. */
+    suspend fun exchangeMagic(token: String): AuthResponse {
+        val hash = TokenGenerator.hash(token)
+        val userRow = db {
+            val mt = cz.cointrack.db.MagicTokens.selectAll()
+                .where { cz.cointrack.db.MagicTokens.tokenHash eq hash }
+                .singleOrNull()
+                ?: throw ApiException(HttpStatusCode.BadRequest, "invalid_magic", "Neplatný magic token.")
+            if (mt[cz.cointrack.db.MagicTokens.usedAt] != null) {
+                throw ApiException(HttpStatusCode.BadRequest, "already_used", "Magic token už byl použit.")
+            }
+            if (mt[cz.cointrack.db.MagicTokens.expiresAt].isBefore(Instant.now())) {
+                throw ApiException(HttpStatusCode.BadRequest, "expired", "Magic token expiroval (5 min).")
+            }
+            cz.cointrack.db.MagicTokens.update({ cz.cointrack.db.MagicTokens.id eq mt[cz.cointrack.db.MagicTokens.id].value }) {
+                it[usedAt] = Instant.now()
+            }
+            Users.selectAll().where { Users.id eq mt[cz.cointrack.db.MagicTokens.userId].value }.single()
+        }
+        return issueTokens(userRow, deviceId = null)
+    }
+
     // ─── Interní ────────────────────────────────────────────────────────
 
     private suspend fun issueTokens(
