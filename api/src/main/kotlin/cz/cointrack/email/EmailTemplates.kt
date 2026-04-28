@@ -191,4 +191,48 @@ object EmailTemplates {
             </p>
         """,
     )
+
+    /** Reminder email 7 dní před expirací předplatného. */
+    fun tierExpiryReminder(
+        tier: String,
+        expiresAtDate: String,         // "2026-05-05"
+        daysLeft: Int,
+        renewUrl: String,
+    ) = layout(
+        title = "Předplatné brzy vyprší",
+        body = """
+            <h2 style="color:#111;font-size:20px;margin:0 0 16px;">Tvé předplatné brzy vyprší</h2>
+            <p>Tarif <strong>Cointrack $tier</strong> ti vyprší
+                <strong>$expiresAtDate</strong> (za $daysLeft ${if (daysLeft == 1) "den" else "dny"}).</p>
+            <p>Po expiraci se automaticky přepneš zpět na tarif <strong>FREE</strong>
+                a ztratíš přístup k pokročilým funkcím (cloud sync, OCR účtenek, organizační účty…).
+                Tvá data zůstanou nedotčená.</p>
+            <p style="margin:24px 0;">
+                <a href="$renewUrl"
+                   style="display:inline-block;background:#111;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">
+                   Prodloužit předplatné
+                </a>
+            </p>
+            <p style="color:#666;font-size:13px;">
+                Platba probíhá přes QR kód (SPAYD) — během minuty máš opět plný tarif.
+            </p>
+        """,
+    )
+
+    /** Email po automatickém downgrade na FREE. */
+    fun tierDowngradedToFree(reactivateUrl: String) = layout(
+        title = "Přepnuto na FREE",
+        body = """
+            <h2 style="color:#111;font-size:20px;margin:0 0 16px;">Přepnuli jsme tě na tarif FREE</h2>
+            <p>Tvé předplatné Cointrack vypršelo a automaticky jsme tě přepnuli zpět na tarif
+                <strong>FREE</strong>. Tvá data zůstávají v pořádku, jen některé pokročilé funkce
+                (cloud sync, OCR, organizační účty) jsou nyní omezené.</p>
+            <p style="margin:24px 0;">
+                <a href="$reactivateUrl"
+                   style="display:inline-block;background:#111;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">
+                   Aktivovat předplatné znovu
+                </a>
+            </p>
+        """,
+    )
 }

@@ -45,6 +45,41 @@ class IDokladService(private val client: IDokladClient = IDokladClient()) {
         val total: Int,
     )
 
+    @Serializable
+    data class CreateInvoiceItemDto(
+        val name: String,
+        val quantity: Double = 1.0,
+        val unitPrice: Double,
+        val unitName: String = "ks",
+    )
+
+    @Serializable
+    data class CreateInvoiceRequestDto(
+        val profileId: String,
+        val partnerName: String,
+        val partnerEmail: String? = null,
+        val partnerStreet: String? = null,
+        val partnerCity: String? = null,
+        val partnerPostalCode: String? = null,
+        val partnerIco: String? = null,
+        val partnerDic: String? = null,
+        val dateOfIssue: String,        // YYYY-MM-DD
+        val dateOfMaturity: String,     // YYYY-MM-DD
+        val description: String? = null,
+        val note: String? = null,
+        val variableSymbol: String? = null,
+        val currencyCode: String = "CZK",
+        val items: List<CreateInvoiceItemDto>,
+    )
+
+    @Serializable
+    data class CreateInvoiceResponse(
+        val idokladId: String,
+        val invoiceNumber: String?,
+        val totalWithVat: String,
+        val cointrackInvoiceSyncId: String,
+    )
+
     /** Vrátí status iDoklad připojení pro daný profil. */
     suspend fun status(userId: UUID, profileSyncId: UUID): Status = db {
         val row = profileRowFor(userId, profileSyncId)
@@ -207,6 +242,155 @@ class IDokladService(private val client: IDokladClient = IDokladClient()) {
             }
         }
         added to updated
+    }
+
+    /** Získá platný access token (z cache nebo nový). */
+    private suspend fun ensureToken(profileDbId: UUID): String {
+        val (cachedToken, cachedExpiry, clientId, clientSecret) = db {
+            val row = Profiles.selectAll().where { Profiles.id eq profileDbId }.single()
+            val cid = row[Profiles.idokladClientId]
+                ?: throw ApiException(HttpStatusCode.BadRequest, "no_credentials", "Není uložen Client ID.")
+            val encSecret = row[Profiles.idokladClientSecretEnc]
+                ?: throw ApiException(HttpStatusCode.BadRequest, "no_credentials", "Není uložen Client Secret.")
+            val secret = runCatching { IDokladCrypto.decrypt(encSecret) }
+                .getOrElse { throw ApiException(HttpStatusCode.InternalServerError, "decrypt_failed",
+                    "Nelze dešifrovat credentials.") }
+            arrayOf(row[Profiles.idokladAccessToken], row[Profiles.idokladTokenExpiresAt], cid, secret)
+        }
+        // Token cached and still valid (>60s buffer)
+        val expiry = cachedExpiry as? Instant
+        if (cachedToken != null && expiry != null && expiry.isAfter(Instant.now().plusSeconds(60))) {
+            return cachedToken as String
+        }
+        // Refresh
+        val token = try {
+            client.obtainAccessToken(clientId as String, clientSecret as String)
+        } catch (e: IDokladException) {
+            throw ApiException(HttpStatusCode.BadRequest, "idoklad_auth_failed",
+                "iDoklad odmítl credentials: ${e.message}")
+        }
+        val newExpiry = Instant.now().plusSeconds(token.expires_in.toLong() - 60)
+        db {
+            Profiles.update({ Profiles.id eq profileDbId }) {
+                it[idokladAccessToken] = token.access_token
+                it[idokladTokenExpiresAt] = newExpiry
+            }
+        }
+        return token.access_token
+    }
+
+    /** Vytvoří fakturu v iDokladu + uloží ji jako Cointrack Invoice. */
+    suspend fun createInvoice(userId: UUID, req: CreateInvoiceRequestDto): CreateInvoiceResponse {
+        val profileSyncId = UUID.fromString(req.profileId)
+        val profileDbId = db { profileRowFor(userId, profileSyncId)[Profiles.id].value }
+        val token = ensureToken(profileDbId)
+
+        val idokladReq = IDokladClient.CreateInvoiceRequest(
+            PartnerName = req.partnerName,
+            PartnerEmail = req.partnerEmail,
+            PartnerStreet = req.partnerStreet,
+            PartnerCity = req.partnerCity,
+            PartnerPostalCode = req.partnerPostalCode,
+            PartnerIdentificationNumber = req.partnerIco,
+            PartnerVatIdentificationNumber = req.partnerDic,
+            DateOfIssue = req.dateOfIssue,
+            DateOfMaturity = req.dateOfMaturity,
+            Description = req.description,
+            Note = req.note,
+            VariableSymbol = req.variableSymbol,
+            CurrencyCode = req.currencyCode,
+            IsVatPayer = false,
+            Items = req.items.map {
+                IDokladClient.CreateInvoiceItem(
+                    Name = it.name,
+                    Amount = it.quantity,
+                    UnitPrice = it.unitPrice,
+                    UnitName = it.unitName,
+                )
+            },
+        )
+
+        val created = try {
+            client.createInvoice(token, idokladReq)
+        } catch (e: IDokladException) {
+            throw ApiException(HttpStatusCode.BadGateway, "idoklad_create_failed",
+                "iDoklad odmítl fakturu: ${e.message}")
+        }
+
+        // Ulož do Cointrack invoices
+        val cointrackSyncId = UUID.randomUUID()
+        val now = Instant.now()
+        val total = created.Prices?.TotalWithVat?.let { BigDecimal.valueOf(it) } ?: BigDecimal.ZERO
+        db {
+            Invoices.insert {
+                it[syncId] = cointrackSyncId
+                it[Invoices.profileId] = EntityID(profileDbId, Profiles)
+                it[Invoices.invoiceNumber] = created.DocumentNumber
+                it[Invoices.isExpense] = false
+                it[Invoices.issueDate] = LocalDate.parse(req.dateOfIssue)
+                it[Invoices.dueDate] = LocalDate.parse(req.dateOfMaturity)
+                it[Invoices.totalWithVat] = total
+                it[Invoices.currency] = req.currencyCode
+                it[Invoices.variableSymbol] = req.variableSymbol
+                it[Invoices.customerName] = req.partnerName
+                it[Invoices.note] = req.note ?: req.description
+                it[Invoices.paid] = false
+                it[Invoices.idokladId] = created.Id.toString()
+                it[Invoices.clientVersion] = 1
+                it[Invoices.updatedAt] = now
+            }
+        }
+
+        return CreateInvoiceResponse(
+            idokladId = created.Id.toString(),
+            invoiceNumber = created.DocumentNumber,
+            totalWithVat = total.toPlainString(),
+            cointrackInvoiceSyncId = cointrackSyncId.toString(),
+        )
+    }
+
+    /** Označí fakturu v iDokladu jako zaplacenou + sync do Cointrack. */
+    suspend fun markPaid(userId: UUID, profileSyncId: UUID, idokladId: Int, paymentDate: LocalDate) {
+        val profileDbId = db { profileRowFor(userId, profileSyncId)[Profiles.id].value }
+        val token = ensureToken(profileDbId)
+        try {
+            client.markInvoicePaid(token, idokladId, paymentDate.toString())
+        } catch (e: IDokladException) {
+            throw ApiException(HttpStatusCode.BadGateway, "idoklad_markpaid_failed",
+                "iDoklad nepřijal mark-paid: ${e.message}")
+        }
+        db {
+            Invoices.update({
+                (Invoices.profileId eq profileDbId) and (Invoices.idokladId eq idokladId.toString())
+            }) {
+                it[Invoices.paid] = true
+                it[Invoices.updatedAt] = Instant.now()
+            }
+        }
+    }
+
+    /** Stáhne PDF faktury z iDokladu (proxy stream). */
+    suspend fun getPdf(userId: UUID, profileSyncId: UUID, idokladId: Int): ByteArray {
+        val profileDbId = db { profileRowFor(userId, profileSyncId)[Profiles.id].value }
+        val token = ensureToken(profileDbId)
+        return try {
+            client.getInvoicePdf(token, idokladId)
+        } catch (e: IDokladException) {
+            throw ApiException(HttpStatusCode.BadGateway, "idoklad_pdf_failed",
+                "iDoklad nevrátil PDF: ${e.message}")
+        }
+    }
+
+    /** Pošle fakturu zákazníkovi přes iDoklad email. */
+    suspend fun sendEmail(userId: UUID, profileSyncId: UUID, idokladId: Int, to: String?) {
+        val profileDbId = db { profileRowFor(userId, profileSyncId)[Profiles.id].value }
+        val token = ensureToken(profileDbId)
+        try {
+            client.sendInvoiceMail(token, idokladId, to)
+        } catch (e: IDokladException) {
+            throw ApiException(HttpStatusCode.BadGateway, "idoklad_email_failed",
+                "iDoklad nevypadl email: ${e.message}")
+        }
     }
 
     private fun profileRowFor(userId: UUID, profileSyncId: UUID): org.jetbrains.exposed.sql.ResultRow {

@@ -40,6 +40,7 @@ dependencies {
     implementation("io.ktor:ktor-server-call-logging:$ktor_version")
     implementation("io.ktor:ktor-server-call-id:$ktor_version")
     implementation("io.ktor:ktor-server-request-validation:$ktor_version")
+    implementation("io.ktor:ktor-server-rate-limit:$ktor_version")
 
     // Auth (JWT + sessions)
     implementation("io.ktor:ktor-server-auth:$ktor_version")

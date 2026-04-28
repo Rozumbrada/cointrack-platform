@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
@@ -17,7 +18,8 @@ import { CategoryPicker } from "@/components/app/CategoryPicker";
 import { ExpenseDonut, categoryColor } from "@/components/app/ExpenseDonut";
 
 export default function DashboardPage() {
-  const { loading, error, entitiesByProfile, reload } = useSyncData();
+  const router = useRouter();
+  const { loading, error, entitiesByProfile, rawEntities, reload } = useSyncData();
   const [pickerFor, setPickerFor] = useState<{
     txSyncId: string;
     txType: "INCOME" | "EXPENSE" | "TRANSFER";
@@ -28,6 +30,19 @@ export default function DashboardPage() {
   const accountEntities = entitiesByProfile<ServerAccount>("accounts");
   const txEntities = entitiesByProfile<ServerTransaction>("transactions");
   const categoryEntities = entitiesByProfile<ServerCategory>("categories");
+
+  // First-run detection — bez profilu/účtu redirect na onboarding (jednou)
+  useEffect(() => {
+    if (loading) return;
+    if (typeof window === "undefined") return;
+    if (localStorage.getItem("cointrack:onboarded") === "1") return;
+    const profiles = rawEntities("profiles");
+    if (profiles.length === 0 || accountEntities.length === 0) {
+      router.replace("/onboarding");
+    } else {
+      localStorage.setItem("cointrack:onboarded", "1");
+    }
+  }, [loading, rawEntities, accountEntities.length, router]);
 
   // Map kategorie syncId → kategorie data
   const catMap = useMemo(() => {

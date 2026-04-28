@@ -64,5 +64,21 @@ fun Application.configureStatusPages() {
                 )
             )
         }
+        status(HttpStatusCode.TooManyRequests) { call, _ ->
+            val retryAfter = call.response.headers["Retry-After"]
+            val msg = if (retryAfter != null) {
+                "Příliš mnoho pokusů. Zkus to za $retryAfter sekund."
+            } else {
+                "Příliš mnoho pokusů. Zkus to za chvíli."
+            }
+            call.respond(
+                HttpStatusCode.TooManyRequests,
+                ErrorResponse(
+                    error = "rate_limited",
+                    message = msg,
+                    requestId = call.callId,
+                )
+            )
+        }
     }
 }

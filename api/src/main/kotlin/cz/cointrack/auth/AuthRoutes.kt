@@ -4,6 +4,8 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.auth.authenticate
 import io.ktor.server.auth.jwt.JWTPrincipal
 import io.ktor.server.auth.principal
+import io.ktor.server.plugins.ratelimit.RateLimitName
+import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
@@ -16,16 +18,20 @@ fun Route.authRoutes(authService: AuthService) {
 
     route("/auth") {
 
-        post("/register") {
-            val req = call.receive<RegisterRequest>()
-            val user = authService.register(req)
-            call.respond(HttpStatusCode.Created, user)
+        rateLimit(RateLimitName("register")) {
+            post("/register") {
+                val req = call.receive<RegisterRequest>()
+                val user = authService.register(req)
+                call.respond(HttpStatusCode.Created, user)
+            }
         }
 
-        post("/login") {
-            val req = call.receive<LoginRequest>()
-            val res = authService.login(req)
-            call.respond(res)
+        rateLimit(RateLimitName("login")) {
+            post("/login") {
+                val req = call.receive<LoginRequest>()
+                val res = authService.login(req)
+                call.respond(res)
+            }
         }
 
         post("/refresh") {
@@ -40,23 +46,29 @@ fun Route.authRoutes(authService: AuthService) {
             call.respond(MessageResponse("logged_out"))
         }
 
-        post("/verify-email") {
-            val req = call.receive<VerifyEmailRequest>()
-            authService.verifyEmail(req.token)
-            call.respond(MessageResponse("email_verified"))
+        rateLimit(RateLimitName("verify")) {
+            post("/verify-email") {
+                val req = call.receive<VerifyEmailRequest>()
+                authService.verifyEmail(req.token)
+                call.respond(MessageResponse("email_verified"))
+            }
         }
 
-        post("/forgot-password") {
-            val req = call.receive<ForgotPasswordRequest>()
-            authService.forgotPassword(req.email)
-            // Vždy respond 200, nikdy neprozrazuj, jestli email existuje
-            call.respond(MessageResponse("if_exists_email_sent"))
+        rateLimit(RateLimitName("forgot")) {
+            post("/forgot-password") {
+                val req = call.receive<ForgotPasswordRequest>()
+                authService.forgotPassword(req.email)
+                // Vždy respond 200, nikdy neprozrazuj, jestli email existuje
+                call.respond(MessageResponse("if_exists_email_sent"))
+            }
         }
 
-        post("/reset-password") {
-            val req = call.receive<ResetPasswordRequest>()
-            authService.resetPassword(req.token, req.newPassword)
-            call.respond(MessageResponse("password_updated"))
+        rateLimit(RateLimitName("reset")) {
+            post("/reset-password") {
+                val req = call.receive<ResetPasswordRequest>()
+                authService.resetPassword(req.token, req.newPassword)
+                call.respond(MessageResponse("password_updated"))
+            }
         }
 
         authenticate("jwt") {
@@ -78,10 +90,12 @@ fun Route.authRoutes(authService: AuthService) {
         }
 
         // Public — magic exchange (no auth required, consumes token)
-        post("/magic-exchange") {
-            val req = call.receive<MagicExchangeRequest>()
-            val res = authService.exchangeMagic(req.token)
-            call.respond(res)
+        rateLimit(RateLimitName("magic")) {
+            post("/magic-exchange") {
+                val req = call.receive<MagicExchangeRequest>()
+                val res = authService.exchangeMagic(req.token)
+                call.respond(res)
+            }
         }
     }
 }

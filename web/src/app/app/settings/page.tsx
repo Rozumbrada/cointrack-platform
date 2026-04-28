@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { auth, UserDto } from "@/lib/api";
+import { auth, gdpr, DeletionStatusDto, UserDto } from "@/lib/api";
 import { clearAuth, getAccessToken } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
 import { ServerAccount } from "@/lib/sync-types";
@@ -15,6 +15,8 @@ export default function SettingsPage() {
   const router = useRouter();
   const [user, setUser] = useState<UserDto | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deletion, setDeletion] = useState<DeletionStatusDto | null>(null);
+  const [deletionBusy, setDeletionBusy] = useState(false);
   const { profileSyncId, entitiesByProfile } = useSyncData();
   const accounts = entitiesByProfile<ServerAccount>("accounts");
   const nonCashAccounts = accounts.filter(
@@ -37,7 +39,68 @@ export default function SettingsPage() {
     const token = getAccessToken();
     if (!token) return;
     auth.me(token).then(setUser).catch((e) => setError(String(e)));
+    gdpr.deletionStatus(token).then(setDeletion).catch(() => {});
   }, []);
+
+  async function onExportData() {
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      const res = await fetch(gdpr.exportDownloadUrl(), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `cointrack-export-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(`Export selhal: ${e}`);
+    }
+  }
+
+  async function onRequestDeletion() {
+    const token = getAccessToken();
+    if (!token) return;
+    if (!confirm(
+      "Opravdu chceš smazat účet?\n\n" +
+      "• Účet bude označen ke smazání\n" +
+      "• Po 30 dnech budou všechna data nenávratně smazána\n" +
+      "• V této době se můžeš znovu přihlásit a smazání zrušit\n" +
+      "• Hned budeš odhlášen ze všech zařízení",
+    )) return;
+    setDeletionBusy(true);
+    try {
+      const res = await gdpr.requestDeletion(token);
+      setDeletion(res);
+      // Po smazání se musíš odhlásit — backend zneplatnil sessions
+      setTimeout(() => onLogout(), 2000);
+    } catch (e) {
+      setError(`Smazání selhalo: ${e}`);
+    } finally {
+      setDeletionBusy(false);
+    }
+  }
+
+  async function onCancelDeletion() {
+    const token = getAccessToken();
+    if (!token) return;
+    setDeletionBusy(true);
+    try {
+      await gdpr.cancelDeletion(token);
+      const fresh = await gdpr.deletionStatus(token);
+      setDeletion(fresh);
+    } catch (e) {
+      setError(`Zrušení selhalo: ${e}`);
+    } finally {
+      setDeletionBusy(false);
+    }
+  }
 
   async function onLogout() {
     const refresh = typeof window !== "undefined" ? localStorage.getItem("refreshToken") : null;
@@ -116,6 +179,56 @@ export default function SettingsPage() {
           Stáhnout APK
         </a>
       </section>
+
+      <section className="bg-white rounded-2xl border border-ink-200 p-6">
+        <h2 className="font-semibold text-ink-900 mb-2">Tvá data (GDPR)</h2>
+        <p className="text-sm text-ink-600 mb-4">
+          Na základě GDPR (čl. 20) máš právo stáhnout si všechna svá data ve strojově čitelném formátu (JSON).
+          Soubor obsahuje profily, účty, transakce, účtenky, faktury, věrnostní karty atd.
+        </p>
+        <button
+          onClick={onExportData}
+          className="h-10 px-4 rounded-lg border border-ink-300 bg-white hover:bg-ink-50 text-sm font-medium text-ink-900"
+        >
+          📥 Stáhnout moje data (JSON)
+        </button>
+      </section>
+
+      {deletion?.requestedAt ? (
+        <section className="bg-amber-50 rounded-2xl border border-amber-300 p-6">
+          <h2 className="font-semibold text-amber-900 mb-2">⚠️ Účet je označen ke smazání</h2>
+          <p className="text-sm text-amber-900 mb-4">
+            Smazání bylo zažádáno {new Date(deletion.requestedAt).toLocaleString("cs-CZ")}.
+            Data budou nenávratně smazána <b>{deletion.deleteAfterAt && new Date(deletion.deleteAfterAt).toLocaleDateString("cs-CZ")}</b>.
+            Pokud sis to rozmyslel, můžeš smazání zrušit:
+          </p>
+          {deletion.canCancel && (
+            <button
+              onClick={onCancelDeletion}
+              disabled={deletionBusy}
+              className="h-10 px-4 rounded-lg bg-amber-700 hover:bg-amber-800 disabled:bg-amber-400 text-white text-sm font-medium"
+            >
+              Zrušit smazání účtu
+            </button>
+          )}
+        </section>
+      ) : (
+        <section className="bg-white rounded-2xl border border-red-200 p-6">
+          <h2 className="font-semibold text-red-800 mb-2">Smazat účet</h2>
+          <p className="text-sm text-ink-600 mb-4">
+            Na základě GDPR (čl. 17) máš právo na úplné smazání svých dat. Účet bude označen
+            a po 30denní lhůtě budou data <b>nenávratně smazána</b>. V této lhůtě je možné
+            smazání ještě zrušit (přihlášením se zpět).
+          </p>
+          <button
+            onClick={onRequestDeletion}
+            disabled={deletionBusy}
+            className="h-10 px-4 rounded-lg border border-red-300 bg-white hover:bg-red-50 text-sm font-medium text-red-800 disabled:opacity-50"
+          >
+            🗑️ Smazat můj účet
+          </button>
+        </section>
+      )}
 
       <section className="bg-white rounded-2xl border border-red-200 p-6">
         <h2 className="font-semibold text-red-800 mb-2">Odhlášení</h2>

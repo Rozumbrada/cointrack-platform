@@ -15,6 +15,7 @@ import cz.cointrack.email.EmailConfig
 import cz.cointrack.email.EmailService
 import cz.cointrack.idoklad.IDokladService
 import cz.cointrack.idoklad.idokladRoutes
+import cz.cointrack.payments.BillingExpiryWorker
 import cz.cointrack.payments.FioReconciler
 import cz.cointrack.payments.PaymentService
 import cz.cointrack.payments.paymentRoutes
@@ -28,6 +29,9 @@ import cz.cointrack.plugins.*
 import cz.cointrack.storage.StorageConfig
 import cz.cointrack.storage.StorageService
 import cz.cointrack.export.exportRoutes
+import cz.cointrack.gdpr.GdprDeletionWorker
+import cz.cointrack.gdpr.GdprService
+import cz.cointrack.gdpr.gdprRoutes
 import cz.cointrack.storage.storageRoutes
 import cz.cointrack.sync.SyncService
 import cz.cointrack.sync.syncRoutes
@@ -55,6 +59,7 @@ fun Application.module() {
     configureSerialization()
     configureHttp()
     configureStatusPages()
+    configureRateLimit()
     configureDatabase()
 
     val jwtConfig = loadJwtConfig()
@@ -92,11 +97,21 @@ fun Application.module() {
     @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
     fioReconciler.start(scope = kotlinx.coroutines.GlobalScope)
 
+    // Billing expiry worker — denně reminder email + auto-downgrade po expiraci
+    val billingExpiryWorker = BillingExpiryWorker(email = emailService, webBaseUrl = webBaseUrl)
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+    billingExpiryWorker.start(scope = kotlinx.coroutines.GlobalScope)
+
     // Banking — pro teď jen Salt Edge. Pokud není nakonfigurovaný, bankService je null.
     val bankService: BankService? = loadBankService()
 
     // Gemini AI proxy (key v env, klienti volají bez vlastního klíče)
     val geminiService = loadGeminiProxy()
+
+    // GDPR — data export + account deletion (čl. 17, 20)
+    val gdprService = GdprService(storage = storageService)
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+    GdprDeletionWorker().start(scope = kotlinx.coroutines.GlobalScope)
 
     configureSecurity(jwtService, jwtConfig)
 
@@ -129,6 +144,7 @@ fun Application.module() {
             if (bankService != null) bankRoutes(bankService)
             geminiRoutes(geminiService)
             exportRoutes()
+            gdprRoutes(gdprService)
 
             // TODO (Sprint 8): billing endpoints
         }

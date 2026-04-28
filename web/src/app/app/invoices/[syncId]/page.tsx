@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { sync, api } from "@/lib/api";
+import { sync, api, idoklad } from "@/lib/api";
+import { getAccessToken } from "@/lib/auth-store";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
 import {
@@ -35,6 +36,7 @@ interface InvoiceData {
   fileKeys?: string[];
   linkedTransactionId?: string;
   profileId?: string;
+  idokladId?: string;
 }
 
 interface InvoiceItemData {
@@ -203,6 +205,16 @@ export default function InvoiceDetailPage() {
           </div>
         )}
       </header>
+
+      {r.idokladId && (
+        <IDokladActions
+          profileSyncId={profileSyncId ?? ""}
+          idokladId={r.idokladId}
+          isPaid={isPaid}
+          customerEmail={r.customerName ? null : null}
+          onDone={reload}
+        />
+      )}
 
       {fileKeys.length > 0 && <InvoiceFiles keys={fileKeys} />}
 
@@ -403,4 +415,117 @@ function fmtNum(n: string | number | undefined): string {
   const v = typeof n === "string" ? parseFloat(n) : (n ?? 0);
   if (!Number.isFinite(v)) return "—";
   return v.toLocaleString("cs-CZ");
+}
+
+function IDokladActions({
+  profileSyncId,
+  idokladId,
+  isPaid,
+  customerEmail: _customerEmail,
+  onDone,
+}: {
+  profileSyncId: string;
+  idokladId: string;
+  isPaid: boolean;
+  customerEmail: string | null;
+  onDone: () => void | Promise<void>;
+}) {
+  const [busy, setBusy] = useState<null | "pdf" | "paid" | "email">(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function downloadPdf() {
+    setBusy("pdf"); setMsg(null); setErr(null);
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      const res = await fetch(idoklad.pdfUrl(profileSyncId, idokladId), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `faktura-${idokladId}.pdf`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setErr(`PDF se nepodařilo stáhnout: ${e}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function markPaid() {
+    if (!confirm("Označit fakturu jako uhrazenou v iDokladu (k dnešnímu datu)?")) return;
+    setBusy("paid"); setMsg(null); setErr(null);
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      await idoklad.markPaid(token, profileSyncId, idokladId);
+      setMsg("Označeno jako uhrazené v iDokladu i Cointracku.");
+      await onDone();
+    } catch (e) {
+      setErr(`Mark-paid selhal: ${e}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function sendEmail() {
+    const recipient = prompt("Zadej email zákazníka (nebo nech prázdné, pokud má iDoklad uložený):");
+    if (recipient === null) return;
+    setBusy("email"); setMsg(null); setErr(null);
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      await idoklad.sendEmail(token, profileSyncId, idokladId, recipient || undefined);
+      setMsg("Email odeslán přes iDoklad.");
+    } catch (e) {
+      setErr(`Email selhal: ${e}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <section className="bg-blue-50 border border-blue-200 rounded-2xl p-5 space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="text-xs uppercase tracking-wide bg-blue-200 text-blue-900 px-2 py-0.5 rounded">
+          iDoklad
+        </span>
+        <span className="text-xs text-blue-900">
+          ID: <code>{idokladId}</code>
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={downloadPdf}
+          disabled={busy !== null}
+          className="h-9 px-3 rounded-lg bg-white border border-ink-300 hover:bg-ink-50 disabled:opacity-50 text-sm font-medium text-ink-900"
+        >
+          {busy === "pdf" ? "Stahuji…" : "📄 Stáhnout PDF"}
+        </button>
+        {!isPaid && (
+          <button
+            onClick={markPaid}
+            disabled={busy !== null}
+            className="h-9 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium"
+          >
+            {busy === "paid" ? "…" : "✓ Označit jako uhrazené"}
+          </button>
+        )}
+        <button
+          onClick={sendEmail}
+          disabled={busy !== null}
+          className="h-9 px-3 rounded-lg bg-white border border-ink-300 hover:bg-ink-50 disabled:opacity-50 text-sm font-medium text-ink-900"
+        >
+          {busy === "email" ? "Posílám…" : "✉️ Poslat zákazníkovi"}
+        </button>
+      </div>
+      {msg && <div className="text-sm text-emerald-700">{msg}</div>}
+      {err && <div className="text-sm text-red-700">{err}</div>}
+    </section>
+  );
 }

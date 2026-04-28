@@ -10,16 +10,19 @@ import org.jetbrains.exposed.sql.javatime.timestamp
  */
 
 object Users : UUIDTable("users") {
-    val email            = varchar("email", 255).uniqueIndex()
-    val emailVerifiedAt  = timestamp("email_verified_at").nullable()
-    val passwordHash     = varchar("password_hash", 255).nullable()
-    val displayName      = varchar("display_name", 128).nullable()
-    val locale           = varchar("locale", 8).default("cs")
-    val tier             = varchar("tier", 32).default("FREE")
-    val tierExpiresAt    = timestamp("tier_expires_at").nullable()
-    val createdAt        = timestamp("created_at")
-    val updatedAt        = timestamp("updated_at")
-    val deletedAt        = timestamp("deleted_at").nullable()
+    val email              = varchar("email", 255).uniqueIndex()
+    val emailVerifiedAt    = timestamp("email_verified_at").nullable()
+    val passwordHash       = varchar("password_hash", 255).nullable()
+    val displayName        = varchar("display_name", 128).nullable()
+    val locale             = varchar("locale", 8).default("cs")
+    val tier               = varchar("tier", 32).default("FREE")
+    val tierExpiresAt      = timestamp("tier_expires_at").nullable()
+    val createdAt          = timestamp("created_at")
+    val updatedAt          = timestamp("updated_at")
+    val deletedAt          = timestamp("deleted_at").nullable()
+    val deleteRequestedAt  = timestamp("delete_requested_at").nullable()
+    val deleteAfterAt      = timestamp("delete_after_at").nullable()
+    val tierReminderSentAt = timestamp("tier_reminder_sent_at").nullable()
 }
 
 object OAuthAccounts : UUIDTable("oauth_accounts") {

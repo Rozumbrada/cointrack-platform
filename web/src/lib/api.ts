@@ -122,6 +122,83 @@ export const auth = {
     }),
 };
 
+// ─── GDPR (data export + account deletion) ──────────────────────────
+export interface DeletionStatusDto {
+  requestedAt?: string | null;
+  deleteAfterAt?: string | null;
+  canCancel: boolean;
+}
+
+export const gdpr = {
+  /** GET /gdpr/export — vrací JSON, ale endpoint vrací attachment header.
+   *  Voláme přes raw fetch ať dostaneme blob a stáhneme. */
+  exportDownloadUrl: () => `${API_URL}/api/v1/gdpr/export`,
+
+  deletionStatus: (token: string) =>
+    api<DeletionStatusDto>("/api/v1/gdpr/delete", { token }),
+
+  requestDeletion: (token: string) =>
+    api<DeletionStatusDto>("/api/v1/gdpr/delete", { method: "POST", token }),
+
+  cancelDeletion: (token: string) =>
+    api<{ message: string }>("/api/v1/gdpr/delete", { method: "DELETE", token }),
+};
+
+// ─── iDoklad full proxy (V21) ───────────────────────────────────────
+export interface IDokladInvoiceItemDto {
+  name: string;
+  quantity?: number;
+  unitPrice: number;
+  unitName?: string;
+}
+
+export interface CreateIDokladInvoiceRequest {
+  profileId: string;
+  partnerName: string;
+  partnerEmail?: string;
+  partnerStreet?: string;
+  partnerCity?: string;
+  partnerPostalCode?: string;
+  partnerIco?: string;
+  partnerDic?: string;
+  dateOfIssue: string;     // YYYY-MM-DD
+  dateOfMaturity: string;  // YYYY-MM-DD
+  description?: string;
+  note?: string;
+  variableSymbol?: string;
+  currencyCode?: string;
+  items: IDokladInvoiceItemDto[];
+}
+
+export interface CreateIDokladInvoiceResponse {
+  idokladId: string;
+  invoiceNumber: string | null;
+  totalWithVat: string;
+  cointrackInvoiceSyncId: string;
+}
+
+export const idoklad = {
+  createInvoice: (token: string, req: CreateIDokladInvoiceRequest) =>
+    api<CreateIDokladInvoiceResponse>("/api/v1/idoklad/invoices", {
+      method: "POST", token, body: req,
+    }),
+
+  markPaid: (token: string, profileId: string, idokladId: string, date?: string) =>
+    api<{ ok: boolean }>(
+      `/api/v1/idoklad/profiles/${profileId}/invoices/${idokladId}/mark-paid${date ? `?date=${date}` : ""}`,
+      { method: "POST", token },
+    ),
+
+  pdfUrl: (profileId: string, idokladId: string) =>
+    `${API_URL}/api/v1/idoklad/profiles/${profileId}/invoices/${idokladId}/pdf`,
+
+  sendEmail: (token: string, profileId: string, idokladId: string, to?: string) =>
+    api<{ ok: boolean }>(
+      `/api/v1/idoklad/profiles/${profileId}/invoices/${idokladId}/send-email${to ? `?to=${encodeURIComponent(to)}` : ""}`,
+      { method: "POST", token },
+    ),
+};
+
 // ─── Sync pull (seznam všech entit) ─────────────────────────────────
 export interface SyncEntity {
   syncId: string;

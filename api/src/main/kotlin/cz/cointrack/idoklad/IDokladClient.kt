@@ -7,13 +7,22 @@ import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
+import io.ktor.client.request.post
+import io.ktor.client.request.put
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.Parameters
+import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.slf4j.LoggerFactory
 
 /**
@@ -152,6 +161,152 @@ class IDokladClient {
         val PriceWithVat: Double = 0.0,
         val VatRateType: String? = null,
     )
+
+    // ─── Vytvoření vystavené faktury ──────────────────────────────────
+    /**
+     * Minimum-viable invoice creation. Uživatel může poslat jen základní pole;
+     * iDoklad si dotáhne defaulty (dodavatel = aktuální firma, splatnost = 14 dní).
+     *
+     * Items.VatRateType: "Basic" (21%), "Reduced1" (15%), "Reduced2" (10%), "Zero" (0%).
+     * Pro neplátce DPH dáváme "Zero".
+     */
+    @Serializable
+    data class CreateInvoiceRequest(
+        val PartnerName: String,
+        val PartnerEmail: String? = null,
+        val PartnerStreet: String? = null,
+        val PartnerCity: String? = null,
+        val PartnerPostalCode: String? = null,
+        val PartnerIdentificationNumber: String? = null,
+        val PartnerVatIdentificationNumber: String? = null,
+        val DateOfIssue: String,           // YYYY-MM-DD
+        val DateOfMaturity: String,        // YYYY-MM-DD
+        val Description: String? = null,
+        val Note: String? = null,
+        val VariableSymbol: String? = null,
+        val Items: List<CreateInvoiceItem>,
+        val CurrencyCode: String = "CZK",
+        val IsVatPayer: Boolean = false,   // false = neplátce DPH
+    )
+
+    @Serializable
+    data class CreateInvoiceItem(
+        val Name: String,
+        val Amount: Double = 1.0,
+        val UnitPrice: Double,
+        val UnitName: String = "ks",
+        val VatRateType: String = "Zero",
+        val PriceType: String = "WithoutVat",  // pro neplátce DPH
+    )
+
+    suspend fun createInvoice(accessToken: String, req: CreateInvoiceRequest): IDokladInvoice {
+        // iDoklad API očekává minimálně Partner.* placky a Items[]; pro neplátce DPH
+        // stačí PriceType=WithoutVat + VatRateType=Zero.
+        val body = buildInvoiceJson(req)
+        val resp = client.post("https://api.idoklad.cz/v3/IssuedInvoices") {
+            bearerAuth(accessToken)
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+        if (!resp.status.isSuccess()) {
+            val body = resp.bodyAsText()
+            log.warn("iDoklad CreateInvoice failed: {} {}", resp.status, body.take(500))
+            throw IDokladException("CreateInvoice failed: ${resp.status} — ${body.take(300)}", resp.status)
+        }
+        return json.decodeFromString(IDokladInvoice.serializer(), resp.bodyAsText())
+    }
+
+    /** iDoklad mark-paid = PUT /IssuedInvoices/{id} se změnou IsPaid + DateOfPayment. */
+    suspend fun markInvoicePaid(accessToken: String, invoiceId: Int, dateOfPayment: String): IDokladInvoice {
+        val body = buildJsonObject {
+            put("Id", invoiceId)
+            put("IsPaid", true)
+            put("DateOfPayment", dateOfPayment)
+        }.toString()
+        val resp = client.put("https://api.idoklad.cz/v3/IssuedInvoices/$invoiceId") {
+            bearerAuth(accessToken)
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+        if (!resp.status.isSuccess()) {
+            val txt = resp.bodyAsText()
+            log.warn("iDoklad MarkPaid failed: {} {}", resp.status, txt.take(500))
+            throw IDokladException("MarkPaid failed: ${resp.status} — ${txt.take(200)}", resp.status)
+        }
+        return json.decodeFromString(IDokladInvoice.serializer(), resp.bodyAsText())
+    }
+
+    /** Stáhne PDF faktury jako ByteArray. */
+    suspend fun getInvoicePdf(accessToken: String, invoiceId: Int): ByteArray {
+        val resp = client.get("https://api.idoklad.cz/v3/IssuedInvoices/$invoiceId/Pdf") {
+            bearerAuth(accessToken)
+        }
+        if (!resp.status.isSuccess()) {
+            val txt = resp.bodyAsText()
+            log.warn("iDoklad PDF failed: {} {}", resp.status, txt.take(200))
+            throw IDokladException("Get PDF failed: ${resp.status}", resp.status)
+        }
+        return resp.bodyAsBytes()
+    }
+
+    /** Pošle fakturu emailem zákazníkovi (přes iDoklad). */
+    suspend fun sendInvoiceMail(accessToken: String, invoiceId: Int, to: String? = null) {
+        val body = buildJsonObject {
+            put("DocumentId", invoiceId)
+            if (to != null) put("EmailTo", to)
+        }.toString()
+        val resp = client.post("https://api.idoklad.cz/v3/Mails/IssuedInvoice") {
+            bearerAuth(accessToken)
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+        if (!resp.status.isSuccess()) {
+            val txt = resp.bodyAsText()
+            log.warn("iDoklad SendMail failed: {} {}", resp.status, txt.take(500))
+            throw IDokladException("Send mail failed: ${resp.status} — ${txt.take(200)}", resp.status)
+        }
+    }
+
+    private fun buildInvoiceJson(req: CreateInvoiceRequest): String {
+        // Sestavíme přes JsonObject — iDoklad má spoustu volitelných polí, takže si vystačíme s ručním buildem.
+        val items = req.Items.map {
+            buildJsonObject {
+                put("Name", it.Name)
+                put("Amount", it.Amount)
+                put("UnitPrice", it.UnitPrice)
+                put("UnitName", it.UnitName)
+                put("VatRateType", it.VatRateType)
+                put("PriceType", it.PriceType)
+            }
+        }
+        val obj = buildJsonObject {
+            put("PartnerContact", buildJsonObject {
+                put("CompanyName", req.PartnerName)
+                req.PartnerEmail?.let { put("Email", it) }
+                req.PartnerStreet?.let { put("Street", it) }
+                req.PartnerCity?.let { put("City", it) }
+                req.PartnerPostalCode?.let { put("PostalCode", it) }
+                req.PartnerIdentificationNumber?.let { put("IdentificationNumber", it) }
+                req.PartnerVatIdentificationNumber?.let { put("VatIdentificationNumber", it) }
+            })
+            put("DateOfIssue", req.DateOfIssue)
+            put("DateOfMaturity", req.DateOfMaturity)
+            req.Description?.let { put("Description", it) }
+            req.Note?.let { put("Note", it) }
+            req.VariableSymbol?.let { put("VariableSymbol", it) }
+            put("CurrencyId", currencyId(req.CurrencyCode))
+            put("IsVatPayer", req.IsVatPayer)
+            put("Items", kotlinx.serialization.json.JsonArray(items))
+        }
+        return obj.toString()
+    }
+
+    private fun currencyId(code: String): Int = when (code.uppercase()) {
+        "CZK" -> 1
+        "EUR" -> 2
+        "USD" -> 3
+        else -> 1
+    }
 }
 
 class IDokladException(message: String, val status: HttpStatusCode? = null) : RuntimeException(message)
