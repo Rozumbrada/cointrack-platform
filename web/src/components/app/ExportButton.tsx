@@ -1,15 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { withAuth } from "@/lib/auth-store";
 import { FormDialog, Field, inputClass } from "./FormDialog";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
-/**
- * Tlačítko + dialog pro export do Pohoda XML.
- * type="receipts" → /export/receipts.xml, type="invoices" → /export/invoices.xml
- */
 export function ExportButton({
   type,
   profileSyncId,
@@ -17,6 +14,7 @@ export function ExportButton({
   type: "receipts" | "invoices";
   profileSyncId: string | null;
 }) {
+  const t = useTranslations("export_button");
   const [open, setOpen] = useState(false);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -25,7 +23,7 @@ export function ExportButton({
 
   async function exportXml() {
     if (!profileSyncId) {
-      setErr("Není vybraný profil.");
+      setErr(t("no_profile"));
       return;
     }
     setExporting(true);
@@ -53,7 +51,7 @@ export function ExportButton({
       const cd = res.headers.get("Content-Disposition") ?? "";
       const filename =
         cd.match(/filename="?([^"]+)"?/)?.[1] ??
-        `cointrack-${type === "receipts" ? "uctenky" : "faktury"}.xml`;
+        (type === "receipts" ? t("filename_receipts") : t("filename_invoices"));
 
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
@@ -74,27 +72,20 @@ export function ExportButton({
         onClick={() => setOpen(true)}
         className="h-10 px-4 rounded-lg border border-ink-300 bg-white hover:bg-ink-50 text-sm font-medium text-ink-700"
       >
-        ⬇ Export Pohoda XML
+        {t("button")}
       </button>
       {open && (
         <FormDialog
-          title={
-            type === "receipts"
-              ? "Export účtenek do Pohoda XML"
-              : "Export faktur do Pohoda XML"
-          }
+          title={type === "receipts" ? t("title_receipts") : t("title_invoices")}
           onClose={() => setOpen(false)}
           onSave={exportXml}
           saving={exporting}
           error={err}
-          saveLabel="Stáhnout XML"
+          saveLabel={t("save_label")}
         >
-          <p className="text-sm text-ink-600">
-            Vygenerujeme XML soubor podle Pohoda XSD (voucher.xsd / invoice.xsd, version_2)
-            s daty pro aktuální profil. Necháš-li období prázdné, exportuje se všechno.
-          </p>
+          <p className="text-sm text-ink-600">{t("description")}</p>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Od (volitelné)">
+            <Field label={t("from_optional")}>
               <input
                 type="date"
                 value={from}
@@ -102,7 +93,7 @@ export function ExportButton({
                 className={inputClass}
               />
             </Field>
-            <Field label="Do (volitelné)">
+            <Field label={t("to_optional")}>
               <input
                 type="date"
                 value={to}

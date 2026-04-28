@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 
 export type Period = "7d" | "30d" | "3m" | "6m" | "1y" | "all" | "custom";
 
@@ -45,20 +46,21 @@ export function PeriodSelector({
   custom?: { from: string; to: string };
   onCustomChange?: (c: { from: string; to: string }) => void;
 }) {
+  const t = useTranslations("period_selector");
   const [pickerOpen, setPickerOpen] = useState(false);
   const options: Array<{ value: Period; label: string }> = [
-    { value: "7d", label: "7 dní" },
-    { value: "30d", label: "30 dní" },
-    { value: "3m", label: "3 měs." },
-    { value: "6m", label: "6 měs." },
-    { value: "1y", label: "1 rok" },
-    { value: "all", label: "Vše" },
+    { value: "7d", label: t("p_7d") },
+    { value: "30d", label: t("p_30d") },
+    { value: "3m", label: t("p_3m") },
+    { value: "6m", label: t("p_6m") },
+    { value: "1y", label: t("p_1y") },
+    { value: "all", label: t("p_all") },
   ];
 
   const customLabel =
     custom?.from && custom?.to
       ? `${formatShort(custom.from)} – ${formatShort(custom.to)}`
-      : "Vlastní";
+      : t("p_custom");
 
   return (
     <div className="flex flex-wrap items-center gap-2 self-start">
@@ -88,7 +90,7 @@ export function PeriodSelector({
                 : "text-ink-700 hover:bg-ink-50"
             }`}
           >
-            {period === "custom" ? customLabel : "Vlastní"}
+            {period === "custom" ? customLabel : t("p_custom")}
           </button>
         )}
       </div>
@@ -117,6 +119,7 @@ function CustomRangeDialog({
   onClose: () => void;
   onSave: (c: { from: string; to: string }) => void;
 }) {
+  const t = useTranslations("period_selector");
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
 
@@ -126,10 +129,10 @@ function CustomRangeDialog({
         className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-semibold text-ink-900">Vlastní období</h2>
+        <h2 className="text-lg font-semibold text-ink-900">{t("dialog_title")}</h2>
         <div className="space-y-3">
           <label className="block">
-            <span className="block text-xs font-medium text-ink-600 mb-1">Od</span>
+            <span className="block text-xs font-medium text-ink-600 mb-1">{t("from")}</span>
             <input
               type="date"
               value={from}
@@ -138,7 +141,7 @@ function CustomRangeDialog({
             />
           </label>
           <label className="block">
-            <span className="block text-xs font-medium text-ink-600 mb-1">Do</span>
+            <span className="block text-xs font-medium text-ink-600 mb-1">{t("to")}</span>
             <input
               type="date"
               value={to}
@@ -148,14 +151,14 @@ function CustomRangeDialog({
           </label>
         </div>
         {from && to && from > to && (
-          <div className="text-xs text-red-700">Začátek nesmí být po konci.</div>
+          <div className="text-xs text-red-700">{t("invalid_range")}</div>
         )}
         <div className="flex justify-end gap-2 pt-2">
           <button
             onClick={onClose}
             className="h-9 px-4 rounded-lg border border-ink-300 text-sm text-ink-700 hover:bg-ink-50"
           >
-            Zrušit
+            {t("cancel")}
           </button>
           <button
             onClick={() => {
@@ -165,7 +168,7 @@ function CustomRangeDialog({
             disabled={!from || !to || from > to}
             className="h-9 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-50"
           >
-            Použít
+            {t("apply")}
           </button>
         </div>
       </div>

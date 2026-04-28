@@ -116,6 +116,33 @@
       "pricing": "Detailed pricing →"
     }
   },
+  "export_button": {
+    "button": "⬇ Export Pohoda XML",
+    "title_receipts": "Export receipts to Pohoda XML",
+    "title_invoices": "Export invoices to Pohoda XML",
+    "save_label": "Download XML",
+    "description": "We'll generate an XML file per Pohoda XSD (voucher.xsd / invoice.xsd, version_2) with data for the current profile. Leave the date range empty to export everything.",
+    "from_optional": "From (optional)",
+    "to_optional": "To (optional)",
+    "no_profile": "No profile selected.",
+    "filename_receipts": "cointrack-receipts.xml",
+    "filename_invoices": "cointrack-invoices.xml"
+  },
+  "period_selector": {
+    "p_7d": "7 days",
+    "p_30d": "30 days",
+    "p_3m": "3 months",
+    "p_6m": "6 months",
+    "p_1y": "1 year",
+    "p_all": "All",
+    "p_custom": "Custom",
+    "dialog_title": "Custom range",
+    "from": "From",
+    "to": "To",
+    "invalid_range": "Start must not be after end.",
+    "cancel": "Cancel",
+    "apply": "Apply"
+  },
   "receipts_page": {
     "title": "Receipts",
     "subtitle": "Scanned receipts. Click a row for details.",

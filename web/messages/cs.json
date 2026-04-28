@@ -116,6 +116,33 @@
       "pricing": "Podrobný ceník →"
     }
   },
+  "export_button": {
+    "button": "⬇ Export Pohoda XML",
+    "title_receipts": "Export účtenek do Pohoda XML",
+    "title_invoices": "Export faktur do Pohoda XML",
+    "save_label": "Stáhnout XML",
+    "description": "Vygenerujeme XML soubor podle Pohoda XSD (voucher.xsd / invoice.xsd, version_2) s daty pro aktuální profil. Necháš-li období prázdné, exportuje se všechno.",
+    "from_optional": "Od (volitelné)",
+    "to_optional": "Do (volitelné)",
+    "no_profile": "Není vybraný profil.",
+    "filename_receipts": "cointrack-uctenky.xml",
+    "filename_invoices": "cointrack-faktury.xml"
+  },
+  "period_selector": {
+    "p_7d": "7 dní",
+    "p_30d": "30 dní",
+    "p_3m": "3 měs.",
+    "p_6m": "6 měs.",
+    "p_1y": "1 rok",
+    "p_all": "Vše",
+    "p_custom": "Vlastní",
+    "dialog_title": "Vlastní období",
+    "from": "Od",
+    "to": "Do",
+    "invalid_range": "Začátek nesmí být po konci.",
+    "cancel": "Zrušit",
+    "apply": "Použít"
+  },
   "receipts_page": {
     "title": "Účtenky",
     "subtitle": "Naskenované účtenky. Klikni na řádek pro detail.",
