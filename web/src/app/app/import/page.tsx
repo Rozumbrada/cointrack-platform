@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
+import { useTranslations } from "next-intl";
 import { useSyncData } from "@/lib/sync-hook";
 import { ServerAccount } from "@/lib/sync-types";
 import { sync } from "@/lib/api";
@@ -28,6 +29,7 @@ interface ColumnMap {
 }
 
 export default function ImportCsvPage() {
+  const t = useTranslations("import_csv");
   const { profileSyncId, entitiesByProfile, reload } = useSyncData();
   const accounts = entitiesByProfile<ServerAccount>("accounts");
   const [file, setFile] = useState<File | null>(null);
@@ -63,7 +65,7 @@ export default function ImportCsvPage() {
       const text = await readAsText(f);
       setRawText(text);
     } catch (e) {
-      setError(`Nelze přečíst soubor: ${e}`);
+      setError(t("read_failed", { error: String(e) }));
     }
   }
 
@@ -77,7 +79,7 @@ export default function ImportCsvPage() {
     if (!effectiveMap || !accountSyncId || !profileSyncId || rows.length === 0) return;
     setImporting(true);
     setError(null);
-    setStatus("Nahrávání…");
+    setStatus(t("uploading"));
     try {
       const now = new Date().toISOString();
       const entities = rows
@@ -111,12 +113,12 @@ export default function ImportCsvPage() {
           sync.push(t, { entities: { transactions: batch } }),
         );
         pushed += batch.length;
-        setStatus(`Nahrávám… ${pushed}/${entities.length}`);
+        setStatus(t("uploading_progress", { pushed, total: entities.length }));
       }
-      setStatus(`Hotovo — naimportováno ${pushed} transakcí.`);
+      setStatus(t("imported", { count: pushed }));
       await reload();
     } catch (e) {
-      setError(`Import selhal: ${e instanceof Error ? e.message : String(e)}`);
+      setError(t("import_failed", { error: e instanceof Error ? e.message : String(e) }));
       setStatus(null);
     } finally {
       setImporting(false);
@@ -126,11 +128,8 @@ export default function ImportCsvPage() {
   return (
     <div className="space-y-6 max-w-4xl">
       <div>
-        <h1 className="text-2xl font-semibold text-ink-900">Import CSV</h1>
-        <p className="text-sm text-ink-600 mt-1">
-          Nahraj CSV s transakcemi (Fio bank, Air Bank, generický CSV). Pro každý řádek
-          vytvoříme transakci a přiřadíme ji k vybranému účtu.
-        </p>
+        <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
+        <p className="text-sm text-ink-600 mt-1">{t("subtitle")}</p>
       </div>
 
       {/* Drop zone */}
@@ -147,12 +146,12 @@ export default function ImportCsvPage() {
               onClick={() => { setFile(null); setRawText(""); setManualMap({}); }}
               className="text-sm text-red-600 hover:underline"
             >
-              Odebrat
+              {t("remove")}
             </button>
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="text-sm text-ink-600">Přetáhni CSV sem nebo</div>
+            <div className="text-sm text-ink-600">{t("drop_here")}</div>
             <input
               type="file"
               accept=".csv,.txt,text/csv"
@@ -170,27 +169,27 @@ export default function ImportCsvPage() {
       {/* Detection results */}
       {parsed.headers.length > 0 && (
         <section className="bg-white rounded-2xl border border-ink-200 p-6 space-y-4">
-          <h2 className="font-semibold text-ink-900">Detekce sloupců</h2>
+          <h2 className="font-semibold text-ink-900">{t("detection_title")}</h2>
           <div className="text-sm text-ink-600">
-            Oddělovač: <code>{parsed.delimiter}</code> · Detekováno {parsed.rows.length} řádků
+            {t("delimiter")} <code>{parsed.delimiter}</code> · {t("rows_detected", { n: parsed.rows.length })}
           </div>
           <div className="grid grid-cols-2 gap-3 text-sm">
-            <ColumnPicker label="Datum *" value={effectiveMap?.date} headers={parsed.headers}
+            <ColumnPicker label={t("col_date")} value={effectiveMap?.date} headers={parsed.headers}
               onChange={(v) => setManualMap((m) => ({ ...m, date: v }))} />
-            <ColumnPicker label="Částka *" value={effectiveMap?.amount} headers={parsed.headers}
+            <ColumnPicker label={t("col_amount")} value={effectiveMap?.amount} headers={parsed.headers}
               onChange={(v) => setManualMap((m) => ({ ...m, amount: v }))} />
-            <ColumnPicker label="Měna" value={effectiveMap?.currency} headers={parsed.headers}
+            <ColumnPicker label={t("col_currency")} value={effectiveMap?.currency} headers={parsed.headers}
               onChange={(v) => setManualMap((m) => ({ ...m, currency: v }))} />
-            <ColumnPicker label="Popis" value={effectiveMap?.description} headers={parsed.headers}
+            <ColumnPicker label={t("col_description")} value={effectiveMap?.description} headers={parsed.headers}
               onChange={(v) => setManualMap((m) => ({ ...m, description: v }))} />
-            <ColumnPicker label="Protistrana" value={effectiveMap?.counterparty} headers={parsed.headers}
+            <ColumnPicker label={t("col_counterparty")} value={effectiveMap?.counterparty} headers={parsed.headers}
               onChange={(v) => setManualMap((m) => ({ ...m, counterparty: v }))} />
-            <ColumnPicker label="VS" value={effectiveMap?.vs} headers={parsed.headers}
+            <ColumnPicker label={t("col_vs")} value={effectiveMap?.vs} headers={parsed.headers}
               onChange={(v) => setManualMap((m) => ({ ...m, vs: v }))} />
           </div>
           {!effectiveMap && (
             <div className="text-xs text-amber-700">
-              Vyber alespoň sloupec Datum a Částka.
+              {t("select_date_amount")}
             </div>
           )}
         </section>
@@ -200,17 +199,17 @@ export default function ImportCsvPage() {
       {effectiveMap && rows.length > 0 && (
         <section className="bg-white rounded-2xl border border-ink-200 p-6 space-y-4">
           <h2 className="font-semibold text-ink-900">
-            Náhled ({validCount}/{rows.length} platných)
+            {t("preview_title", { valid: validCount, total: rows.length })}
           </h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-ink-50 text-xs text-ink-600 uppercase">
                 <tr>
-                  <th className="text-left p-2">Datum</th>
-                  <th className="text-right p-2">Částka</th>
-                  <th className="text-left p-2">Popis</th>
-                  <th className="text-left p-2">Protistrana</th>
-                  <th className="text-left p-2">VS</th>
+                  <th className="text-left p-2">{t("th_date")}</th>
+                  <th className="text-right p-2">{t("th_amount")}</th>
+                  <th className="text-left p-2">{t("th_description")}</th>
+                  <th className="text-left p-2">{t("th_counterparty")}</th>
+                  <th className="text-left p-2">{t("th_vs")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -228,7 +227,7 @@ export default function ImportCsvPage() {
               </tbody>
             </table>
             {rows.length > 8 && (
-              <div className="text-xs text-ink-500 mt-2">… a {rows.length - 8} dalších řádků</div>
+              <div className="text-xs text-ink-500 mt-2">{t("preview_more", { n: rows.length - 8 })}</div>
             )}
           </div>
         </section>
@@ -237,13 +236,13 @@ export default function ImportCsvPage() {
       {/* Account picker + import */}
       {effectiveMap && rows.length > 0 && (
         <section className="bg-white rounded-2xl border border-ink-200 p-6 space-y-4">
-          <h2 className="font-semibold text-ink-900">Cílový účet</h2>
+          <h2 className="font-semibold text-ink-900">{t("target_account")}</h2>
           <select
             value={accountSyncId}
             onChange={(e) => setAccountSyncId(e.target.value)}
             className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm"
           >
-            <option value="">— vyber účet —</option>
+            <option value="">{t("select_account")}</option>
             {accounts.map((a) => (
               <option key={a.syncId} value={a.syncId}>
                 {a.data.name} ({a.data.currency})
@@ -262,7 +261,7 @@ export default function ImportCsvPage() {
             disabled={!accountSyncId || importing || validCount === 0}
             className="h-10 px-6 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium"
           >
-            {importing ? "Nahrávám…" : `Importovat ${validCount} transakcí`}
+            {importing ? t("importing_btn") : t("import_btn", { count: validCount })}
           </button>
         </section>
       )}

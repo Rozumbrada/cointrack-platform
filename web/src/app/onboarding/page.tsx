@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { sync, auth, UserDto } from "@/lib/api";
 import { withAuth, getAccessToken } from "@/lib/auth-store";
 import { setCurrentProfileSyncId } from "@/lib/profile-store";
@@ -12,6 +13,7 @@ type AccountType = "CASH" | "BANK";
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const t = useTranslations("onboarding");
   const [user, setUser] = useState<UserDto | null>(null);
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
@@ -56,7 +58,7 @@ export default function OnboardingPage() {
 
   async function createProfile() {
     if (!profileName.trim()) {
-      setError("Vyplň název profilu.");
+      setError(t("fill_profile_name"));
       return;
     }
     setBusy(true); setError(null);
@@ -91,7 +93,7 @@ export default function OnboardingPage() {
       setAccountName(profileType === "BUSINESS" ? "Firemní účet" : "Hlavní účet");
       setStep(2);
     } catch (e) {
-      setError(`Vytvoření profilu selhalo: ${e instanceof Error ? e.message : String(e)}`);
+      setError(t("create_profile_failed", { error: e instanceof Error ? e.message : String(e) }));
     } finally {
       setBusy(false);
     }
@@ -100,7 +102,7 @@ export default function OnboardingPage() {
   async function createAccount() {
     if (!createdProfileSyncId) return;
     if (!accountName.trim()) {
-      setError("Vyplň název účtu.");
+      setError(t("fill_account_name"));
       return;
     }
     setBusy(true); setError(null);
@@ -131,7 +133,7 @@ export default function OnboardingPage() {
       );
       setStep(3);
     } catch (e) {
-      setError(`Vytvoření účtu selhalo: ${e instanceof Error ? e.message : String(e)}`);
+      setError(t("create_account_failed", { error: e instanceof Error ? e.message : String(e) }));
     } finally {
       setBusy(false);
     }
@@ -146,10 +148,8 @@ export default function OnboardingPage() {
     <div className="min-h-screen bg-ink-50 flex items-center justify-center p-6">
       <div className="bg-white rounded-2xl shadow-lg max-w-xl w-full p-8 space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold text-ink-900">Vítej v Cointracku 👋</h1>
-          <p className="text-sm text-ink-600 mt-1">
-            Pomůžeme ti se za minutu rozjet. Krok {step}/3.
-          </p>
+          <h1 className="text-2xl font-semibold text-ink-900">{t("welcome")}</h1>
+          <p className="text-sm text-ink-600 mt-1">{t("step_progress", { step })}</p>
           <div className="flex gap-2 mt-4">
             {[1, 2, 3].map((n) => (
               <div
@@ -166,40 +166,38 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        {/* ─── Krok 1: Profil ─── */}
+        {/* ─── Step 1: Profile ─── */}
         {step === 1 && (
           <div className="space-y-4">
             <div>
-              <h2 className="font-semibold text-ink-900 mb-1">Vytvoříme tvůj první profil</h2>
-              <p className="text-sm text-ink-600">
-                Profil sdružuje tvé finance — můžeš jich mít víc (osobní, firemní, …).
-              </p>
+              <h2 className="font-semibold text-ink-900 mb-1">{t("step1_title")}</h2>
+              <p className="text-sm text-ink-600">{t("step1_desc")}</p>
             </div>
 
             <div className="grid grid-cols-3 gap-2 text-sm">
-              {(["PERSONAL", "BUSINESS", "ORGANIZATION"] as const).map((t) => (
+              {(["PERSONAL", "BUSINESS", "ORGANIZATION"] as const).map((pt) => (
                 <button
-                  key={t}
-                  onClick={() => setProfileType(t)}
+                  key={pt}
+                  onClick={() => setProfileType(pt)}
                   className={`p-3 rounded-xl border text-left ${
-                    profileType === t
+                    profileType === pt
                       ? "border-brand-600 bg-brand-50 text-brand-900"
                       : "border-ink-200 hover:border-ink-300"
                   }`}
                 >
-                  <div className="text-xl mb-1">{t === "PERSONAL" ? "👤" : t === "BUSINESS" ? "🏢" : "🏛️"}</div>
+                  <div className="text-xl mb-1">{pt === "PERSONAL" ? "👤" : pt === "BUSINESS" ? "🏢" : "🏛️"}</div>
                   <div className="font-medium text-xs">
-                    {t === "PERSONAL" ? "Osobní" : t === "BUSINESS" ? "Podnikatel" : "Organizace"}
+                    {pt === "PERSONAL" ? t("type_personal") : pt === "BUSINESS" ? t("type_business") : t("type_organization")}
                   </div>
                 </button>
               ))}
             </div>
 
             <label className="block">
-              <div className="text-xs text-ink-600 mb-1">Název profilu *</div>
+              <div className="text-xs text-ink-600 mb-1">{t("profile_name")}</div>
               <input
                 type="text"
-                placeholder={profileType === "BUSINESS" ? "Drdla — OSVČ" : "Já"}
+                placeholder={profileType === "BUSINESS" ? t("profile_name_placeholder_business") : t("profile_name_placeholder_personal")}
                 value={profileName}
                 onChange={(e) => setProfileName(e.target.value)}
                 className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm"
@@ -209,7 +207,7 @@ export default function OnboardingPage() {
             {profileType !== "PERSONAL" && (
               <>
                 <label className="block">
-                  <div className="text-xs text-ink-600 mb-1">Název firmy / organizace</div>
+                  <div className="text-xs text-ink-600 mb-1">{t("company_name")}</div>
                   <input
                     type="text"
                     value={companyName}
@@ -218,7 +216,7 @@ export default function OnboardingPage() {
                   />
                 </label>
                 <label className="block">
-                  <div className="text-xs text-ink-600 mb-1">IČO</div>
+                  <div className="text-xs text-ink-600 mb-1">{t("company_ico")}</div>
                   <input
                     type="text"
                     value={companyIco}
@@ -234,43 +232,40 @@ export default function OnboardingPage() {
               disabled={busy}
               className="w-full h-11 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium"
             >
-              {busy ? "Vytvářím…" : "Pokračovat →"}
+              {busy ? t("creating") : t("continue")}
             </button>
           </div>
         )}
 
-        {/* ─── Krok 2: Účet ─── */}
+        {/* ─── Step 2: Account ─── */}
         {step === 2 && (
           <div className="space-y-4">
             <div>
-              <h2 className="font-semibold text-ink-900 mb-1">Přidej první účet</h2>
-              <p className="text-sm text-ink-600">
-                Účet je místo, kam patří transakce — bankovní karta, hotovostní pokladna apod.
-                Další můžeš přidat kdykoli později.
-              </p>
+              <h2 className="font-semibold text-ink-900 mb-1">{t("step2_title")}</h2>
+              <p className="text-sm text-ink-600">{t("step2_desc")}</p>
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-sm">
-              {(["BANK", "CASH"] as const).map((t) => (
+              {(["BANK", "CASH"] as const).map((at) => (
                 <button
-                  key={t}
-                  onClick={() => setAccountType(t)}
+                  key={at}
+                  onClick={() => setAccountType(at)}
                   className={`p-3 rounded-xl border text-left ${
-                    accountType === t
+                    accountType === at
                       ? "border-brand-600 bg-brand-50 text-brand-900"
                       : "border-ink-200 hover:border-ink-300"
                   }`}
                 >
-                  <div className="text-xl mb-1">{t === "BANK" ? "🏦" : "💵"}</div>
+                  <div className="text-xl mb-1">{at === "BANK" ? "🏦" : "💵"}</div>
                   <div className="font-medium text-xs">
-                    {t === "BANK" ? "Bankovní" : "Hotovost"}
+                    {at === "BANK" ? t("type_bank") : t("type_cash")}
                   </div>
                 </button>
               ))}
             </div>
 
             <label className="block">
-              <div className="text-xs text-ink-600 mb-1">Název účtu *</div>
+              <div className="text-xs text-ink-600 mb-1">{t("account_name")}</div>
               <input
                 type="text"
                 value={accountName}
@@ -280,7 +275,7 @@ export default function OnboardingPage() {
             </label>
 
             <label className="block">
-              <div className="text-xs text-ink-600 mb-1">Počáteční zůstatek (CZK)</div>
+              <div className="text-xs text-ink-600 mb-1">{t("initial_balance")}</div>
               <input
                 type="number"
                 step="0.01"
@@ -296,69 +291,47 @@ export default function OnboardingPage() {
                 disabled={busy}
                 className="h-11 px-4 rounded-lg border border-ink-300 hover:bg-ink-50 text-sm font-medium text-ink-900"
               >
-                ← Zpět
+                {t("back")}
               </button>
               <button
                 onClick={createAccount}
                 disabled={busy}
                 className="flex-1 h-11 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium"
               >
-                {busy ? "Vytvářím…" : "Pokračovat →"}
+                {busy ? t("creating") : t("continue")}
               </button>
             </div>
           </div>
         )}
 
-        {/* ─── Krok 3: Hotovo ─── */}
+        {/* ─── Step 3: Done ─── */}
         {step === 3 && (
           <div className="space-y-4">
             <div className="text-center py-4">
               <div className="text-5xl mb-2">🎉</div>
-              <h2 className="text-xl font-semibold text-ink-900">Hotovo!</h2>
-              <p className="text-sm text-ink-600 mt-1">
-                Tvůj profil je nastaven a první účet vytvořený. Co dál?
-              </p>
+              <h2 className="text-xl font-semibold text-ink-900">{t("step3_title")}</h2>
+              <p className="text-sm text-ink-600 mt-1">{t("step3_desc")}</p>
             </div>
 
             <div className="space-y-2 text-sm">
-              <Link
-                href="/app/import"
-                className="block p-3 rounded-lg border border-ink-200 hover:border-brand-300 hover:bg-brand-50/30"
-              >
-                <div className="font-medium text-ink-900">📥 Importovat transakce z CSV</div>
-                <div className="text-xs text-ink-600 mt-0.5">
-                  Stáhni si pohyby z banky a nahraj je sem.
-                </div>
+              <Link href="/app/import" className="block p-3 rounded-lg border border-ink-200 hover:border-brand-300 hover:bg-brand-50/30">
+                <div className="font-medium text-ink-900">{t("next_import")}</div>
+                <div className="text-xs text-ink-600 mt-0.5">{t("next_import_desc")}</div>
               </Link>
 
-              <Link
-                href="/app/banks"
-                className="block p-3 rounded-lg border border-ink-200 hover:border-brand-300 hover:bg-brand-50/30"
-              >
-                <div className="font-medium text-ink-900">🏦 Připojit banku (Fio token)</div>
-                <div className="text-xs text-ink-600 mt-0.5">
-                  Automatická synchronizace pohybů z Fio bank.
-                </div>
+              <Link href="/app/banks" className="block p-3 rounded-lg border border-ink-200 hover:border-brand-300 hover:bg-brand-50/30">
+                <div className="font-medium text-ink-900">{t("next_banks")}</div>
+                <div className="text-xs text-ink-600 mt-0.5">{t("next_banks_desc")}</div>
               </Link>
 
-              <Link
-                href="/app/transactions"
-                className="block p-3 rounded-lg border border-ink-200 hover:border-brand-300 hover:bg-brand-50/30"
-              >
-                <div className="font-medium text-ink-900">✏️ Přidat první transakci ručně</div>
-                <div className="text-xs text-ink-600 mt-0.5">
-                  Zadávej příjmy a výdaje sám.
-                </div>
+              <Link href="/app/transactions" className="block p-3 rounded-lg border border-ink-200 hover:border-brand-300 hover:bg-brand-50/30">
+                <div className="font-medium text-ink-900">{t("next_tx")}</div>
+                <div className="text-xs text-ink-600 mt-0.5">{t("next_tx_desc")}</div>
               </Link>
 
-              <Link
-                href="/app/upgrade"
-                className="block p-3 rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100"
-              >
-                <div className="font-medium text-amber-900">💎 Aktivovat plné funkce</div>
-                <div className="text-xs text-amber-800 mt-0.5">
-                  Cloud sync, OCR účtenek, organizační účty…
-                </div>
+              <Link href="/app/upgrade" className="block p-3 rounded-lg border border-amber-200 bg-amber-50 hover:bg-amber-100">
+                <div className="font-medium text-amber-900">{t("next_upgrade")}</div>
+                <div className="text-xs text-amber-800 mt-0.5">{t("next_upgrade_desc")}</div>
               </Link>
             </div>
 
@@ -366,7 +339,7 @@ export default function OnboardingPage() {
               onClick={finish}
               className="w-full h-11 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
             >
-              Přejít na dashboard
+              {t("go_dashboard")}
             </button>
           </div>
         )}
