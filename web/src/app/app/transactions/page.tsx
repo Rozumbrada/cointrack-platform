@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
@@ -20,6 +21,8 @@ import {
 } from "@/components/app/PeriodSelector";
 
 export default function TransactionsPage() {
+  const t = useTranslations("transactions_page");
+  const locale = useLocale();
   const { loading, error, entitiesByProfile, diagnose, profileSyncId, reload } = useSyncData();
   const [filter, setFilter] = useState<"ALL" | "INCOME" | "EXPENSE">("ALL");
   /** "ALL" = vše, "CASH" = bez vazby na účet, jinak account syncId */
@@ -165,11 +168,11 @@ export default function TransactionsPage() {
     }
   }
 
-  if (loading) return <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>;
+  if (loading) return <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>;
   if (error)
     return (
       <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">
-        Chyba: {error}
+        {t("error_prefix")} {error}
       </div>
     );
 
@@ -179,8 +182,8 @@ export default function TransactionsPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold text-ink-900">Transakce</h1>
-          <p className="text-sm text-ink-600 mt-1">Všechny transakce pro aktivní profil.</p>
+          <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
+          <p className="text-sm text-ink-600 mt-1">{t("subtitle")}</p>
         </div>
         <div className="flex items-center gap-3">
           <PeriodSelector
@@ -193,17 +196,15 @@ export default function TransactionsPage() {
             href="/app/transactions/new"
             className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium grid place-items-center"
           >
-            + Nová
+            {t("new_transaction")}
           </Link>
         </div>
       </div>
 
       {!loading && diag.total > 0 && diag.matched === 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-          <div className="font-medium mb-1">Žádné transakce pro aktivní profil</div>
-          <p className="text-amber-700">
-            Máš {diag.total} transakcí celkem, ale žádná z nich nepatří do právě vybraného profilu.
-          </p>
+          <div className="font-medium mb-1">{t("no_results_for_profile_title")}</div>
+          <p className="text-amber-700">{t("no_results_for_profile_desc", { total: diag.total })}</p>
         </div>
       )}
 
@@ -216,7 +217,7 @@ export default function TransactionsPage() {
       <div className="flex flex-col sm:flex-row gap-3">
         <input
           type="text"
-          placeholder="Hledat v popisu nebo obchodníkovi…"
+          placeholder={t("search_placeholder")}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="flex-1 h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
@@ -230,7 +231,7 @@ export default function TransactionsPage() {
                 filter === f ? "bg-brand-50 text-brand-700" : "text-ink-700 hover:bg-ink-50"
               }`}
             >
-              {f === "ALL" ? "Vše" : f === "INCOME" ? "Příjmy" : "Výdaje"}
+              {f === "ALL" ? t("filter_all") : f === "INCOME" ? t("filter_income") : t("filter_expense")}
             </button>
           ))}
         </div>
@@ -239,8 +240,8 @@ export default function TransactionsPage() {
           onChange={(e) => setAccountFilter(e.target.value)}
           className="h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-700"
         >
-          <option value="ALL">Všechny účty + hotovost</option>
-          <option value="CASH">💵 Pouze hotovost</option>
+          <option value="ALL">{t("all_accounts_cash")}</option>
+          <option value="CASH">{t("cash_only")}</option>
           <option disabled>──────────</option>
           {accounts.map((a) => (
             <option key={a.syncId} value={a.syncId}>
@@ -253,9 +254,9 @@ export default function TransactionsPage() {
       {inSelectionMode && (
         <div className="sticky top-2 z-10 bg-brand-600 text-white rounded-xl p-3 flex items-center justify-between shadow-lg">
           <div className="flex items-center gap-3">
-            <span className="font-medium">Vybráno: {selected.size}</span>
+            <span className="font-medium">{t("selected", { n: selected.size })}</span>
             <button onClick={clearSelection} className="text-sm text-white/80 hover:text-white">
-              Zrušit výběr
+              {t("clear_selection")}
             </button>
           </div>
           <button
@@ -263,14 +264,14 @@ export default function TransactionsPage() {
             disabled={bulkDeleting}
             className="h-9 px-4 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white text-sm font-medium"
           >
-            {bulkDeleting ? "Mažu…" : `🗑 Smazat ${selected.size}`}
+            {bulkDeleting ? t("deleting") : t("delete_count", { n: selected.size })}
           </button>
         </div>
       )}
 
       <section className="bg-white rounded-2xl border border-ink-200">
         {filtered.length === 0 ? (
-          <div className="p-8 text-center text-ink-500 text-sm">Žádné výsledky.</div>
+          <div className="p-8 text-center text-ink-500 text-sm">{t("no_results")}</div>
         ) : (
           <>
             <div className="px-6 py-2 border-b border-ink-100 flex items-center gap-3 text-xs text-ink-600">
@@ -281,7 +282,7 @@ export default function TransactionsPage() {
                 className="w-4 h-4 cursor-pointer"
               />
               <span>
-                {allSelected ? "Zrušit výběr všech" : `Vybrat všech ${filtered.length}`}
+                {allSelected ? t("deselect_all") : t("select_all", { n: filtered.length })}
               </span>
             </div>
             <ul className="divide-y divide-ink-100">
@@ -317,7 +318,7 @@ export default function TransactionsPage() {
                           currentCatSyncId: tx.categorySyncId,
                         });
                       }}
-                      title="Změnit kategorii"
+                      title={t("change_category")}
                       disabled={tx.type === "TRANSFER"}
                       className="w-9 h-9 rounded-full grid place-items-center shrink-0 hover:ring-2 hover:ring-brand-500/40 transition-all disabled:opacity-60 disabled:cursor-default"
                       style={{
@@ -344,21 +345,21 @@ export default function TransactionsPage() {
                     >
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-ink-900 truncate">
-                          {tx.description || tx.merchant || "(bez popisu)"}
+                          {tx.description || tx.merchant || t("no_description")}
                         </div>
                         <div className="text-xs text-ink-500 flex items-center gap-2 flex-wrap">
-                          <span>{formatDate(tx.date)}</span>
+                          <span>{formatDate(tx.date, locale)}</span>
                           {cat && <span className="text-ink-400 truncate">· {cat.name}</span>}
                           {!tx.accountSyncId && (
                             <span className="text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wide">
-                              💵 hotovost
+                              {t("cash_badge")}
                             </span>
                           )}
                         </div>
                       </div>
                       <div className={`text-sm font-semibold tabular-nums ${amountColor}`}>
                         {sign}
-                        {fmt(tx.amount, tx.currency)}
+                        {fmt(tx.amount, tx.currency, locale)}
                       </div>
                     </Link>
                   </li>
@@ -392,17 +393,17 @@ export default function TransactionsPage() {
   );
 }
 
-function fmt(amount: number, currency: string): string {
-  return new Intl.NumberFormat("cs-CZ", {
+function fmt(amount: number, currency: string, locale: string = "cs-CZ"): string {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
     maximumFractionDigits: 2,
   }).format(amount);
 }
 
-function formatDate(iso: string): string {
+function formatDate(iso: string, locale: string = "cs-CZ"): string {
   try {
-    return new Intl.DateTimeFormat("cs-CZ", {
+    return new Intl.DateTimeFormat(locale, {
       day: "numeric",
       month: "short",
       year: "numeric",

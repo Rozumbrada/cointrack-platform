@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import { sync, SyncEntity } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { getCurrentProfileSyncId } from "@/lib/profile-store";
@@ -34,6 +35,8 @@ interface AccountListEntry {
 }
 
 export default function InvoicesPage() {
+  const t = useTranslations("invoices_page");
+  const locale = useLocale();
   const [invoices, setInvoices] = useState<SyncEntity[]>([]);
   const [accounts, setAccounts] = useState<AccountListEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,8 +117,8 @@ export default function InvoicesPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold text-ink-900">Faktury</h1>
-          <p className="text-sm text-ink-600 mt-1">Přijaté a vystavené faktury.</p>
+          <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
+          <p className="text-sm text-ink-600 mt-1">{t("subtitle")}</p>
         </div>
         <div className="flex items-center gap-3">
           <PeriodSelector
@@ -129,7 +132,7 @@ export default function InvoicesPage() {
             onClick={() => setCreating(true)}
             className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
           >
-            + Nová faktura
+            {t("new_invoice")}
           </button>
         </div>
       </div>
@@ -137,7 +140,7 @@ export default function InvoicesPage() {
       <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
         <input
           type="text"
-          placeholder="Hledat číslo faktury / partner…"
+          placeholder={t("search_placeholder")}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="flex-1 min-w-[14rem] h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
@@ -151,7 +154,7 @@ export default function InvoicesPage() {
                 filter === f ? "bg-brand-50 text-brand-700" : "text-ink-700 hover:bg-ink-50"
               }`}
             >
-              {f === "ALL" ? "Vše" : f === "RECEIVED" ? "Přijaté" : "Vystavené"}
+              {f === "ALL" ? t("filter_all") : f === "RECEIVED" ? t("filter_received") : t("filter_issued")}
             </button>
           ))}
         </div>
@@ -164,7 +167,7 @@ export default function InvoicesPage() {
                 paidFilter === f ? "bg-brand-50 text-brand-700" : "text-ink-700 hover:bg-ink-50"
               }`}
             >
-              {f === "ALL" ? "Vše" : f === "PAID" ? "Uhrazené" : "Neuhrazené"}
+              {f === "ALL" ? t("filter_all") : f === "PAID" ? t("filter_paid") : t("filter_unpaid")}
             </button>
           ))}
         </div>
@@ -173,7 +176,7 @@ export default function InvoicesPage() {
           onChange={(e) => setAccountFilter(e.target.value)}
           className="h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
         >
-          <option value="ALL">Všechny účty</option>
+          <option value="ALL">{t("filter_account_all")}</option>
           {accounts.map((a) => (
             <option key={a.syncId} value={a.syncId}>{a.data.name}</option>
           ))}
@@ -187,26 +190,24 @@ export default function InvoicesPage() {
       )}
 
       {loading ? (
-        <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>
+        <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>
       ) : filtered.length === 0 ? (
         <div className="bg-white rounded-2xl border border-ink-200 p-12 text-center">
           <div className="text-4xl mb-3">📄</div>
-          <div className="font-medium text-ink-900">Žádné faktury</div>
-          <p className="text-sm text-ink-600 mt-2">
-            Fakturace zatím jen přes mobilní aplikaci. Upload z webu přijde v příští verzi.
-          </p>
+          <div className="font-medium text-ink-900">{t("empty_title")}</div>
+          <p className="text-sm text-ink-600 mt-2">{t("empty_desc")}</p>
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-ink-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-ink-50 text-ink-600 text-left text-xs uppercase tracking-wide">
               <tr>
-                <th className="px-6 py-3 font-medium">Číslo</th>
-                <th className="px-6 py-3 font-medium">Partner</th>
-                <th className="px-6 py-3 font-medium">Datum</th>
-                <th className="px-6 py-3 font-medium">Typ</th>
-                <th className="px-6 py-3 font-medium">Stav</th>
-                <th className="px-6 py-3 font-medium text-right">Částka</th>
+                <th className="px-6 py-3 font-medium">{t("th_number")}</th>
+                <th className="px-6 py-3 font-medium">{t("th_partner")}</th>
+                <th className="px-6 py-3 font-medium">{t("th_date")}</th>
+                <th className="px-6 py-3 font-medium">{t("th_type")}</th>
+                <th className="px-6 py-3 font-medium">{t("th_status")}</th>
+                <th className="px-6 py-3 font-medium text-right">{t("th_amount")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-100">
@@ -233,18 +234,18 @@ export default function InvoicesPage() {
                           : "bg-emerald-100 text-emerald-700"
                       }`}
                     >
-                      {r.data.isExpense ? "přijatá" : "vystavená"}
+                      {r.data.isExpense ? t("type_received") : t("type_issued")}
                     </span>
                   </td>
                   <td className="px-6 py-3">
                     {r.data.paid || r.data.linkedTransactionId ? (
-                      <span className="text-emerald-700 text-xs font-medium">✓ uhrazeno</span>
+                      <span className="text-emerald-700 text-xs font-medium">{t("status_paid")}</span>
                     ) : (
-                      <span className="text-ink-500 text-xs">nezaplaceno</span>
+                      <span className="text-ink-500 text-xs">{t("status_unpaid")}</span>
                     )}
                   </td>
                   <td className="px-6 py-3 text-right font-semibold tabular-nums text-ink-900">
-                    {fmtAmt(r.data.totalWithVat, r.data.currency ?? "CZK")}
+                    {fmtAmt(r.data.totalWithVat, r.data.currency ?? "CZK", locale)}
                   </td>
                 </tr>
               ))}
@@ -272,9 +273,9 @@ export default function InvoicesPage() {
   );
 }
 
-function fmtAmt(amount: string | number | undefined, currency: string): string {
+function fmtAmt(amount: string | number | undefined, currency: string, locale: string = "cs-CZ"): string {
   const n = typeof amount === "string" ? parseFloat(amount) : (amount ?? 0);
-  return new Intl.NumberFormat("cs-CZ", {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
     maximumFractionDigits: 2,

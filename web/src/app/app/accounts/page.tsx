@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import { useSyncData } from "@/lib/sync-hook";
 
 interface AccountData {
@@ -15,11 +16,12 @@ interface AccountData {
   bankIban?: string;
   bankAccountNumber?: string;
   bankCode?: string;
-  /** Pohoda → Banky → Zkratka pro auto-mapování při XML importu (max 19 znaků). */
   pohodaShortcut?: string;
 }
 
 export default function AccountsPage() {
+  const t = useTranslations("accounts_page");
+  const locale = useLocale();
   const { loading, error, entitiesByProfile } = useSyncData();
   const accounts = entitiesByProfile<AccountData>("accounts");
 
@@ -29,22 +31,37 @@ export default function AccountsPage() {
   );
 
   const totals = useMemo(() => {
-    const t: Record<string, number> = {};
+    const m: Record<string, number> = {};
     for (const a of accounts) {
       if (!a.data.includeInTotal) continue;
-      t[a.data.currency] = (t[a.data.currency] ?? 0) + a.data.balance;
+      m[a.data.currency] = (m[a.data.currency] ?? 0) + a.data.balance;
     }
-    return t;
+    return m;
   }, [accounts]);
+
+  function fmt(amount: number, currency: string): string {
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  }
+
+  function labelType(type: AccountData["type"]): string {
+    switch (type) {
+      case "CASH": return t("type_cash");
+      case "BANK": return t("type_bank");
+      case "CREDIT_CARD": return t("type_credit");
+      case "INVESTMENT": return t("type_investment");
+      default: return t("type_other");
+    }
+  }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-ink-900">Bankovní účty / hotovost</h1>
-        <p className="text-sm text-ink-600 mt-1">
-          Všechny tvoje účty — hotovost, banka, kreditní karty, investice.
-          Editace se provádí v mobilní aplikaci.
-        </p>
+        <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
+        <p className="text-sm text-ink-600 mt-1">{t("subtitle")}</p>
       </div>
 
       {error && (
@@ -53,11 +70,10 @@ export default function AccountsPage() {
         </div>
       )}
 
-      {/* Souhrn */}
       {Object.keys(totals).length > 0 && (
         <div className="bg-white rounded-2xl border border-ink-200 p-5">
           <div className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-2">
-            Celkový zůstatek
+            {t("total_balance")}
           </div>
           {Object.entries(totals).map(([cur, amount]) => (
             <div key={cur} className="text-2xl font-semibold text-ink-900">
@@ -68,14 +84,12 @@ export default function AccountsPage() {
       )}
 
       {loading ? (
-        <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>
+        <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>
       ) : sorted.length === 0 ? (
         <div className="bg-white rounded-2xl border border-ink-200 p-12 text-center">
           <div className="text-4xl mb-3">💳</div>
-          <div className="font-medium text-ink-900">Žádné účty</div>
-          <p className="text-sm text-ink-600 mt-2">
-            Vytvoř účet v mobilní aplikaci nebo napoj banku.
-          </p>
+          <div className="font-medium text-ink-900">{t("empty_title")}</div>
+          <p className="text-sm text-ink-600 mt-2">{t("empty_desc")}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -112,26 +126,26 @@ export default function AccountsPage() {
               </div>
               {!a.data.includeInTotal && (
                 <div className="text-[10px] uppercase text-ink-500 mt-2">
-                  nezapočítává se do souhrnu
+                  {t("excluded_from_total")}
                 </div>
               )}
               {(a.data.bankAccountNumber || a.data.bankCode || a.data.bankIban) && (
                 <div className="mt-3 pt-3 border-t border-ink-100 space-y-1 text-xs text-ink-600">
                   {a.data.bankAccountNumber && a.data.bankCode && (
                     <div>
-                      <span className="text-ink-500">Číslo účtu: </span>
+                      <span className="text-ink-500">{t("account_number")} </span>
                       <span className="font-mono">{a.data.bankAccountNumber}/{a.data.bankCode}</span>
                     </div>
                   )}
                   {a.data.bankIban && (
                     <div>
-                      <span className="text-ink-500">IBAN: </span>
+                      <span className="text-ink-500">{t("iban")} </span>
                       <span className="font-mono">{a.data.bankIban}</span>
                     </div>
                   )}
                   {a.data.pohodaShortcut && (
                     <div>
-                      <span className="text-ink-500">Pohoda Zkratka: </span>
+                      <span className="text-ink-500">{t("pohoda_shortcut")} </span>
                       <span className="font-mono font-medium">{a.data.pohodaShortcut}</span>
                     </div>
                   )}
@@ -155,16 +169,6 @@ function iconForType(t: AccountData["type"]): string {
   }
 }
 
-function labelType(t: AccountData["type"]): string {
-  switch (t) {
-    case "CASH": return "Hotovost";
-    case "BANK": return "Bankovní";
-    case "CREDIT_CARD": return "Kreditní karta";
-    case "INVESTMENT": return "Investiční";
-    default: return "Ostatní";
-  }
-}
-
 function colorFromInt(c?: number): string {
   if (!c) return "#E5E7EB";
   const n = c >>> 0;
@@ -172,12 +176,4 @@ function colorFromInt(c?: number): string {
   const g = (n >> 8) & 0xff;
   const b = n & 0xff;
   return `rgba(${r}, ${g}, ${b}, 0.2)`;
-}
-
-function fmt(amount: number, currency: string): string {
-  return new Intl.NumberFormat("cs-CZ", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 2,
-  }).format(amount);
 }
