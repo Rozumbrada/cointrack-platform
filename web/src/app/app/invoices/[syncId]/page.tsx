@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { sync, api, idoklad } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth-store";
 import { withAuth } from "@/lib/auth-store";
@@ -51,6 +52,7 @@ interface InvoiceItemData {
 
 export default function InvoiceDetailPage() {
   const router = useRouter();
+  const t = useTranslations("invoice_detail");
   const params = useParams<{ syncId: string }>();
   const { loading, error, entitiesByProfile, rawEntities, profileSyncId, reload } = useSyncData();
 
@@ -101,7 +103,7 @@ export default function InvoiceDetailPage() {
     }
   }
 
-  if (loading) return <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>;
+  if (loading) return <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>;
   if (error)
     return (
       <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">
@@ -165,12 +167,12 @@ export default function InvoiceDetailPage() {
             </div>
             <p className="text-sm text-ink-600">{partner ?? "—"}</p>
             <div className="text-xs text-ink-500 mt-1 flex gap-3">
-              {r.issueDate && <span>Vystaveno: {r.issueDate}</span>}
-              {r.dueDate && <span>Splatnost: {r.dueDate}</span>}
+              {r.issueDate && <span>{t("issued_label")} {r.issueDate}</span>}
+              {r.dueDate && <span>{t("due_label")} {r.dueDate}</span>}
             </div>
           </div>
           <div className="text-right">
-            <div className="text-xs text-ink-500 uppercase tracking-wide">Celkem</div>
+            <div className="text-xs text-ink-500 uppercase tracking-wide">{t("total")}</div>
             <div className="text-2xl font-semibold text-ink-900 tabular-nums">
               {fmtAmt(r.totalWithVat, currency)}
             </div>
@@ -190,18 +192,18 @@ export default function InvoiceDetailPage() {
         {(r.supplierIco || r.supplierDic || r.supplierStreet || r.supplierCity ||
           r.variableSymbol || r.bankAccount || r.paymentMethod) && (
           <div className="mt-4 pt-4 border-t border-ink-100 grid grid-cols-2 gap-2 text-sm">
-            {r.supplierIco && <Field label="IČO dodavatele" value={r.supplierIco} />}
-            {r.supplierDic && <Field label="DIČ dodavatele" value={r.supplierDic} />}
-            {r.supplierStreet && <Field label="Ulice" value={r.supplierStreet} />}
+            {r.supplierIco && <Field label={t("supplier_ico")} value={r.supplierIco} />}
+            {r.supplierDic && <Field label={t("supplier_dic")} value={r.supplierDic} />}
+            {r.supplierStreet && <Field label={t("supplier_street")} value={r.supplierStreet} />}
             {(r.supplierCity || r.supplierZip) && (
               <Field
-                label="Město"
+                label={t("supplier_city")}
                 value={[r.supplierZip, r.supplierCity].filter(Boolean).join(" ")}
               />
             )}
-            {r.variableSymbol && <Field label="Variabilní symbol" value={r.variableSymbol} />}
-            {r.bankAccount && <Field label="Bank. účet" value={r.bankAccount} />}
-            {r.paymentMethod && <Field label="Platba" value={r.paymentMethod} />}
+            {r.variableSymbol && <Field label={t("vs_label")} value={r.variableSymbol} />}
+            {r.bankAccount && <Field label={t("bank_account")} value={r.bankAccount} />}
+            {r.paymentMethod && <Field label={t("payment")} value={r.paymentMethod} />}
           </div>
         )}
       </header>
@@ -221,16 +223,16 @@ export default function InvoiceDetailPage() {
       {items.length > 0 && (
         <section className="bg-white rounded-2xl border border-ink-200 overflow-hidden">
           <div className="px-6 py-3 border-b border-ink-200">
-            <h2 className="font-semibold text-ink-900">Položky</h2>
+            <h2 className="font-semibold text-ink-900">{t("items")}</h2>
           </div>
           <table className="w-full text-sm">
             <thead className="bg-ink-50 text-ink-600 text-left text-xs uppercase tracking-wide">
               <tr>
-                <th className="px-6 py-3 font-medium">Název</th>
-                <th className="px-6 py-3 font-medium text-right">Ks</th>
-                <th className="px-6 py-3 font-medium text-right">Jedn. cena</th>
-                <th className="px-6 py-3 font-medium text-right">DPH</th>
-                <th className="px-6 py-3 font-medium text-right">Celkem</th>
+                <th className="px-6 py-3 font-medium">{t("th_name")}</th>
+                <th className="px-6 py-3 font-medium text-right">{t("th_qty")}</th>
+                <th className="px-6 py-3 font-medium text-right">{t("th_unit_price")}</th>
+                <th className="px-6 py-3 font-medium text-right">{t("th_vat")}</th>
+                <th className="px-6 py-3 font-medium text-right">{t("th_total")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-100">
@@ -260,7 +262,7 @@ export default function InvoiceDetailPage() {
 
       {r.note && (
         <section className="bg-white rounded-2xl border border-ink-200 p-6">
-          <h2 className="font-semibold text-ink-900 mb-2">Poznámka</h2>
+          <h2 className="font-semibold text-ink-900 mb-2">{t("note")}</h2>
           <p className="text-sm text-ink-700 whitespace-pre-wrap">{r.note}</p>
         </section>
       )}
@@ -314,6 +316,7 @@ export default function InvoiceDetailPage() {
 }
 
 function InvoiceFiles({ keys }: { keys: string[] }) {
+  const t = useTranslations("invoice_detail");
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [done, setDone] = useState(false);
@@ -348,7 +351,7 @@ function InvoiceFiles({ keys }: { keys: string[] }) {
 
   return (
     <section className="bg-white rounded-2xl border border-ink-200 p-6">
-      <h2 className="font-semibold text-ink-900 mb-3">Přílohy</h2>
+      <h2 className="font-semibold text-ink-900 mb-3">{t("files")}</h2>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {keys.map((k) => {
           const isPdf = k.toLowerCase().endsWith(".pdf");
@@ -361,7 +364,7 @@ function InvoiceFiles({ keys }: { keys: string[] }) {
                       <div>
                         <div className="text-4xl mb-2">📄</div>
                         <div className="text-xs text-ink-700 break-all">{k.split("/").pop()}</div>
-                        <div className="text-xs text-brand-600 mt-1">Otevřít PDF</div>
+                        <div className="text-xs text-brand-600 mt-1">{t("open_pdf")}</div>
                       </div>
                     </div>
                   ) : (
@@ -430,6 +433,7 @@ function IDokladActions({
   customerEmail: string | null;
   onDone: () => void | Promise<void>;
 }) {
+  const t = useTranslations("invoice_detail");
   const [busy, setBusy] = useState<null | "pdf" | "paid" | "email">(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -458,13 +462,13 @@ function IDokladActions({
   }
 
   async function markPaid() {
-    if (!confirm("Označit fakturu jako uhrazenou v iDokladu (k dnešnímu datu)?")) return;
+    if (!confirm(t("idoklad_mark_paid_confirm"))) return;
     setBusy("paid"); setMsg(null); setErr(null);
     const token = getAccessToken();
     if (!token) return;
     try {
       await idoklad.markPaid(token, profileSyncId, idokladId);
-      setMsg("Označeno jako uhrazené v iDokladu i Cointracku.");
+      setMsg(t("idoklad_marked_paid"));
       await onDone();
     } catch (e) {
       setErr(`Mark-paid selhal: ${e}`);
@@ -474,14 +478,14 @@ function IDokladActions({
   }
 
   async function sendEmail() {
-    const recipient = prompt("Zadej email zákazníka (nebo nech prázdné, pokud má iDoklad uložený):");
+    const recipient = prompt(t("idoklad_email_prompt"));
     if (recipient === null) return;
     setBusy("email"); setMsg(null); setErr(null);
     const token = getAccessToken();
     if (!token) return;
     try {
       await idoklad.sendEmail(token, profileSyncId, idokladId, recipient || undefined);
-      setMsg("Email odeslán přes iDoklad.");
+      setMsg(t("idoklad_email_sent"));
     } catch (e) {
       setErr(`Email selhal: ${e}`);
     } finally {
@@ -505,7 +509,7 @@ function IDokladActions({
           disabled={busy !== null}
           className="h-9 px-3 rounded-lg bg-white border border-ink-300 hover:bg-ink-50 disabled:opacity-50 text-sm font-medium text-ink-900"
         >
-          {busy === "pdf" ? "Stahuji…" : "📄 Stáhnout PDF"}
+          {busy === "pdf" ? t("downloading") : t("download_pdf")}
         </button>
         {!isPaid && (
           <button
@@ -513,7 +517,7 @@ function IDokladActions({
             disabled={busy !== null}
             className="h-9 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium"
           >
-            {busy === "paid" ? "…" : "✓ Označit jako uhrazené"}
+            {busy === "paid" ? "…" : t("mark_paid")}
           </button>
         )}
         <button
@@ -521,7 +525,7 @@ function IDokladActions({
           disabled={busy !== null}
           className="h-9 px-3 rounded-lg bg-white border border-ink-300 hover:bg-ink-50 disabled:opacity-50 text-sm font-medium text-ink-900"
         >
-          {busy === "email" ? "Posílám…" : "✉️ Poslat zákazníkovi"}
+          {busy === "email" ? t("sending") : t("send_to_customer")}
         </button>
       </div>
       {msg && <div className="text-sm text-emerald-700">{msg}</div>}
