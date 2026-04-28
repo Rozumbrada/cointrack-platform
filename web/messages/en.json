@@ -116,6 +116,31 @@
       "pricing": "Detailed pricing →"
     }
   },
+  "goals_page": {
+    "title": "Goals",
+    "subtitle": "Savings goals — vacation, car, emergency fund…",
+    "new_goal": "+ New goal",
+    "loading": "Loading…",
+    "error_prefix": "Error:",
+    "empty_title": "No goals",
+    "empty_desc": "Click \"New goal\".",
+    "edit": "Edit",
+    "delete": "Delete",
+    "done": "done",
+    "deadline_prefix": "by",
+    "delete_confirm": "Delete goal \"{name}\"?",
+    "editor_new": "New goal",
+    "editor_edit": "Edit goal",
+    "field_name": "Name",
+    "field_target": "Target amount",
+    "field_current": "Saved so far",
+    "field_currency": "Currency",
+    "field_deadline": "Deadline",
+    "field_note": "Note",
+    "fill_name": "Please fill in the goal name.",
+    "fill_target": "Please fill in the target amount.",
+    "no_profile": "No profile selected."
+  },
   "exchange_rates_page": {
     "title": "Exchange rates",
     "subtitle": "Current currency rates from ExchangeRate-API.",

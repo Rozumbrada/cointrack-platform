@@ -116,6 +116,31 @@
       "pricing": "Podrobný ceník →"
     }
   },
+  "goals_page": {
+    "title": "Cíle",
+    "subtitle": "Spořicí cíle — na dovolenou, na auto, rezervu…",
+    "new_goal": "+ Nový cíl",
+    "loading": "Načítám…",
+    "error_prefix": "Chyba:",
+    "empty_title": "Žádné cíle",
+    "empty_desc": "Klikni na „Nový cíl\".",
+    "edit": "Upravit",
+    "delete": "Smazat",
+    "done": "hotovo",
+    "deadline_prefix": "do",
+    "delete_confirm": "Smazat cíl \"{name}\"?",
+    "editor_new": "Nový cíl",
+    "editor_edit": "Upravit cíl",
+    "field_name": "Název",
+    "field_target": "Cílová částka",
+    "field_current": "Naspořeno",
+    "field_currency": "Měna",
+    "field_deadline": "Termín",
+    "field_note": "Poznámka",
+    "fill_name": "Vyplň název cíle.",
+    "fill_target": "Vyplň cílovou částku.",
+    "no_profile": "Není vybraný profil."
+  },
   "exchange_rates_page": {
     "title": "Kurzy měn",
     "subtitle": "Aktuální měnové kurzy z ExchangeRate-API.",

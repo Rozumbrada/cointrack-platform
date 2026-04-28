@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
@@ -20,15 +21,17 @@ interface GoalData {
 type GoalRow = { syncId: string; data: GoalData };
 
 export default function GoalsPage() {
+  const t = useTranslations("goals_page");
+  const locale = useLocale();
   const { loading, error, entitiesByProfile, profileSyncId, reload } = useSyncData();
   const goals = entitiesByProfile<GoalData>("goals");
   const [editing, setEditing] = useState<GoalRow | "new" | null>(null);
 
   async function onDelete(row: GoalRow) {
-    if (!confirm(`Smazat cíl "${row.data.name}"?`)) return;
+    if (!confirm(t("delete_confirm", { name: row.data.name }))) return;
     const now = new Date().toISOString();
-    await withAuth((t) =>
-      sync.push(t, {
+    await withAuth((tk) =>
+      sync.push(tk, {
         entities: {
           goals: [
             {
@@ -49,32 +52,30 @@ export default function GoalsPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold text-ink-900">Cíle</h1>
-          <p className="text-sm text-ink-600 mt-1">
-            Spořicí cíle — na dovolenou, na auto, rezervu…
-          </p>
+          <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
+          <p className="text-sm text-ink-600 mt-1">{t("subtitle")}</p>
         </div>
         <button
           onClick={() => setEditing("new")}
           className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
         >
-          + Nový cíl
+          {t("new_goal")}
         </button>
       </div>
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">
-          Chyba: {error}
+          {t("error_prefix")} {error}
         </div>
       )}
 
       {loading ? (
-        <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>
+        <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>
       ) : goals.length === 0 ? (
         <div className="bg-white rounded-2xl border border-ink-200 p-12 text-center">
           <div className="text-4xl mb-3">🎯</div>
-          <div className="font-medium text-ink-900">Žádné cíle</div>
-          <p className="text-sm text-ink-600 mt-2">Klikni na „Nový cíl".</p>
+          <div className="font-medium text-ink-900">{t("empty_title")}</div>
+          <p className="text-sm text-ink-600 mt-2">{t("empty_desc")}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -95,33 +96,33 @@ export default function GoalsPage() {
                   <div className="min-w-0 flex-1">
                     <div className="font-medium text-ink-900 truncate">{g.data.name}</div>
                     {g.data.deadline && (
-                      <div className="text-xs text-ink-500">do {g.data.deadline}</div>
+                      <div className="text-xs text-ink-500">{t("deadline_prefix")} {g.data.deadline}</div>
                     )}
                   </div>
                   <div className="opacity-0 group-hover:opacity-100 flex gap-1">
                     <button
                       onClick={() => setEditing(g)}
                       className="text-ink-500 hover:text-ink-700 px-1"
-                      title="Upravit"
+                      title={t("edit")}
                     >
                       ✏️
                     </button>
                     <button
                       onClick={() => onDelete(g)}
                       className="text-red-500 hover:text-red-700 px-1"
-                      title="Smazat"
+                      title={t("delete")}
                     >
                       🗑
                     </button>
                   </div>
                   {done && (
                     <span className="text-[10px] uppercase tracking-wide bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">
-                      hotovo
+                      {t("done")}
                     </span>
                   )}
                 </div>
                 <div className="text-sm text-ink-600 mb-2 tabular-nums">
-                  {fmt(current, g.data.currency)} / {fmt(target, g.data.currency)}
+                  {fmt(current, g.data.currency, locale)} / {fmt(target, g.data.currency, locale)}
                 </div>
                 <div className="h-2 rounded-full bg-ink-100 overflow-hidden">
                   <div
@@ -162,6 +163,7 @@ function GoalEditor({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations("goals_page");
   const [name, setName] = useState(initial?.data.name ?? "");
   const [target, setTarget] = useState(initial?.data.targetAmount ?? "");
   const [current, setCurrent] = useState(initial?.data.currentAmount ?? "0");
@@ -172,10 +174,10 @@ function GoalEditor({
   const [err, setErr] = useState<string | null>(null);
 
   async function save() {
-    if (!profileSyncId) return setErr("Není vybraný profil.");
-    if (!name.trim()) return setErr("Vyplň název cíle.");
-    const t = parseFloat(target.replace(",", "."));
-    if (!t || t <= 0) return setErr("Vyplň cílovou částku.");
+    if (!profileSyncId) return setErr(t("no_profile"));
+    if (!name.trim()) return setErr(t("fill_name"));
+    const tnum = parseFloat(target.replace(",", "."));
+    if (!tnum || tnum <= 0) return setErr(t("fill_target"));
     const c = parseFloat(current.replace(",", ".")) || 0;
 
     setSaving(true);
@@ -185,7 +187,7 @@ function GoalEditor({
       const data: GoalData = {
         profileId: profileSyncId,
         name: name.trim(),
-        targetAmount: t.toFixed(2),
+        targetAmount: tnum.toFixed(2),
         currentAmount: c.toFixed(2),
         currency,
         color: initial?.data.color,
@@ -216,13 +218,13 @@ function GoalEditor({
 
   return (
     <FormDialog
-      title={initial ? "Upravit cíl" : "Nový cíl"}
+      title={initial ? t("editor_edit") : t("editor_new")}
       onClose={onClose}
       onSave={save}
       saving={saving}
       error={err}
     >
-      <Field label="Název">
+      <Field label={t("field_name")}>
         <input
           type="text"
           value={name}
@@ -232,7 +234,7 @@ function GoalEditor({
         />
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Cílová částka">
+        <Field label={t("field_target")}>
           <input
             type="text"
             inputMode="decimal"
@@ -241,7 +243,7 @@ function GoalEditor({
             className={inputClass}
           />
         </Field>
-        <Field label="Naspořeno">
+        <Field label={t("field_current")}>
           <input
             type="text"
             inputMode="decimal"
@@ -252,7 +254,7 @@ function GoalEditor({
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Měna">
+        <Field label={t("field_currency")}>
           <select
             value={currency}
             onChange={(e) => setCurrency(e.target.value)}
@@ -263,7 +265,7 @@ function GoalEditor({
             ))}
           </select>
         </Field>
-        <Field label="Termín">
+        <Field label={t("field_deadline")}>
           <input
             type="date"
             value={deadline}
@@ -272,7 +274,7 @@ function GoalEditor({
           />
         </Field>
       </div>
-      <Field label="Poznámka">
+      <Field label={t("field_note")}>
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -293,8 +295,8 @@ function colorFromInt(c?: number): string {
   return `rgba(${r}, ${g}, ${b}, 0.2)`;
 }
 
-function fmt(amount: number, currency: string): string {
-  return new Intl.NumberFormat("cs-CZ", {
+function fmt(amount: number, currency: string, locale: string = "cs-CZ"): string {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
     maximumFractionDigits: 0,
