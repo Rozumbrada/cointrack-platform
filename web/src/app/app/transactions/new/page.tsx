@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
@@ -10,6 +11,7 @@ import { ServerAccount, ServerCategory, ServerTransaction } from "@/lib/sync-typ
 
 export default function NewTransactionPage() {
   const router = useRouter();
+  const t = useTranslations("transaction_form");
   const { entitiesByProfile, profileSyncId } = useSyncData();
   const accounts = entitiesByProfile<ServerAccount>("accounts");
   const categories = entitiesByProfile<ServerCategory>("categories");
@@ -24,7 +26,6 @@ export default function NewTransactionPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Auto-select prvního účtu když se načtou
   if (!accountId && accounts.length > 0) {
     setAccountId(accounts[0].syncId);
   }
@@ -46,17 +47,16 @@ export default function NewTransactionPage() {
     const amt = Number.parseFloat(amount.replace(",", "."));
 
     if (!profileSyncId) {
-      setError("Není vybraný profil.");
+      setError(t("no_profile"));
       return;
     }
-    // accountId == "__cash__" → hotovostní tx bez vazby na účet
     const isCash = accountId === "__cash__";
     if (!isCash && !accountId) {
-      setError("Vyber účet (nebo Hotovost).");
+      setError(t("select_account"));
       return;
     }
     if (!amt || Number.isNaN(amt) || amt <= 0) {
-      setError("Zadej platnou částku.");
+      setError(t("invalid_amount"));
       return;
     }
 
@@ -81,8 +81,8 @@ export default function NewTransactionPage() {
         isTransfer: type === "TRANSFER",
       };
 
-      await withAuth((t) =>
-        sync.push(t, {
+      await withAuth((tk) =>
+        sync.push(tk, {
           entities: {
             transactions: [
               {
@@ -106,12 +106,10 @@ export default function NewTransactionPage() {
     <div className="max-w-xl space-y-6">
       <div>
         <Link href="/app/transactions" className="text-sm text-brand-600 hover:text-brand-700">
-          ← Zpět na transakce
+          {t("back")}
         </Link>
-        <h1 className="text-2xl font-semibold text-ink-900 mt-2">Nová transakce</h1>
-        <p className="text-sm text-ink-600 mt-1">
-          Záznam se sesynchronizuje do mobilní aplikace.
-        </p>
+        <h1 className="text-2xl font-semibold text-ink-900 mt-2">{t("new_title")}</h1>
+        <p className="text-sm text-ink-600 mt-1">{t("subtitle")}</p>
       </div>
 
       {error && (
@@ -122,45 +120,45 @@ export default function NewTransactionPage() {
 
       <form onSubmit={onSubmit} className="bg-white rounded-2xl border border-ink-200 p-6 space-y-4">
         <div className="flex rounded-lg border border-ink-300 overflow-hidden">
-          {(["EXPENSE", "INCOME", "TRANSFER"] as const).map((t) => (
+          {(["EXPENSE", "INCOME", "TRANSFER"] as const).map((tp) => (
             <button
-              key={t}
+              key={tp}
               type="button"
-              onClick={() => setType(t)}
+              onClick={() => setType(tp)}
               className={`flex-1 py-3 text-sm font-medium ${
-                type === t
-                  ? t === "EXPENSE"
+                type === tp
+                  ? tp === "EXPENSE"
                     ? "bg-red-50 text-red-700"
-                    : t === "INCOME"
+                    : tp === "INCOME"
                       ? "bg-emerald-50 text-emerald-700"
                       : "bg-ink-100 text-ink-700"
                   : "text-ink-700 hover:bg-ink-50"
               }`}
             >
-              {t === "EXPENSE" ? "Výdaj" : t === "INCOME" ? "Příjem" : "Převod"}
+              {tp === "EXPENSE" ? t("type_expense") : tp === "INCOME" ? t("type_income") : t("type_transfer")}
             </button>
           ))}
         </div>
 
-        <Field label="Částka">
+        <Field label={t("field_amount")}>
           <input
             type="text"
             inputMode="decimal"
             autoFocus
-            placeholder="0,00"
+            placeholder={t("amount_placeholder")}
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-lg text-ink-900 tabular-nums focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
           />
         </Field>
 
-        <Field label="Účet">
+        <Field label={t("field_account")}>
           <select
             value={accountId}
             onChange={(e) => setAccountId(e.target.value)}
             className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900"
           >
-            <option value="__cash__">💵 Hotovost (bez vazby na účet)</option>
+            <option value="__cash__">{t("cash_option")}</option>
             {accounts.length > 0 && <option disabled>──────────</option>}
             {accounts.map((a) => (
               <option key={a.syncId} value={a.syncId}>
@@ -171,13 +169,13 @@ export default function NewTransactionPage() {
         </Field>
 
         {type !== "TRANSFER" && (
-          <Field label="Kategorie (volitelné)">
+          <Field label={t("field_category")}>
             <select
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
               className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900"
             >
-              <option value="">Bez kategorie</option>
+              <option value="">{t("no_category")}</option>
               {filteredCategories.map((c) => (
                 <option key={c.syncId} value={c.syncId}>
                   {c.data.name}
@@ -187,7 +185,7 @@ export default function NewTransactionPage() {
           </Field>
         )}
 
-        <Field label="Datum">
+        <Field label={t("field_date")}>
           <input
             type="date"
             value={date}
@@ -196,22 +194,22 @@ export default function NewTransactionPage() {
           />
         </Field>
 
-        <Field label="Obchodník (volitelné)">
+        <Field label={t("field_merchant")}>
           <input
             type="text"
             value={merchant}
             onChange={(e) => setMerchant(e.target.value)}
-            placeholder="Albert, Lidl, …"
+            placeholder={t("merchant_placeholder")}
             className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
           />
         </Field>
 
-        <Field label="Poznámka">
+        <Field label={t("field_description")}>
           <input
             type="text"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="např. Oběd v Makru"
+            placeholder={t("description_placeholder")}
             className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
           />
         </Field>
@@ -221,14 +219,14 @@ export default function NewTransactionPage() {
             href="/app/transactions"
             className="flex-1 h-11 rounded-lg border border-ink-300 bg-white hover:bg-ink-50 grid place-items-center text-sm font-medium text-ink-900"
           >
-            Zrušit
+            {t("cancel")}
           </Link>
           <button
             type="submit"
             disabled={saving}
             className="flex-1 h-11 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white text-sm font-medium"
           >
-            {saving ? "Ukládám…" : "Uložit"}
+            {saving ? t("saving") : t("save")}
           </button>
         </div>
       </form>
