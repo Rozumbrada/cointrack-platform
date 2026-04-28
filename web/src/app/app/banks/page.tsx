@@ -2,6 +2,7 @@
 
 // Sprint 8 v2 — bank ↔ profile assignment UI (force rebuild marker)
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { bank, BankConnectionDto, BankAccountExtDto, ApiError, sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 
@@ -12,6 +13,7 @@ interface ProfileLite {
 }
 
 export default function BanksPage() {
+  const t = useTranslations("banks_page");
   const [connections, setConnections] = useState<BankConnectionDto[]>([]);
   const [profiles, setProfiles] = useState<ProfileLite[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,7 +75,7 @@ export default function BanksPage() {
   }
 
   async function onDelete(id: string) {
-    if (!confirm("Opravdu odpojit banku? Transakce zůstanou.")) return;
+    if (!confirm(t("delete_confirm"))) return;
     try {
       await withAuth((t) => bank.delete(t, id));
       await load();
@@ -104,10 +106,9 @@ export default function BanksPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-ink-900">Banky</h1>
+          <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
           <p className="text-sm text-ink-600 mt-1">
-            Napojení na bankovní účty přes PSD2 (Salt Edge). Po napojení{" "}
-            <strong>přiřaď účty k profilům</strong> — data se neimportují automaticky.
+            {t("subtitle_pre")} <strong>{t("subtitle_b")}</strong> {t("subtitle_post")}
           </p>
         </div>
         <button
@@ -115,7 +116,7 @@ export default function BanksPage() {
           disabled={connecting}
           className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-60"
         >
-          {connecting ? "Otevírám…" : "+ Přidat banku"}
+          {connecting ? t("opening") : t("add_bank")}
         </button>
       </div>
 
@@ -126,9 +127,13 @@ export default function BanksPage() {
       )}
 
       {loading ? (
-        <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>
+        <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>
       ) : connections.length === 0 ? (
-        <EmptyBanksV8 />
+        <div className="bg-white rounded-2xl border border-ink-200 p-12 text-center">
+          <div className="text-4xl mb-3">🏦</div>
+          <div className="font-medium text-ink-900">{t("empty_title")}</div>
+          <p className="text-sm text-ink-600 mt-2">{t("empty_desc")}</p>
+        </div>
       ) : (
         <div className="space-y-4">
           {connections.map((c) => (
@@ -146,21 +151,8 @@ export default function BanksPage() {
       )}
 
       <div className="text-xs text-ink-500 bg-ink-50 border border-ink-200 rounded-lg p-3">
-        💡 Bankovní účty existují na úrovni tvého Cointrack účtu. K profilu (osobní / firemní /
-        skupina) je přiřazuješ ručně. Data se importují jen do přiřazených profilů.
+        {t("info_box")}
       </div>
-    </div>
-  );
-}
-
-function EmptyBanksV8() {
-  return (
-    <div className="bg-white rounded-2xl border border-ink-200 p-12 text-center">
-      <div className="text-4xl mb-3">🏦</div>
-      <div className="font-medium text-ink-900">Žádná banka není napojená</div>
-      <p className="text-sm text-ink-600 mt-2">
-        Klikni na „Přidat banku". Potřebuješ PSD2 přihlášení do své online banky.
-      </p>
     </div>
   );
 }
@@ -180,6 +172,7 @@ function BankCardV8({
   onAssign: (accountId: string, profileId: string, autoImport: boolean) => void;
   onUnassign: (accountId: string, profileId: string) => void;
 }) {
+  const t = useTranslations("banks_page");
   const isActive = conn.status.toLowerCase() === "active";
   const expiresInDays = conn.consentExpiresAt
     ? Math.floor(
@@ -196,7 +189,7 @@ function BankCardV8({
         </div>
         <div className="flex-1 min-w-0">
           <div className="font-medium text-ink-900 truncate">
-            {conn.providerName || conn.providerCode || "Banka"}
+            {conn.providerName || conn.providerCode || t("bank_default_name")}
           </div>
           <div className="text-xs text-ink-600 mt-0.5">
             <span
@@ -208,7 +201,7 @@ function BankCardV8({
                     : "text-ink-500"
               }
             >
-              {labelStatus(conn.status)}
+              {labelStatus(conn.status, t)}
             </span>
           </div>
         </div>
@@ -218,14 +211,14 @@ function BankCardV8({
               onClick={onReconnect}
               className="h-9 px-3 rounded-lg border border-brand-300 bg-brand-50 text-brand-700 text-sm hover:bg-brand-100"
             >
-              Obnovit
+              {t("renew")}
             </button>
           )}
           <button
             onClick={onDelete}
             className="h-9 px-3 rounded-lg border border-red-200 text-red-700 text-sm hover:bg-red-50"
           >
-            Odpojit
+            {t("disconnect")}
           </button>
         </div>
       </div>
@@ -239,8 +232,8 @@ function BankCardV8({
           }`}
         >
           {!isActive
-            ? conn.lastError || "Připojení není aktivní. Klikni Obnovit."
-            : `Souhlas vyprší za ${expiresInDays} ${expiresInDays === 1 ? "den" : "dní"}. Obnov ho, jinak se sync zastaví.`}
+            ? conn.lastError || t("not_active")
+            : t("consent_expires", { days: expiresInDays!, unit: expiresInDays === 1 ? t("day") : t("days") })}
         </div>
       )}
 
@@ -272,6 +265,7 @@ function AccountRowV8({
   onAssign: (accountId: string, profileId: string, autoImport: boolean) => void;
   onUnassign: (accountId: string, profileId: string) => void;
 }) {
+  const t = useTranslations("banks_page");
   const [open, setOpen] = useState(false);
   const assigned = new Set(account.assignedProfileIds ?? []);
   const autoImport = new Set(account.autoImportProfileIds ?? []);
@@ -283,7 +277,7 @@ function AccountRowV8({
       <div className="flex items-center gap-3">
         <div className="flex-1 min-w-0">
           <div className="text-sm text-ink-900 truncate">
-            {account.name || account.iban || account.accountNumber || "Účet"}
+            {account.name || account.iban || account.accountNumber || t("account_default_name")}
           </div>
           {account.iban && <div className="text-xs text-ink-500">{account.iban}</div>}
         </div>
@@ -294,7 +288,7 @@ function AccountRowV8({
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {assignedProfiles.length === 0 && (
-          <span className="text-xs text-ink-500 italic">Nepřiřazeno k žádnému profilu</span>
+          <span className="text-xs text-ink-500 italic">{t("unassigned")}</span>
         )}
         {assignedProfiles.map((p) => (
           <span
@@ -304,13 +298,13 @@ function AccountRowV8({
             {p.name}
             {autoImport.has(p.syncId) && (
               <span className="text-[9px] uppercase bg-brand-200 text-brand-800 px-1 rounded">
-                auto
+                {t("auto_label")}
               </span>
             )}
             <button
               onClick={() => onUnassign(account.id, p.syncId)}
               className="text-brand-600 hover:text-brand-900 -mr-1"
-              title="Odpojit od profilu"
+              title={t("unassign_from_profile")}
             >
               ×
             </button>
@@ -323,7 +317,7 @@ function AccountRowV8({
               onClick={() => setOpen((o) => !o)}
               className="text-xs text-brand-600 hover:text-brand-700 font-medium"
             >
-              + Přiřadit k profilu
+              {t("assign_to_profile")}
             </button>
             {open && (
               <div className="absolute left-0 top-full mt-1 z-10 bg-white border border-ink-200 rounded-lg shadow-lg min-w-48 max-h-60 overflow-auto">
@@ -354,17 +348,12 @@ function AccountRowV8({
   );
 }
 
-function labelStatus(s: string): string {
+function labelStatus(s: string, t: (k: string) => string): string {
   switch (s.toLowerCase()) {
-    case "active":
-      return "Aktivní";
-    case "inactive":
-      return "Neaktivní";
-    case "disabled":
-      return "Odpojeno";
-    case "error":
-      return "Chyba";
-    default:
-      return s;
+    case "active": return t("status_active");
+    case "inactive": return t("status_inactive");
+    case "disabled": return t("status_disabled");
+    case "error": return t("status_error");
+    default: return s;
   }
 }
