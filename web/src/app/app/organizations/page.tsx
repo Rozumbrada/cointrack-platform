@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { FormDialog, Field, inputClass } from "@/components/app/FormDialog";
@@ -31,6 +32,7 @@ interface InviteDto {
 }
 
 export default function OrganizationsPage() {
+  const t = useTranslations("organizations_page");
   const [orgs, setOrgs] = useState<OrganizationDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +55,7 @@ export default function OrganizationsPage() {
   useEffect(() => { load(); }, []);
 
   async function rename(orgId: string, currentName: string) {
-    const newName = prompt("Nový název:", currentName);
+    const newName = prompt(t("rename_prompt"), currentName);
     if (!newName || newName.trim() === "" || newName === currentName) return;
     try {
       await withAuth((t) =>
@@ -70,13 +72,7 @@ export default function OrganizationsPage() {
   }
 
   async function deleteOrg(orgId: string, name: string) {
-    const ok = confirm(
-      `Opravdu smazat organizaci "${name}"?\n\n` +
-      `• Profily v ní zůstanou (převedou se na osobní vlastníků).\n` +
-      `• Všechna pozvánky budou odvolány.\n` +
-      `• Členové ztratí přístup ke sdíleným datům.\n\n` +
-      `Akce je nevratná.`,
-    );
+    const ok = confirm(t("delete_confirm", { name }));
     if (!ok) return;
     try {
       await withAuth((t) =>
@@ -95,40 +91,36 @@ export default function OrganizationsPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold text-ink-900">Organizace a skupiny</h1>
-          <p className="text-sm text-ink-600 mt-1">
-            B2B firmy (sdílené účetnictví) a skupinové profily (dělení výdajů).
-          </p>
+          <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
+          <p className="text-sm text-ink-600 mt-1">{t("subtitle")}</p>
         </div>
         <button
           onClick={() => setCreating(true)}
           className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
         >
-          + Nová
+          {t("new")}
         </button>
       </div>
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">
-          Chyba: {error}
+          {error}
         </div>
       )}
 
       {loading ? (
-        <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>
+        <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>
       ) : orgs.length === 0 ? (
         <div className="bg-white rounded-2xl border border-ink-200 p-12 text-center">
           <div className="text-4xl mb-3">🏢</div>
-          <div className="font-medium text-ink-900">Žádné organizace</div>
-          <p className="text-sm text-ink-600 mt-2">
-            Vytvoř firmu nebo skupinu v mobilní aplikaci.
-          </p>
+          <div className="font-medium text-ink-900">{t("empty_title")}</div>
+          <p className="text-sm text-ink-600 mt-2">{t("empty_desc")}</p>
         </div>
       ) : (
         <>
-          <OrgSection title="Firmy (B2B)" icon="🏢" orgs={b2b}
+          <OrgSection title={t("section_b2b")} icon="🏢" orgs={b2b}
             onRename={rename} onDelete={deleteOrg} onInvite={setInviteOrg} />
-          <OrgSection title="Skupiny" icon="👥" orgs={groups}
+          <OrgSection title={t("section_groups")} icon="👥" orgs={groups}
             onRename={rename} onDelete={deleteOrg} onInvite={setInviteOrg} />
         </>
       )}
@@ -161,6 +153,7 @@ function CreateOrgDialog({
   onClose: () => void;
   onCreated: () => Promise<void>;
 }) {
+  const t = useTranslations("organizations_page");
   const [name, setName] = useState("");
   const [type, setType] = useState<"B2B" | "GROUP">("B2B");
   const [currency, setCurrency] = useState("CZK");
@@ -169,7 +162,7 @@ function CreateOrgDialog({
   const [err, setErr] = useState<string | null>(null);
 
   async function save() {
-    if (!name.trim()) return setErr("Vyplň název.");
+    if (!name.trim()) return setErr(t("fill_name"));
     setSaving(true);
     setErr(null);
     try {
@@ -194,12 +187,12 @@ function CreateOrgDialog({
 
   return (
     <FormDialog
-      title="Nová organizace / skupina"
+      title={t("create_title")}
       onClose={onClose}
       onSave={save}
       saving={saving}
       error={err}
-      saveLabel="Vytvořit"
+      saveLabel={t("create_btn")}
     >
       <div className="flex rounded-lg border border-ink-300 overflow-hidden">
         <button
@@ -207,46 +200,44 @@ function CreateOrgDialog({
           onClick={() => setType("B2B")}
           className={`flex-1 py-2 text-sm ${type === "B2B" ? "bg-brand-50 text-brand-700 font-medium" : "text-ink-700"}`}
         >
-          🏢 Firma (B2B)
+          {t("type_b2b")}
         </button>
         <button
           type="button"
           onClick={() => setType("GROUP")}
           className={`flex-1 py-2 text-sm ${type === "GROUP" ? "bg-brand-50 text-brand-700 font-medium" : "text-ink-700"}`}
         >
-          👥 Skupina
+          {t("type_group")}
         </button>
       </div>
-      <Field label="Název">
+      <Field label={t("field_name")}>
         <input
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
           autoFocus
           className={inputClass}
-          placeholder={type === "B2B" ? "Acme s.r.o." : "Cestování s rodinou"}
+          placeholder={type === "B2B" ? t("name_b2b_placeholder") : t("name_group_placeholder")}
         />
       </Field>
-      <Field label="Měna">
+      <Field label={t("field_currency")}>
         <select value={currency} onChange={(e) => setCurrency(e.target.value)} className={inputClass}>
           {["CZK", "EUR", "USD"].map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
       </Field>
-      <Field label="Pozvat e-maily (volitelné, čárkou)">
+      <Field label={t("field_invite_emails")}>
         <input
           type="text"
           value={emails}
           onChange={(e) => setEmails(e.target.value)}
-          placeholder="kolega@firma.cz, parak@gmail.com"
+          placeholder={t("emails_placeholder")}
           className={inputClass}
         />
       </Field>
       <p className="text-xs text-ink-500">
-        {type === "B2B"
-          ? "B2B firma sdílí účetnictví mezi členy. Můžeš ji použít pro účtenky a faktury společnosti."
-          : "Skupinový profil pro společné výdaje (např. dovolená) — položky se rozdělí mezi členy."}
+        {type === "B2B" ? t("create_b2b_desc") : t("create_group_desc")}
       </p>
     </FormDialog>
   );
@@ -267,6 +258,7 @@ function OrgSection({
   onDelete: (orgId: string, name: string) => void;
   onInvite: (org: OrganizationDto) => void;
 }) {
+  const t = useTranslations("organizations_page");
   if (orgs.length === 0) return null;
   return (
     <section className="bg-white rounded-2xl border border-ink-200">
@@ -286,12 +278,12 @@ function OrgSection({
                   {o.name}
                 </div>
                 <div className="text-xs text-ink-500 flex items-center gap-2">
-                  <span>{o.memberCount} členů</span>
+                  <span>{t("members_count", { n: o.memberCount })}</span>
                   <span>·</span>
                   <span>{o.currency}</span>
                   <span>·</span>
                   <span className="text-[10px] uppercase tracking-wide bg-ink-100 text-ink-700 px-1.5 py-0.5 rounded">
-                    {labelRole(o.myRole)}
+                    {labelRole(o.myRole, t)}
                   </span>
                 </div>
               </div>
@@ -300,9 +292,9 @@ function OrgSection({
                   <button
                     onClick={() => onInvite(o)}
                     className="h-8 px-3 rounded-lg bg-brand-50 hover:bg-brand-100 text-brand-700 text-xs font-medium"
-                    title="Pozvat člena nebo účetní"
+                    title={t("invite_title_tooltip")}
                   >
-                    + Pozvat
+                    {t("invite_btn")}
                   </button>
                 )}
                 {isOwner && (
@@ -310,14 +302,14 @@ function OrgSection({
                     <button
                       onClick={() => onRename(o.id, o.name)}
                       className="w-8 h-8 grid place-items-center rounded-lg hover:bg-ink-100 text-ink-600"
-                      title="Přejmenovat"
+                      title={t("rename_title_tooltip")}
                     >
                       ✎
                     </button>
                     <button
                       onClick={() => onDelete(o.id, o.name)}
                       className="w-8 h-8 grid place-items-center rounded-lg hover:bg-red-50 text-red-500"
-                      title="Smazat organizaci"
+                      title={t("delete_title_tooltip")}
                     >
                       🗑
                     </button>
@@ -333,12 +325,12 @@ function OrgSection({
   );
 }
 
-function labelRole(r: string): string {
+function labelRole(r: string, t: (key: string) => string): string {
   switch (r) {
-    case "owner": return "vlastník";
-    case "admin": return "admin";
-    case "accountant": return "účetní";
-    case "member": return "člen";
+    case "owner": return t("role_owner");
+    case "admin": return t("role_admin");
+    case "accountant": return t("role_accountant");
+    case "member": return t("role_member");
     default: return r;
   }
 }
@@ -352,13 +344,14 @@ function InviteMemberDialog({
   onClose: () => void;
   onInvited: () => Promise<void>;
 }) {
+  const t = useTranslations("organizations_page");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"member" | "admin" | "accountant">("member");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   async function send() {
-    if (!email.trim() || !email.includes("@")) return setErr("Zadej platný e-mail.");
+    if (!email.trim() || !email.includes("@")) return setErr(t("fill_email"));
     setSaving(true);
     setErr(null);
     try {
@@ -379,24 +372,24 @@ function InviteMemberDialog({
 
   return (
     <FormDialog
-      title={`Pozvat do "${org.name}"`}
+      title={t("invite_dialog_title", { name: org.name })}
       onClose={onClose}
       onSave={send}
       saving={saving}
       error={err}
-      saveLabel="Poslat pozvánku"
+      saveLabel={t("invite_send_btn")}
     >
-      <Field label="E-mail">
+      <Field label={t("field_email")}>
         <input
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           autoFocus
           className={inputClass}
-          placeholder="kolega@firma.cz"
+          placeholder={t("email_placeholder")}
         />
       </Field>
-      <Field label="Role">
+      <Field label={t("field_role")}>
         <div className="flex gap-2 flex-wrap">
           {(["member", "admin", "accountant"] as const).map((r) => (
             <button
@@ -409,17 +402,17 @@ function InviteMemberDialog({
                   : "bg-white border-ink-200 text-ink-700 hover:bg-ink-50"
               }`}
             >
-              {r === "member" ? "Člen" : r === "admin" ? "Admin" : "🧮 Účetní"}
+              {r === "member" ? t("role_member_btn") : r === "admin" ? t("role_admin_btn") : t("role_accountant_btn")}
             </button>
           ))}
         </div>
       </Field>
       <p className="text-xs text-ink-500 leading-relaxed">
         {role === "admin"
-          ? "Admin může zvát další členy a měnit nastavení organizace."
+          ? t("role_admin_desc")
           : role === "accountant"
-          ? "Účetní vidí všechny účtenky a faktury napříč organizací přes web (sekce /accounting). Nemůže doklady upravovat ani mazat."
-          : "Člen vidí jen svůj profil a co mu vlastník/admin povolí."}
+          ? t("role_accountant_desc")
+          : t("role_member_desc")}
       </p>
     </FormDialog>
   );

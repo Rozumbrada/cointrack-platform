@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
+import { useTranslations } from "next-intl";
 
 export function FormDialog({
   title,
@@ -8,7 +9,7 @@ export function FormDialog({
   onSave,
   saving,
   error,
-  saveLabel = "Uložit",
+  saveLabel,
   saveDisabled,
   children,
 }: {
@@ -21,6 +22,8 @@ export function FormDialog({
   saveDisabled?: boolean;
   children: ReactNode;
 }) {
+  const tc = useTranslations("common");
+  const effectiveSaveLabel = saveLabel ?? tc("save");
   return (
     <div
       className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4"
@@ -53,14 +56,14 @@ export function FormDialog({
             onClick={onClose}
             className="h-9 px-4 rounded-lg border border-ink-300 text-sm text-ink-700 hover:bg-ink-50"
           >
-            Zrušit
+            {tc("cancel")}
           </button>
           <button
             onClick={onSave}
             disabled={!!saving || saveDisabled}
             className="h-9 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-50"
           >
-            {saving ? "Ukládám…" : saveLabel}
+            {saving ? tc("saving") : effectiveSaveLabel}
           </button>
         </div>
       </div>
