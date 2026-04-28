@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
 import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
@@ -21,6 +22,8 @@ interface WarrantyData {
 type WarrantyRow = { syncId: string; data: WarrantyData };
 
 export default function WarrantiesPage() {
+  const t = useTranslations("warranties_page");
+  const locale = useLocale();
   const { loading, error, entitiesByProfile, profileSyncId, reload } = useSyncData();
   const warranties = entitiesByProfile<WarrantyData>("warranties");
 
@@ -37,10 +40,10 @@ export default function WarrantiesPage() {
   const today = new Date().toISOString().slice(0, 10);
 
   async function onDelete(row: WarrantyRow) {
-    if (!confirm(`Smazat záruku "${row.data.productName}"?`)) return;
+    if (!confirm(t("delete_confirm", { name: row.data.productName }))) return;
     const now = new Date().toISOString();
-    await withAuth((t) =>
-      sync.push(t, {
+    await withAuth((tk) =>
+      sync.push(tk, {
         entities: {
           warranties: [
             {
@@ -61,43 +64,41 @@ export default function WarrantiesPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold text-ink-900">Záruky</h1>
-          <p className="text-sm text-ink-600 mt-1">
-            Produkty se záruční lhůtou — seřazeno od nejbližší končící.
-          </p>
+          <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
+          <p className="text-sm text-ink-600 mt-1">{t("subtitle")}</p>
         </div>
         <button
           onClick={() => setEditing("new")}
           className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
         >
-          + Nová záruka
+          {t("new_warranty")}
         </button>
       </div>
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">
-          Chyba: {error}
+          {t("error_prefix")} {error}
         </div>
       )}
 
       {loading ? (
-        <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>
+        <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>
       ) : sorted.length === 0 ? (
         <div className="bg-white rounded-2xl border border-ink-200 p-12 text-center">
           <div className="text-4xl mb-3">🛡️</div>
-          <div className="font-medium text-ink-900">Žádné záruky</div>
-          <p className="text-sm text-ink-600 mt-2">Klikni na „Nová záruka".</p>
+          <div className="font-medium text-ink-900">{t("empty_title")}</div>
+          <p className="text-sm text-ink-600 mt-2">{t("empty_desc")}</p>
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-ink-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-ink-50 text-ink-600 text-left text-xs uppercase tracking-wide">
               <tr>
-                <th className="px-6 py-3 font-medium">Produkt</th>
-                <th className="px-6 py-3 font-medium">Obchod</th>
-                <th className="px-6 py-3 font-medium">Koupě</th>
-                <th className="px-6 py-3 font-medium">Záruka do</th>
-                <th className="px-6 py-3 font-medium text-right">Cena</th>
+                <th className="px-6 py-3 font-medium">{t("th_product")}</th>
+                <th className="px-6 py-3 font-medium">{t("th_shop")}</th>
+                <th className="px-6 py-3 font-medium">{t("th_purchase")}</th>
+                <th className="px-6 py-3 font-medium">{t("th_warranty_until")}</th>
+                <th className="px-6 py-3 font-medium text-right">{t("th_price")}</th>
                 <th className="px-6 py-3 w-1" />
               </tr>
             </thead>
@@ -132,15 +133,15 @@ export default function WarrantiesPage() {
                         }`}
                       >
                         {expired
-                          ? "vypršelo"
+                          ? t("expired")
                           : daysLeft === 0
-                            ? "končí dnes"
-                            : `zbývá ${daysLeft} dní`}
+                            ? t("ends_today")
+                            : t("days_left", { n: daysLeft })}
                       </div>
                     </td>
                     <td className="px-6 py-3 text-right font-semibold tabular-nums text-ink-900">
                       {w.data.price
-                        ? fmt(parseFloat(w.data.price), w.data.currency ?? "CZK")
+                        ? fmt(parseFloat(w.data.price), w.data.currency ?? "CZK", locale)
                         : "—"}
                     </td>
                     <td className="px-2 py-3 whitespace-nowrap">
@@ -148,14 +149,14 @@ export default function WarrantiesPage() {
                         <button
                           onClick={() => setEditing(w)}
                           className="text-ink-500 hover:text-ink-700 px-2"
-                          title="Upravit"
+                          title={t("edit")}
                         >
                           ✏️
                         </button>
                         <button
                           onClick={() => onDelete(w)}
                           className="text-red-500 hover:text-red-700 px-2"
-                          title="Smazat"
+                          title={t("delete")}
                         >
                           🗑
                         </button>
@@ -195,6 +196,7 @@ function WarrantyEditor({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations("warranties_page");
   const [productName, setProductName] = useState(initial?.data.productName ?? "");
   const [shop, setShop] = useState(initial?.data.shop ?? "");
   const [purchaseDate, setPurchaseDate] = useState(
@@ -209,16 +211,16 @@ function WarrantyEditor({
 
   async function save() {
     if (!profileSyncId) {
-      setErr("Není vybraný profil.");
+      setErr(t("no_profile"));
       return;
     }
     if (!productName.trim()) {
-      setErr("Vyplň produkt.");
+      setErr(t("fill_product"));
       return;
     }
     const years = parseInt(warrantyYears, 10);
     if (!years || years <= 0) {
-      setErr("Záruka v letech musí být kladné číslo.");
+      setErr(t("fill_years"));
       return;
     }
 
@@ -237,8 +239,8 @@ function WarrantyEditor({
         note,
         receiptImageKey: initial?.data.receiptImageKey,
       };
-      await withAuth((t) =>
-        sync.push(t, {
+      await withAuth((tk) =>
+        sync.push(tk, {
           entities: {
             warranties: [
               {
@@ -261,13 +263,13 @@ function WarrantyEditor({
 
   return (
     <FormDialog
-      title={initial ? "Upravit záruku" : "Nová záruka"}
+      title={initial ? t("editor_edit") : t("editor_new")}
       onClose={onClose}
       onSave={save}
       saving={saving}
       error={err}
     >
-      <Field label="Produkt">
+      <Field label={t("field_product")}>
         <input
           type="text"
           value={productName}
@@ -276,7 +278,7 @@ function WarrantyEditor({
           className={inputClass}
         />
       </Field>
-      <Field label="Obchod">
+      <Field label={t("field_shop")}>
         <input
           type="text"
           value={shop}
@@ -285,7 +287,7 @@ function WarrantyEditor({
         />
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Datum koupě">
+        <Field label={t("field_purchase_date")}>
           <input
             type="date"
             value={purchaseDate}
@@ -293,7 +295,7 @@ function WarrantyEditor({
             className={inputClass}
           />
         </Field>
-        <Field label="Záruka (let)">
+        <Field label={t("field_warranty_years")}>
           <input
             type="number"
             min="1"
@@ -305,7 +307,7 @@ function WarrantyEditor({
       </div>
       <div className="grid grid-cols-3 gap-3">
         <div className="col-span-2">
-          <Field label="Cena">
+          <Field label={t("field_price")}>
             <input
               type="text"
               inputMode="decimal"
@@ -315,7 +317,7 @@ function WarrantyEditor({
             />
           </Field>
         </div>
-        <Field label="Měna">
+        <Field label={t("field_currency")}>
           <select
             value={currency}
             onChange={(e) => setCurrency(e.target.value)}
@@ -327,7 +329,7 @@ function WarrantyEditor({
           </select>
         </Field>
       </div>
-      <Field label="Poznámka">
+      <Field label={t("field_note")}>
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -346,8 +348,8 @@ function warrantyEnd(d: WarrantyData): string {
   return end.toISOString().slice(0, 10);
 }
 
-function fmt(amount: number, currency: string): string {
-  return new Intl.NumberFormat("cs-CZ", {
+function fmt(amount: number, currency: string, locale: string = "cs-CZ"): string {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
     maximumFractionDigits: 0,
