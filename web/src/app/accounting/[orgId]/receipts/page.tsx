@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import { useLocale, useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 
@@ -20,6 +21,8 @@ interface Receipt {
 }
 
 export default function AccountantReceiptsPage() {
+  const t = useTranslations("accounting_receipts");
+  const locale = useLocale();
   const params = useParams<{ orgId: string }>();
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,10 +35,10 @@ export default function AccountantReceiptsPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await withAuth((t) =>
+        const res = await withAuth((tk) =>
           api<{ receipts: Receipt[] }>(
             `/api/v1/accounting/orgs/${params.orgId}/receipts`,
-            { token: t },
+            { token: tk },
           ),
         );
         setReceipts(res.receipts);
@@ -78,9 +81,25 @@ export default function AccountantReceiptsPage() {
     return filtered.reduce((s, r) => s + (parseFloat(r.totalWithVat) || 0), 0);
   }, [filtered]);
 
+  function fmt(amount: number, currency: string): string {
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  }
+
+  function labelPayment(p: string | null): string {
+    switch (p) {
+      case "CASH": return t("payment_cash");
+      case "CARD": return t("payment_card");
+      default: return "—";
+    }
+  }
+
   async function downloadZip() {
     try {
-      const token = await withAuth((t) => Promise.resolve(t));
+      const token = await withAuth((tk) => Promise.resolve(tk));
       const res = await fetch(
         `/api/v1/accounting/orgs/${params.orgId}/export.zip`,
         { headers: { Authorization: `Bearer ${token}` } },
@@ -102,23 +121,21 @@ export default function AccountantReceiptsPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold text-ink-900">Účtenky organizace</h1>
-          <p className="text-sm text-ink-600 mt-1">
-            Souhrn všech naskenovaných účtenek od členů organizace.
-          </p>
+          <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
+          <p className="text-sm text-ink-600 mt-1">{t("subtitle")}</p>
         </div>
         <button
           onClick={downloadZip}
           className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
         >
-          📦 Stáhnout vše (ZIP)
+          {t("download_zip")}
         </button>
       </div>
 
       <div className="flex gap-3 flex-wrap">
         <input
           type="text"
-          placeholder="Hledat obchodníka, profil nebo email…"
+          placeholder={t("search_placeholder")}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="flex-1 min-w-[14rem] h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
@@ -128,7 +145,7 @@ export default function AccountantReceiptsPage() {
           onChange={(e) => setAccountFilter(e.target.value)}
           className="h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
         >
-          <option value="ALL">Všechny účty</option>
+          <option value="ALL">{t("all_accounts")}</option>
           {accountOptions.map((a) => (
             <option key={a.id} value={a.id}>{a.name}</option>
           ))}
@@ -138,45 +155,45 @@ export default function AccountantReceiptsPage() {
           value={periodFrom}
           onChange={(e) => setPeriodFrom(e.target.value)}
           className="h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-          title="Od"
+          title={t("from_label")}
         />
         <input
           type="date"
           value={periodTo}
           onChange={(e) => setPeriodTo(e.target.value)}
           className="h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-          title="Do"
+          title={t("to_label")}
         />
         <div className="bg-white rounded-lg border border-ink-200 px-4 h-10 grid place-items-center text-sm">
-          {filtered.length} účtenek · {fmt(total, "CZK")}
+          {t("summary", { count: filtered.length, total: fmt(total, "CZK") })}
         </div>
       </div>
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">
-          Chyba: {error}
+          {error}
         </div>
       )}
 
       {loading ? (
-        <div className="py-20 text-center text-ink-500 text-sm">Načítám…</div>
+        <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>
       ) : filtered.length === 0 ? (
         <div className="bg-white rounded-2xl border border-ink-200 p-12 text-center">
           <div className="text-4xl mb-3">🧾</div>
-          <div className="font-medium text-ink-900">Žádné účtenky</div>
+          <div className="font-medium text-ink-900">{t("empty_title")}</div>
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-ink-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-ink-50 text-ink-600 text-left text-xs uppercase tracking-wide">
               <tr>
-                <th className="px-6 py-3 font-medium">Datum</th>
-                <th className="px-6 py-3 font-medium">Obchodník</th>
-                <th className="px-6 py-3 font-medium">Profil</th>
-                <th className="px-6 py-3 font-medium">Vlastník</th>
-                <th className="px-6 py-3 font-medium">Účet</th>
-                <th className="px-6 py-3 font-medium">Platba</th>
-                <th className="px-6 py-3 font-medium text-right">Částka</th>
+                <th className="px-6 py-3 font-medium">{t("th_date")}</th>
+                <th className="px-6 py-3 font-medium">{t("th_merchant")}</th>
+                <th className="px-6 py-3 font-medium">{t("th_profile")}</th>
+                <th className="px-6 py-3 font-medium">{t("th_owner")}</th>
+                <th className="px-6 py-3 font-medium">{t("th_account")}</th>
+                <th className="px-6 py-3 font-medium">{t("th_payment")}</th>
+                <th className="px-6 py-3 font-medium text-right">{t("th_amount")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-100">
@@ -201,23 +218,4 @@ export default function AccountantReceiptsPage() {
       )}
     </div>
   );
-}
-
-function fmt(amount: number, currency: string): string {
-  return new Intl.NumberFormat("cs-CZ", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
-
-function labelPayment(p: string | null): string {
-  switch (p) {
-    case "CASH":
-      return "Hotově";
-    case "CARD":
-      return "Kartou";
-    default:
-      return "—";
-  }
 }
