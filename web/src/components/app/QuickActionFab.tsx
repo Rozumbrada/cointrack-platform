@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { DocumentDialog } from "./DocumentDialog";
 
 /**
@@ -9,6 +10,7 @@ import { DocumentDialog } from "./DocumentDialog";
  * (totéž co mobilní home screen FAB).
  */
 export function QuickActionFab() {
+  const t = useTranslations("fab");
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [docMode, setDocMode] = useState<"scan" | "upload" | null>(null);
@@ -29,7 +31,7 @@ export function QuickActionFab() {
         {open && (
           <>
             <FabAction
-              label="Skenovat doklad"
+              label={t("scan")}
               icon="📷"
               onClick={() => {
                 setOpen(false);
@@ -38,7 +40,7 @@ export function QuickActionFab() {
               color="bg-emerald-600 hover:bg-emerald-700"
             />
             <FabAction
-              label="Nahrát doklad"
+              label={t("upload")}
               icon="📄"
               onClick={() => {
                 setOpen(false);
@@ -47,7 +49,7 @@ export function QuickActionFab() {
               color="bg-amber-600 hover:bg-amber-700"
             />
             <FabAction
-              label="Ručně přidat platbu"
+              label={t("manual")}
               icon="✏️"
               onClick={() => {
                 setOpen(false);
@@ -63,7 +65,7 @@ export function QuickActionFab() {
           className={`w-14 h-14 rounded-full bg-brand-600 hover:bg-brand-700 text-white text-3xl shadow-lg grid place-items-center transition-transform ${
             open ? "rotate-45" : ""
           }`}
-          aria-label={open ? "Zavřít menu" : "Rychlé akce"}
+          aria-label={open ? t("close_menu") : t("quick_actions")}
         >
           +
         </button>

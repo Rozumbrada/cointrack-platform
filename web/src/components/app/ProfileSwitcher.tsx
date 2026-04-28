@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import {
@@ -11,6 +12,7 @@ import {
 } from "@/lib/profile-store";
 
 export default function ProfileSwitcher() {
+  const t = useTranslations("profile_switcher");
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [currentSyncId, setCurrentSyncIdState] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -72,7 +74,7 @@ export default function ProfileSwitcher() {
   if (profiles.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-ink-300 px-3 py-2 text-xs text-ink-500 text-center">
-        Načítám profily…
+        {t("loading")}
       </div>
     );
   }
@@ -91,10 +93,10 @@ export default function ProfileSwitcher() {
         </div>
         <div className="flex-1 min-w-0 text-left">
           <div className="font-medium text-ink-900 truncate">
-            {current?.data?.name ?? "Profil"}
+            {current?.data?.name ?? t("default_label")}
           </div>
           <div className="text-[10px] uppercase tracking-wide text-ink-500">
-            {labelType(current?.data?.type)}
+            {labelType(current?.data?.type, t)}
           </div>
         </div>
         <span className="text-ink-400 text-xs shrink-0">▾</span>
@@ -121,7 +123,7 @@ export default function ProfileSwitcher() {
               <div className="flex-1 min-w-0">
                 <div className="truncate">{p.data.name}</div>
                 <div className="text-[10px] uppercase text-ink-500">
-                  {labelType(p.data.type)}
+                  {labelType(p.data.type, t)}
                 </div>
               </div>
               {p.syncId === currentSyncId && (
@@ -135,17 +137,17 @@ export default function ProfileSwitcher() {
   );
 }
 
-function labelType(t?: string): string {
-  switch (t) {
+function labelType(type: string | undefined, t: (k: string) => string): string {
+  switch (type) {
     case "BUSINESS":
     case "B2B":
-      return "firemní";
+      return t("type_business");
     case "GROUP":
-      return "skupina";
+      return t("type_group");
     case "PERSONAL":
-      return "osobní";
+      return t("type_personal");
     default:
-      return t ?? "";
+      return type ?? "";
   }
 }
 

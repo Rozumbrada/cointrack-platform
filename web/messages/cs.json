@@ -116,6 +116,26 @@
       "pricing": "Podrobný ceník →"
     }
   },
+  "category_picker": {
+    "title": "Vyber kategorii",
+    "no_category": "Bez kategorie",
+    "transfer_note": "Převody nemají kategorii.",
+    "no_categories": "Žádné kategorie tohoto typu. Vytvoř na stránce Kategorie."
+  },
+  "fab": {
+    "scan": "Skenovat doklad",
+    "upload": "Nahrát doklad",
+    "manual": "Ručně přidat platbu",
+    "close_menu": "Zavřít menu",
+    "quick_actions": "Rychlé akce"
+  },
+  "profile_switcher": {
+    "loading": "Načítám profily…",
+    "default_label": "Profil",
+    "type_business": "firemní",
+    "type_group": "skupina",
+    "type_personal": "osobní"
+  },
   "export_button": {
     "button": "⬇ Export Pohoda XML",
     "title_receipts": "Export účtenek do Pohoda XML",

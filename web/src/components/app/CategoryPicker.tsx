@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useTranslations } from "next-intl";
 import { ServerCategory } from "@/lib/sync-types";
 import { CategoryIcon, colorFromInt } from "./CategoryIcon";
 
@@ -17,6 +18,7 @@ export function CategoryPicker({
   onSelect: (syncId: string | null) => void;
   onClose: () => void;
 }) {
+  const t = useTranslations("category_picker");
   const filtered = useMemo(() => {
     if (txType === "TRANSFER") return [];
     // Kategorie se nefiltrují podle typu — stejná kategorie může pokrýt
@@ -34,7 +36,7 @@ export function CategoryPicker({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-2">
-          <h2 className="text-lg font-semibold text-ink-900">Vyber kategorii</h2>
+          <h2 className="text-lg font-semibold text-ink-900">{t("title")}</h2>
           <button
             onClick={onClose}
             className="text-ink-400 hover:text-ink-600 text-xl leading-none"
@@ -55,7 +57,7 @@ export function CategoryPicker({
                 block
               </span>
             </div>
-            <div className="flex-1 text-left text-sm text-ink-700">Bez kategorie</div>
+            <div className="flex-1 text-left text-sm text-ink-700">{t("no_category")}</div>
             {currentSyncId == null && (
               <span className="material-icons text-brand-600" style={{ fontSize: "18px" }}>
                 check
@@ -65,9 +67,7 @@ export function CategoryPicker({
 
           {filtered.length === 0 && (
             <div className="px-3 py-6 text-center text-sm text-ink-500">
-              {txType === "TRANSFER"
-                ? "Převody nemají kategorii."
-                : "Žádné kategorie tohoto typu. Vytvoř na stránce Kategorie."}
+              {txType === "TRANSFER" ? t("transfer_note") : t("no_categories")}
             </div>
           )}
 

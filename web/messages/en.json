@@ -116,6 +116,26 @@
       "pricing": "Detailed pricing →"
     }
   },
+  "category_picker": {
+    "title": "Pick a category",
+    "no_category": "Uncategorized",
+    "transfer_note": "Transfers don't have a category.",
+    "no_categories": "No categories of this type. Create one on the Categories page."
+  },
+  "fab": {
+    "scan": "Scan document",
+    "upload": "Upload document",
+    "manual": "Add payment manually",
+    "close_menu": "Close menu",
+    "quick_actions": "Quick actions"
+  },
+  "profile_switcher": {
+    "loading": "Loading profiles…",
+    "default_label": "Profile",
+    "type_business": "business",
+    "type_group": "group",
+    "type_personal": "personal"
+  },
   "export_button": {
     "button": "⬇ Export Pohoda XML",
     "title_receipts": "Export receipts to Pohoda XML",
