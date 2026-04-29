@@ -145,16 +145,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const isProfileSelection = pathname?.startsWith("/app/profiles");
 
   const isOrganizationTier = user?.tier === "ORGANIZATION";
-  // Členové se zobrazují jen na firemním profilu + tier Business Pro.
-  // **Strict** logika podle user feedbacku — žádné optimistic show:
+  // Členové se zobrazují pro firemní profil + tier Business Pro.
+  // Logika (sjednoceno s /app/members page):
   //   - tier není ORGANIZATION → schováno (paywall)
-  //   - typ profilu **explicitně** BUSINESS/ORGANIZATION → zobrazeno
-  //   - cokoli jiné včetně null → schováno
-  // Po prvním pullu se cache naplní (per-syncId v localStorage), další
-  // načtení už mají typ známý ihned (žádný flicker pro firemní profil).
-  const isOrganizationalProfile =
-    activeProfileType === "BUSINESS" || activeProfileType === "ORGANIZATION";
-  const showMembers = isOrganizationTier && isOrganizationalProfile;
+  //   - profil typu **explicitně** PERSONAL/GROUP → schováno
+  //   - cokoli ostatní (BUSINESS, legacy ORGANIZATION, null/unknown)
+  //     → zobrazeno; legacy/null se posuzuje jako "možná firemní",
+  //     stejně jako Members page (tam warning vidí jen pro explicitní
+  //     PERSONAL/GROUP). User s firemním profilem co má v DB type=""
+  //     z legacy stavu nepřijde o feature.
+  const profileExplicitlyNonBusiness =
+    activeProfileType === "PERSONAL" || activeProfileType === "GROUP";
+  const showMembers = isOrganizationTier && !profileExplicitlyNonBusiness;
 
   const nav: Array<{ href: string; label: string; section?: string }> = [
     { href: "/app/dashboard", label: ts("dashboard") },

@@ -13,7 +13,11 @@ import {
 import { withAuth, getAccessToken } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
 import { ServerAccount, ServerCategory } from "@/lib/sync-types";
-import { getCurrentProfileSyncId } from "@/lib/profile-store";
+import {
+  getCurrentProfileSyncId,
+  getCachedProfileType,
+  setCachedProfileType,
+} from "@/lib/profile-store";
 
 type Role = "VIEWER" | "EDITOR" | "ACCOUNTANT";
 
@@ -46,22 +50,43 @@ export default function MembersPage() {
   const accounts = entitiesByProfile<ServerAccount>("accounts");
   const categories = entitiesByProfile<ServerCategory>("categories");
 
-  // Aktuální profil (jeho syncId + type) — sekce Členové dává smysl jen pro
-  // firemní/organizační profil; navíc seznam členů filtrujeme jen na ten profil.
+  // Aktuální profil — typ + name. Typ čteme primárně z localStorage cache
+  // (sjednoceno s layoutem `cointrack_profileTypeBySyncId`), abychom byli
+  // konzistentní napříč komponentami. Pokud je cache prázdná, fallback na
+  // rawEntities (= sync.pull data v useSyncData hook). Druhý fallback navíc
+  // cache aktualizuje pro budoucí use.
   useEffect(() => {
     function refresh() {
       const syncId = getCurrentProfileSyncId();
       setActiveProfileSyncId(syncId);
+
+      // Primární zdroj: cache
+      const cachedType = getCachedProfileType(syncId);
+
+      // Sekundární zdroj: sync data (může mít čerstvější info)
       const profile = rawEntities("profiles").find((e) => e.syncId === syncId);
       const data = profile?.data as Record<string, unknown> | undefined;
-      const type = data?.type;
+      const dataType = data?.type;
       const name = data?.name;
-      setActiveProfileType(typeof type === "string" ? type : null);
+
+      // Preferujeme dataType (čerstvější), fallback na cachedType
+      const finalType =
+        typeof dataType === "string" ? dataType : cachedType;
+      // Updatuje cache aby layout dostal správnou hodnotu
+      if (typeof dataType === "string" && syncId) {
+        setCachedProfileType(syncId, dataType);
+      }
+
+      setActiveProfileType(finalType);
       setActiveProfileName(typeof name === "string" ? name : null);
     }
     refresh();
     window.addEventListener("cointrack:profile-changed", refresh);
-    return () => window.removeEventListener("cointrack:profile-changed", refresh);
+    window.addEventListener("cointrack:profile-type-changed", refresh);
+    return () => {
+      window.removeEventListener("cointrack:profile-changed", refresh);
+      window.removeEventListener("cointrack:profile-type-changed", refresh);
+    };
   }, [rawEntities]);
 
   const isOrganizationalProfile =
@@ -187,7 +212,11 @@ export default function MembersPage() {
         </section>
       )}
 
-      {isOrganizationTier && !isOrganizationalProfile && activeProfileType !== null && (
+      {/* Warning ukázat **jen** pokud profil je explicitně PERSONAL/GROUP.
+          Legacy/null type = funguje normálně (data se stejně filtrují per-profil
+          a pokud user opravdu nemůže, accounts list bude prázdný). */}
+      {isOrganizationTier &&
+        (activeProfileType === "PERSONAL" || activeProfileType === "GROUP") && (
         <section className="bg-blue-50 border border-blue-200 rounded-2xl p-6">
           <h2 className="font-semibold text-blue-900 mb-2">{t("not_org_profile_title")}</h2>
           <p className="text-sm text-blue-900">{t("not_org_profile_desc")}</p>
