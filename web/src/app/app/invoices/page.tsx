@@ -1,7 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
+import { Pencil, Trash2 } from "lucide-react";
+import { sync } from "@/lib/api";
+import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
 import { ServerAccount } from "@/lib/sync-types";
 import {
@@ -105,6 +109,34 @@ export default function InvoicesPage() {
       .sort((a, b) => (b.data.issueDate ?? "").localeCompare(a.data.issueDate ?? ""));
   }, [invoices, query, filter, paidFilter, range, accountFilter]);
 
+  /** Soft-delete jedné faktury — push sync s deletedAt = now. */
+  async function deleteOne(syncId: string) {
+    const entity = invoices.find((r) => r.syncId === syncId);
+    if (!entity) return;
+    if (!confirm(t("delete_one_confirm", { number: entity.data.invoiceNumber || "?" }))) return;
+    try {
+      const now = new Date().toISOString();
+      await withAuth((tk) =>
+        sync.push(tk, {
+          entities: {
+            invoices: [
+              {
+                syncId: entity.syncId,
+                updatedAt: now,
+                deletedAt: now,
+                clientVersion: 1,
+                data: entity.data as unknown as Record<string, unknown>,
+              },
+            ],
+          },
+        }),
+      );
+      await reload();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -206,6 +238,7 @@ export default function InvoicesPage() {
                 <th className="px-6 py-3 font-medium">{t("th_type")}</th>
                 <th className="px-6 py-3 font-medium">{t("th_status")}</th>
                 <th className="px-6 py-3 font-medium text-right">{t("th_amount")}</th>
+                <th className="px-3 py-3 font-medium w-1" aria-label="" />
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-100">
@@ -255,6 +288,28 @@ export default function InvoicesPage() {
                   </td>
                   <td className="px-6 py-3 text-right font-semibold tabular-nums text-ink-900">
                     {fmtAmt(r.data.totalWithVat, r.data.currency ?? "CZK", locale)}
+                  </td>
+                  <td
+                    className="px-3 py-3 whitespace-nowrap text-right"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Link
+                      href={`/app/invoices/${r.syncId}`}
+                      title={t("edit_action")}
+                      aria-label={t("edit_action")}
+                      className="inline-flex items-center justify-center p-2 rounded-lg text-ink-500 hover:text-brand-700 hover:bg-brand-50 transition-colors"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => deleteOne(r.syncId)}
+                      title={t("delete_action")}
+                      aria-label={t("delete_action")}
+                      className="inline-flex items-center justify-center p-2 rounded-lg text-ink-500 hover:text-red-700 hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </td>
                 </tr>
               ))}
