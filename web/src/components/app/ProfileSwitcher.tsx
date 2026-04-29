@@ -47,8 +47,11 @@ export default function ProfileSwitcher() {
 
         // Cache profile types do localStorage — layout je čte synchronně
         // při prvním renderu, aby menu (Členové) bylo stabilní bez flickeru.
+        // Legacy profily co nemají type fallbackujeme na PERSONAL (= konzistentní
+        // se serverovým default `Profiles.type` na PERSONAL).
         for (const p of list) {
-          if (p.data.type) setCachedProfileType(p.syncId, p.data.type);
+          const t = p.data.type ?? "PERSONAL";
+          setCachedProfileType(p.syncId, t);
         }
 
         const existing = getCurrentProfileSyncId();
@@ -80,9 +83,8 @@ export default function ProfileSwitcher() {
     // eventu — layout + Members page reagují na event a okamžitě potřebují
     // znát typ pro rozhodnutí o menu/warning.
     const target = profiles.find((p) => p.syncId === syncId);
-    if (target?.data.type) {
-      setCachedProfileType(syncId, target.data.type);
-    }
+    const type = target?.data.type ?? "PERSONAL";
+    setCachedProfileType(syncId, type);
     setCurrentProfileSyncId(syncId);
     setCurrentSyncIdState(syncId);
     setOpen(false);

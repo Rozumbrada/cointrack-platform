@@ -65,15 +65,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         const res = await sync.pull(token);
         for (const e of res.entities["profiles"] ?? []) {
           if (e.deletedAt) continue;
-          const type = (e.data as Record<string, unknown>).type;
-          if (typeof type === "string") setCachedProfileType(e.syncId, type);
+          const t = (e.data as Record<string, unknown>).type;
+          // Legacy profil bez type → PERSONAL (= konzistentní se server default).
+          const normalized = typeof t === "string" && t.length > 0 ? t : "PERSONAL";
+          setCachedProfileType(e.syncId, normalized);
         }
         const profile = (res.entities["profiles"] ?? []).find(
           (e) => e.syncId === syncId && !e.deletedAt,
         );
         const type =
           (profile?.data as Record<string, unknown> | undefined)?.type;
-        if (!cancelled) setActiveProfileType(typeof type === "string" ? type : null);
+        const normalized = typeof type === "string" && type.length > 0 ? type : "PERSONAL";
+        if (!cancelled) setActiveProfileType(normalized);
       } catch {
         // ignore — sidebar i bez tohoto musí fungovat
       }
