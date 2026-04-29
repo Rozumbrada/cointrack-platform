@@ -1007,7 +1007,11 @@
     "note": "Note",
     "no_profile": "No profile selected.",
     "fill_amount": "Fill in total amount or items.",
-    "fill_customer": "Issued invoices require a customer."
+    "fill_customer": "Issued invoices require a customer.",
+    "dup_title": "Possible duplicate",
+    "dup_desc": "An invoice with number \"{number}\" already exists in this profile ({date}, {amount}). Save anyway?",
+    "dup_save_anyway": "Save anyway",
+    "dup_cancel": "Cancel"
   },
   "document_dialog": {
     "scan_title": "Scan document",

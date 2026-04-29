@@ -1007,7 +1007,11 @@
     "note": "Poznámka",
     "no_profile": "Není vybraný profil.",
     "fill_amount": "Vyplň celkovou částku nebo položky.",
-    "fill_customer": "U vystavené faktury vyplň odběratele."
+    "fill_customer": "U vystavené faktury vyplň odběratele.",
+    "dup_title": "Možná duplicita",
+    "dup_desc": "Faktura s číslem „{number}\" už v tomto profilu existuje ({date}, {amount}). Uložit i tuto?",
+    "dup_save_anyway": "Uložit přesto",
+    "dup_cancel": "Zrušit"
   },
   "document_dialog": {
     "scan_title": "Skenovat doklad",

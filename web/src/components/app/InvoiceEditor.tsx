@@ -109,6 +109,11 @@ export function InvoiceEditor({
 
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [duplicate, setDuplicate] = useState<{
+    number: string;
+    date: string;
+    amount: string;
+  } | null>(null);
 
   // Auto-spočti součet z položek (pokud je něco vyplněné), jinak nech ručně
   const itemsTotal = useMemo(
@@ -139,7 +144,7 @@ export function InvoiceEditor({
     setItems((prev) => prev.filter((_, i) => i !== idx));
   }
 
-  async function save() {
+  async function save(force = false) {
     if (!profileSyncId) return setErr(t("no_profile"));
     if (totalToSave <= 0) return setErr(t("fill_amount"));
     if (!isExpense && !customerName.trim() && !supplierName.trim()) {
@@ -150,6 +155,32 @@ export function InvoiceEditor({
     setSaving(true);
     setErr(null);
     try {
+      // Kontrola duplicity — jen u nových faktur s vyplněným číslem.
+      // Match je v rámci aktivního profilu a ignoruje smazané (deletedAt).
+      // Mobile používá stejnou heuristiku (InvoiceViewModel.saveInvoice).
+      const trimmedNumber = invoiceNumber.trim();
+      if (!force && !initial && trimmedNumber) {
+        const res = await withAuth((tk) => sync.pull(tk));
+        const dupEntity = (res.entities["invoices"] ?? []).find((e) => {
+          if (e.deletedAt) return false;
+          const d = e.data as Record<string, unknown>;
+          if (d.deletedAt != null && d.deletedAt !== 0) return false;
+          if (d.profileId !== profileSyncId) return false;
+          const n = String(d.invoiceNumber ?? "").trim();
+          return n.length > 0 && n === trimmedNumber;
+        });
+        if (dupEntity) {
+          const d = dupEntity.data as Record<string, unknown>;
+          setDuplicate({
+            number: String(d.invoiceNumber ?? trimmedNumber),
+            date: String(d.issueDate ?? "—"),
+            amount: `${String(d.totalWithVat ?? "?")} ${String(d.currency ?? "")}`.trim(),
+          });
+          setSaving(false);
+          return;
+        }
+      }
+
       const now = new Date().toISOString();
       const invoiceSyncId = initial?.syncId ?? crypto.randomUUID();
 
@@ -238,11 +269,43 @@ export function InvoiceEditor({
     <FormDialog
       title={initial ? t("edit_title") : t("new_title")}
       onClose={onClose}
-      onSave={save}
+      onSave={() => save(false)}
       saving={saving}
       error={err}
       saveLabel={initial ? t("save_changes") : t("create_invoice")}
     >
+      {duplicate && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm space-y-2">
+          <div className="font-medium text-amber-900">{t("dup_title")}</div>
+          <div className="text-amber-800">
+            {t("dup_desc", {
+              number: duplicate.number,
+              date: duplicate.date,
+              amount: duplicate.amount,
+            })}
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setDuplicate(null);
+                save(true);
+              }}
+              className="px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium"
+            >
+              {t("dup_save_anyway")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setDuplicate(null)}
+              className="px-3 py-1.5 rounded border border-amber-300 text-amber-800 text-xs"
+            >
+              {t("dup_cancel")}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex rounded-lg border border-ink-300 overflow-hidden text-sm">
         <button
           type="button"
