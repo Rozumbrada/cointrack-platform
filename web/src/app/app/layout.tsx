@@ -272,6 +272,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <div className="mt-1 text-[10px] uppercase tracking-wide text-ink-500">
               {tierDisplayName(user?.tier)}
             </div>
+            {/* DEBUG — odstraníme až bude členové fungovat */}
+            <div className="mt-1 text-[9px] text-red-500 break-all">
+              dbg: tier={user?.tier ?? "null"} | type={activeProfileType ?? "null"} | sm={String(showMembers)}
+            </div>
           </div>
           <div className="px-3 pb-2">
             <LocaleSwitcher />
