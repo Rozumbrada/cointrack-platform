@@ -350,16 +350,17 @@ object EmailTemplates {
         val roleLabel = if (locale?.startsWith("en") == true) {
             when (role) {
                 "EDITOR" -> "Editor (can add and edit transactions)"
-                "ACCOUNTANT" -> "Accountant (read-only + export for tax filing)"
+                "ACCOUNTANT" -> "Accountant (full profile access — edit documents + export)"
                 else -> "Viewer (read-only)"
             }
         } else {
             when (role) {
                 "EDITOR" -> "Editor (může přidávat a upravovat transakce)"
-                "ACCOUNTANT" -> "Účetní (čtení + export pro daňové přiznání)"
+                "ACCOUNTANT" -> "Účetní (kompletní přístup k profilu — editace dokladů + export)"
                 else -> "Pouze čtení"
             }
         }
+        val isAccountant = role == "ACCOUNTANT"
         return layout(
             title = pick(
                 locale,
@@ -368,17 +369,29 @@ object EmailTemplates {
             ),
             locale = locale,
             body = """
-                <p>${pick(
-                    locale,
-                    "Uživatel <strong>$inviterEmail</strong> ti nasdílel bankovní účet <strong>$accountName</strong> v profilu <strong>$profileName</strong>.",
-                    "User <strong>$inviterEmail</strong> shared the bank account <strong>$accountName</strong> from profile <strong>$profileName</strong> with you.",
-                )}</p>
+                <p>${
+                    if (isAccountant) pick(
+                        locale,
+                        "Uživatel <strong>$inviterEmail</strong> ti udělil přístup účetního k profilu <strong>$profileName</strong>.",
+                        "User <strong>$inviterEmail</strong> granted you accountant access to profile <strong>$profileName</strong>.",
+                    ) else pick(
+                        locale,
+                        "Uživatel <strong>$inviterEmail</strong> ti nasdílel bankovní účet <strong>$accountName</strong> v profilu <strong>$profileName</strong>.",
+                        "User <strong>$inviterEmail</strong> shared the bank account <strong>$accountName</strong> from profile <strong>$profileName</strong> with you.",
+                    )
+                }</p>
                 <p>${pick(locale, "Role:", "Role:")} <strong>$roleLabel</strong></p>
-                <p>${pick(
-                    locale,
-                    "Po přijetí pozvánky uvidíš v Cointracku tento sdílený profil a v něm jen tento jeden účet (a transakce, účtenky, faktury k němu napojené). Ostatní data profilu nevidíš.",
-                    "After accepting, you'll see a shared profile in Cointrack containing only this one account (and transactions, receipts, invoices linked to it). Other profile data is not visible.",
-                )}</p>
+                <p>${
+                    if (isAccountant) pick(
+                        locale,
+                        "Jako účetní uvidíš všechny účty profilu, transakce a doklady (účtenky, faktury). Můžeš editovat doklady a stahovat je pro daňové přiznání (Pohoda XML, ZIP). Transakce, účty a další data profilu vidíš pouze ke čtení.",
+                        "As accountant you'll see all profile accounts, transactions, and documents (receipts, invoices). You can edit documents and download them for tax filing (Pohoda XML, ZIP). Transactions, accounts and other profile data are read-only.",
+                    ) else pick(
+                        locale,
+                        "Po přijetí pozvánky uvidíš v Cointracku tento sdílený profil a v něm jen tento jeden účet (a transakce, účtenky, faktury k němu napojené). Ostatní data profilu nevidíš.",
+                        "After accepting, you'll see a shared profile in Cointrack containing only this one account (and transactions, receipts, invoices linked to it). Other profile data is not visible.",
+                    )
+                }</p>
                 <p>
                     <a href="$acceptUrl"
                        style="display:inline-block;background:#111;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">

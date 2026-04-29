@@ -129,8 +129,16 @@ export default function MembersPage() {
                     )}
                   </td>
                   <td className="px-6 py-3 text-ink-700">
-                    <span>{s.accountName}</span>
-                    <span className="text-xs text-ink-400 ml-1.5">({s.accountCurrency} · {s.profileName})</span>
+                    {s.role === "ACCOUNTANT" ? (
+                      <span>
+                        <span className="font-medium">Celý profil:</span> {s.profileName}
+                      </span>
+                    ) : (
+                      <>
+                        <span>{s.accountName}</span>
+                        <span className="text-xs text-ink-400 ml-1.5">({s.accountCurrency} · {s.profileName})</span>
+                      </>
+                    )}
                   </td>
                   <td className="px-6 py-3">
                     <span className="text-xs uppercase tracking-wide bg-ink-100 text-ink-700 px-1.5 py-0.5 rounded">

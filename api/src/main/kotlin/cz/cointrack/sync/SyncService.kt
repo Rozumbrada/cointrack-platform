@@ -91,15 +91,16 @@ class SyncService {
 
     /**
      * V21 — per-account sharing. Vrátí seznam account IDs, které má user aktivně přijaté
-     * jako share (od jiného vlastníka). Pro každý vrací i parent profileId pro potřeby
-     * sync vrstvy (zobrazí se i parent profil v read-only módu).
+     * jako share (od jiného vlastníka) s rolí VIEWER nebo EDITOR.
+     * Pro ACCOUNTANT viz [accountantSharedProfileIds] — ten dostává plný přístup k profilu.
      */
     private fun Transaction.sharedAccountInfoForUser(userId: UUID): List<Pair<UUID, UUID>> {
         return AccountShares.selectAll()
             .where {
                 (AccountShares.userId eq userId) and
                     AccountShares.acceptedAt.isNotNull() and
-                    AccountShares.revokedAt.isNull()
+                    AccountShares.revokedAt.isNull() and
+                    (AccountShares.role neq "ACCOUNTANT")
             }
             .mapNotNull { share ->
                 val accountId = share[AccountShares.accountId].value
@@ -109,6 +110,29 @@ class SyncService {
                 val profileId = acc[Accounts.profileId].value
                 accountId to profileId
             }
+    }
+
+    /**
+     * V22 — ACCOUNTANT share. Vrátí seznam profile IDs, ke kterým má user roli ACCOUNTANT.
+     * Účetní vidí celý profil (všechny účty, kategorie, transakce, doklady) — read-only
+     * pro vše kromě dokladů, které může editovat (kontrola se děje v upsert vrstvě).
+     */
+    private fun Transaction.accountantSharedProfileIds(userId: UUID): List<UUID> {
+        return AccountShares.selectAll()
+            .where {
+                (AccountShares.userId eq userId) and
+                    AccountShares.acceptedAt.isNotNull() and
+                    AccountShares.revokedAt.isNull() and
+                    (AccountShares.role eq "ACCOUNTANT")
+            }
+            .mapNotNull { share ->
+                val accountId = share[AccountShares.accountId].value
+                val acc = Accounts.selectAll().where { Accounts.id eq accountId }.singleOrNull()
+                    ?: return@mapNotNull null
+                if (acc[Accounts.deletedAt] != null) return@mapNotNull null
+                acc[Accounts.profileId].value
+            }
+            .distinct()
     }
 
     /**
@@ -144,9 +168,14 @@ class SyncService {
         val effectiveSince = since ?: Instant.EPOCH
 
         return db {
-            val userProfileIds = accessibleProfileIds(userId)
+            val userProfileIdsRaw = accessibleProfileIds(userId)
 
-            // V21 — per-account sharing: účty které mám přijaté jako share od jiného owners
+            // V22 — ACCOUNTANT shares: full profile access (all accounts/transactions/etc)
+            val accountantProfileIds = accountantSharedProfileIds(userId)
+            // Slouč userProfileIds + accountant profiles — pro účetního se profil chová jako vlastní co se týče čtení
+            val userProfileIds = (userProfileIdsRaw + accountantProfileIds).distinct()
+
+            // V21 — per-account sharing: účty které mám přijaté jako VIEWER/EDITOR share
             val sharedAccountInfo = sharedAccountInfoForUser(userId)
             val sharedAccountIds = sharedAccountInfo.map { it.first }
             // Parent profily sdílených účtů — frontend je zobrazí jako "shared" read-only
