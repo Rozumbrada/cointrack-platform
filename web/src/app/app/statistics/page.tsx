@@ -17,6 +17,7 @@ import {
 } from "@/components/app/PeriodSelector";
 import { CategoryIcon } from "@/components/app/CategoryIcon";
 import { ExpenseDonut, categoryColor } from "@/components/app/ExpenseDonut";
+import { ChevronDown, ChevronRight, Eye, EyeOff } from "lucide-react";
 
 export default function StatisticsPage() {
   const t = useTranslations("statistics_page");
@@ -172,8 +173,16 @@ export default function StatisticsPage() {
                           setExpandedCategory(isExpanded ? null : c.cid)
                         }
                       >
-                        <span className={`text-ink-400 text-xs w-3 ${isExpanded ? "" : "-rotate-90"}`}>
-                          ▾
+                        {/* Větší expand-arrow s plynulou animací rotace */}
+                        <span
+                          className="text-ink-500 shrink-0 transition-transform"
+                          aria-hidden="true"
+                        >
+                          {isExpanded ? (
+                            <ChevronDown className="w-5 h-5" />
+                          ) : (
+                            <ChevronRight className="w-5 h-5" />
+                          )}
                         </span>
                         <div
                           className="w-3 h-3 rounded-sm shrink-0"
@@ -193,15 +202,24 @@ export default function StatisticsPage() {
                         <div className="font-medium tabular-nums w-24 text-right">
                           {fmt(c.amount, "CZK", locale)}
                         </div>
+                        {/* Visibility toggle — výchozí (viditelné) je otevřené oko,
+                            kliknutím se kategorie skryje (zavřené oko + opacity řádku). */}
                         <button
-                          className="text-ink-400 hover:text-ink-700"
+                          className={`shrink-0 p-1 rounded hover:bg-ink-100 transition-colors ${
+                            isHidden ? "text-ink-400" : "text-ink-600 hover:text-ink-900"
+                          }`}
                           onClick={(e) => {
                             e.stopPropagation();
                             toggleCategory(c.cid);
                           }}
                           title={isHidden ? t("show_in_chart") : t("hide_from_chart")}
+                          aria-label={isHidden ? t("show_in_chart") : t("hide_from_chart")}
                         >
-                          {isHidden ? "👁" : "🚫"}
+                          {isHidden ? (
+                            <EyeOff className="w-5 h-5" />
+                          ) : (
+                            <Eye className="w-5 h-5" />
+                          )}
                         </button>
                       </div>
                       {isExpanded && (
