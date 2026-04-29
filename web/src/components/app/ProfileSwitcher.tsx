@@ -47,10 +47,10 @@ export default function ProfileSwitcher() {
 
         // Cache profile types do localStorage — layout je čte synchronně
         // při prvním renderu, aby menu (Členové) bylo stabilní bez flickeru.
-        // Legacy profily co nemají type fallbackujeme na PERSONAL (= konzistentní
-        // se serverovým default `Profiles.type` na PERSONAL).
+        // Legacy profily mají type buď null nebo lowercase ('personal') —
+        // normalizujeme na uppercase + fallback na PERSONAL pro chybějící.
         for (const p of list) {
-          const t = p.data.type ?? "PERSONAL";
+          const t = (p.data.type ?? "PERSONAL").toUpperCase();
           setCachedProfileType(p.syncId, t);
         }
 
@@ -81,9 +81,10 @@ export default function ProfileSwitcher() {
   function choose(syncId: string) {
     // Synchronně přeplň cache typu profilu PŘED dispatchem profile-changed
     // eventu — layout + Members page reagují na event a okamžitě potřebují
-    // znát typ pro rozhodnutí o menu/warning.
+    // znát typ pro rozhodnutí o menu/warning. Normalizace na uppercase
+    // (legacy profily mají v DB lowercase 'personal' apod.).
     const target = profiles.find((p) => p.syncId === syncId);
-    const type = target?.data.type ?? "PERSONAL";
+    const type = (target?.data.type ?? "PERSONAL").toUpperCase();
     setCachedProfileType(syncId, type);
     setCurrentProfileSyncId(syncId);
     setCurrentSyncIdState(syncId);

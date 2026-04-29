@@ -69,12 +69,14 @@ export default function MembersPage() {
       const dataType = data?.type;
       const name = data?.name;
 
-      // Preferujeme dataType (čerstvější), fallback na cachedType
-      const finalType =
+      // Preferujeme dataType (čerstvější), fallback na cachedType.
+      // Normalizace na uppercase — legacy data v DB mají lowercase
+      // 'personal' / 'business' atd., ale klient porovnává uppercase.
+      const rawType =
         typeof dataType === "string" ? dataType : cachedType;
-      // Updatuje cache aby layout dostal správnou hodnotu
+      const finalType = rawType ? rawType.toUpperCase() : null;
       if (typeof dataType === "string" && syncId) {
-        setCachedProfileType(syncId, dataType);
+        setCachedProfileType(syncId, dataType.toUpperCase());
       }
 
       setActiveProfileType(finalType);

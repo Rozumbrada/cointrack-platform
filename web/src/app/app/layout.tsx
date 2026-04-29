@@ -31,8 +31,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // Init z localStorage cache — layout má od první frame správný typ
   // (pokud user už profil dříve používal). Bez cache by Členové menu
   // chvíli flickly do/z viditelnosti při každém načtení.
+  // Normalizace na uppercase (legacy data můžou být lowercase 'personal' atd.).
   const [activeProfileType, setActiveProfileType] = useState<string | null>(
-    () => getCachedProfileType(getCurrentProfileSyncId()),
+    () => {
+      const cached = getCachedProfileType(getCurrentProfileSyncId());
+      return cached ? cached.toUpperCase() : null;
+    },
   );
 
   // Zavřít drawer při změně cesty
@@ -50,7 +54,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     const reloadFromCache = () => {
       const syncId = getCurrentProfileSyncId();
       const cached = getCachedProfileType(syncId);
-      if (!cancelled) setActiveProfileType(cached);
+      // Normalizace na uppercase pro konzistentní compare (legacy cache)
+      const normalized = cached ? cached.toUpperCase() : null;
+      if (!cancelled) setActiveProfileType(normalized);
     };
 
     const loadProfileType = async () => {
@@ -66,8 +72,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         for (const e of res.entities["profiles"] ?? []) {
           if (e.deletedAt) continue;
           const t = (e.data as Record<string, unknown>).type;
-          // Legacy profil bez type → PERSONAL (= konzistentní se server default).
-          const normalized = typeof t === "string" && t.length > 0 ? t : "PERSONAL";
+          // Normalizace: legacy data v DB mají lowercase 'personal' apod.,
+          // standardizujeme na uppercase + fallback PERSONAL pro chybějící.
+          const normalized = (typeof t === "string" && t.length > 0 ? t : "PERSONAL").toUpperCase();
           setCachedProfileType(e.syncId, normalized);
         }
         const profile = (res.entities["profiles"] ?? []).find(
@@ -75,7 +82,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         );
         const type =
           (profile?.data as Record<string, unknown> | undefined)?.type;
-        const normalized = typeof type === "string" && type.length > 0 ? type : "PERSONAL";
+        const normalized = (typeof type === "string" && type.length > 0 ? type : "PERSONAL").toUpperCase();
         if (!cancelled) setActiveProfileType(normalized);
       } catch {
         // ignore — sidebar i bez tohoto musí fungovat
@@ -271,10 +278,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <div className="truncate">{user?.email}</div>
             <div className="mt-1 text-[10px] uppercase tracking-wide text-ink-500">
               {tierDisplayName(user?.tier)}
-            </div>
-            {/* DEBUG — odstraníme až bude členové fungovat */}
-            <div className="mt-1 text-[9px] text-red-500 break-all">
-              dbg: tier={user?.tier ?? "null"} | type={activeProfileType ?? "null"} | sm={String(showMembers)}
             </div>
           </div>
           <div className="px-3 pb-2">
