@@ -11,6 +11,7 @@ import {
   getDefaultAccountSyncId,
   setDefaultAccountSyncId,
 } from "@/lib/profile-store";
+import { tierDisplayName } from "@/lib/tier";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -129,8 +130,8 @@ export default function SettingsPage() {
           <Row
             label={t("tier_field")}
             value={
-              <span className="inline-block text-[10px] uppercase tracking-wide bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded">
-                {user?.tier ?? "free"}
+              <span className="inline-block text-xs tracking-wide bg-brand-100 text-brand-700 px-2 py-0.5 rounded">
+                {tierDisplayName(user?.tier)}
               </span>
             }
           />

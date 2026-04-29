@@ -15,6 +15,7 @@ import {
   getCachedProfileType,
   setCachedProfileType,
 } from "@/lib/profile-store";
+import { tierDisplayName } from "@/lib/tier";
 import ProfileSwitcher from "@/components/app/ProfileSwitcher";
 import { QuickActionFab } from "@/components/app/QuickActionFab";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
@@ -269,7 +270,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
             <div className="truncate">{user?.email}</div>
             <div className="mt-1 text-[10px] uppercase tracking-wide text-ink-500">
-              {user?.tier ?? "free"}
+              {tierDisplayName(user?.tier)}
             </div>
           </div>
           <div className="px-3 pb-2">
@@ -372,7 +373,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </div>
                 <div className="truncate">{user?.email}</div>
                 <div className="mt-1 text-[10px] uppercase tracking-wide text-ink-500">
-                  {user?.tier ?? "free"}
+                  {tierDisplayName(user?.tier)}
                 </div>
               </div>
               <div className="px-3 pb-2">
