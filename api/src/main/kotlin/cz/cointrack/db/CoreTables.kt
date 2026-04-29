@@ -49,6 +49,13 @@ object Profiles : SyncableTable("profiles") {
     val idokladAccessToken      = text("idoklad_access_token").nullable()
     val idokladTokenExpiresAt   = timestamp("idoklad_token_expires_at").nullable()
     val idokladLastSyncAt       = timestamp("idoklad_last_sync_at").nullable()
+
+    // ── Fio Bank integration (V26) ──
+    /** AES-GCM ciphertext (base64) Fio API tokenu. Plain text nikdy nevynese server. */
+    val fioTokenEnc             = text("fio_token_enc").nullable()
+    val fioLastSyncAt           = timestamp("fio_last_sync_at").nullable()
+    /** Posledně zpracovaný movement ID — Fio API "set-last-id" pro deduplikaci. */
+    val fioLastMovementId       = long("fio_last_movement_id").nullable()
 }
 
 // ─── Accounts ──────────────────────────────────────────────────────

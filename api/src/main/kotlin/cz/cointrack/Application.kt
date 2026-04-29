@@ -13,6 +13,8 @@ import cz.cointrack.bank.SaltEdgeProvider
 import cz.cointrack.bank.bankRoutes
 import cz.cointrack.email.EmailConfig
 import cz.cointrack.email.EmailService
+import cz.cointrack.fio.FioService
+import cz.cointrack.fio.fioRoutes
 import cz.cointrack.idoklad.IDokladService
 import cz.cointrack.idoklad.idokladRoutes
 import cz.cointrack.payments.BillingExpiryWorker
@@ -87,6 +89,7 @@ fun Application.module() {
     val permissionService = PermissionService()
     val accountantService = AccountantService()
     val idokladService = IDokladService()
+    val fioService = FioService()
     val paymentService = PaymentService(
         config = loadPaymentConfig(),
         email = emailService,
@@ -145,6 +148,7 @@ fun Application.module() {
             permissionRoutes(permissionService)
             accountantRoutes(accountantService)
             idokladRoutes(idokladService)
+            fioRoutes(fioService)
             paymentRoutes(paymentService)
             if (bankService != null) bankRoutes(bankService)
             geminiRoutes(geminiService)
