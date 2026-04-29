@@ -35,6 +35,15 @@ interface ProfileFormProps {
   syncId?: string;
 }
 
+/**
+ * Tvar Profile entity v cloud syncu.
+ *
+ * **Pozor na klíče adresy/kontaktů**: mobile (SyncMappers.kt:54-59) posílá
+ * `street`/`city`/`zip`/`phone`/`email` (krátké klíče bez prefixu).
+ * Stará verze webu posílala `companyStreet`/`companyCity`/.../atd. → kvůli
+ * tomu se data z mobilu neukázala na webu a obráceně. Sjednoceno na mobile
+ * pojmenování (kanonické), pro starší data v cloudu fallback při čtení.
+ */
 interface ProfileData {
   name: string;
   type?: string;
@@ -44,6 +53,13 @@ interface ProfileData {
   isVatPayer?: boolean;
   businessFocus?: string | null;
   companyName?: string;
+  // Mobile-compatible keys (canonical):
+  street?: string;
+  city?: string;
+  zip?: string;
+  phone?: string;
+  email?: string;
+  // Legacy web-only keys (read with fallback, never write):
   companyStreet?: string;
   companyCity?: string;
   companyZip?: string;
@@ -154,11 +170,13 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
           BUSINESS_FOCUSES.includes(bf as BusinessFocus) ? (bf as BusinessFocus) : "",
         );
         setCompanyName(d.companyName ?? "");
-        setCompanyStreet(d.companyStreet ?? "");
-        setCompanyCity(d.companyCity ?? "");
-        setCompanyZip(d.companyZip ?? "");
-        setCompanyPhone(d.companyPhone ?? "");
-        setCompanyEmail(d.companyEmail ?? "");
+        // Read mobile-compatible keys first, fallback na staré web klíče pro
+        // existující data uložená starou verzí webu.
+        setCompanyStreet(d.street ?? d.companyStreet ?? "");
+        setCompanyCity(d.city ?? d.companyCity ?? "");
+        setCompanyZip(d.zip ?? d.companyZip ?? "");
+        setCompanyPhone(d.phone ?? d.companyPhone ?? "");
+        setCompanyEmail(d.email ?? d.companyEmail ?? "");
         setDefaultCurrency(d.defaultCurrency ?? "CZK");
         setLoading(false);
       } catch (e) {
@@ -392,11 +410,20 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
         isVatPayer,
         businessFocus: type === "BUSINESS" && businessFocus ? businessFocus : null,
         companyName: companyName || undefined,
-        companyStreet: companyStreet || undefined,
-        companyCity: companyCity || undefined,
-        companyZip: companyZip || undefined,
-        companyPhone: companyPhone || undefined,
-        companyEmail: companyEmail || undefined,
+        // Mobile-compatible keys (kanonické). Staré web klíče explicitně
+        // nulujeme aby se nepuslushovaly zpět ze `originalData` spread —
+        // jinak by JSON nabobtnal o duplicitní data a mobile + web by se
+        // časem rozjely.
+        street: companyStreet || undefined,
+        city: companyCity || undefined,
+        zip: companyZip || undefined,
+        phone: companyPhone || undefined,
+        email: companyEmail || undefined,
+        companyStreet: undefined,
+        companyCity: undefined,
+        companyZip: undefined,
+        companyPhone: undefined,
+        companyEmail: undefined,
         defaultCurrency,
         organizationId,
       };
