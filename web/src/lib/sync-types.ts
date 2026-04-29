@@ -37,11 +37,18 @@ export interface ServerAccount {
   icon?: string;
   excludedFromTotal?: boolean;
   bankProvider?: string;
+  /** Legacy alias pro auto-importované účty (Salt Edge). Server posílá `bankProvider`,
+      mobile starší verze ukládali jako `externalProvider`. UI používá oba. */
+  externalProvider?: string;
   bankIban?: string;
   /** Číslo účtu bez kódu banky (např. "0000192000145399"). Pro Pohoda XML export. */
   bankAccountNumber?: string;
   /** Kód banky (např. "0100" pro KB). Pro Pohoda XML export. */
   bankCode?: string;
+  /** Pohoda Banky → Zkratka (typ:ids). Pro Pohoda XML export. */
+  pohodaShortcut?: string;
+  /** Salt Edge profile assignment — array syncId profilů ke kterým účet patří. */
+  assignedProfileIds?: string[];
 }
 
 export interface ServerCategory {
