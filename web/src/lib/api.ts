@@ -147,6 +147,60 @@ export const gdpr = {
     api<{ message: string }>("/api/v1/gdpr/delete", { method: "DELETE", token }),
 };
 
+// ─── Per-account sharing (V21) ───────────────────────────────────────
+export interface AccountShareDto {
+  id: string;
+  accountId: string;
+  email: string;
+  role: string;            // VIEWER | EDITOR
+  status: string;          // pending | active | revoked
+  acceptedAt?: string | null;
+  createdAt: string;
+  userDisplayName?: string | null;
+}
+
+export interface AccountSharePreviewDto {
+  ownerEmail: string;
+  accountName: string;
+  profileName: string;
+  role: string;
+  expiresAt?: string | null;
+}
+
+export interface SharedAccountInfoDto {
+  accountId: string;
+  name: string;
+  currency: string;
+  profileId: string;
+  profileName: string;
+}
+
+export const accountShares = {
+  invite: (token: string, accountId: string, email: string, role: "VIEWER" | "EDITOR" = "VIEWER") =>
+    api<AccountShareDto>(`/api/v1/accounts/${accountId}/shares`, {
+      method: "POST", token, body: { email, role },
+    }),
+
+  list: (token: string, accountId: string) =>
+    api<AccountShareDto[]>(`/api/v1/accounts/${accountId}/shares`, { token }),
+
+  revoke: (token: string, shareId: string) =>
+    api<{ ok: boolean }>(`/api/v1/accounts/shares/${shareId}`, {
+      method: "DELETE", token,
+    }),
+
+  preview: (shareToken: string) =>
+    api<AccountSharePreviewDto>(`/api/v1/accounts/shares/preview?token=${encodeURIComponent(shareToken)}`),
+
+  accept: (token: string, shareToken: string) =>
+    api<AccountShareDto>(`/api/v1/accounts/shares/accept`, {
+      method: "POST", token, body: { token: shareToken },
+    }),
+
+  myShares: (token: string) =>
+    api<SharedAccountInfoDto[]>(`/api/v1/accounts/shares/mine`, { token }),
+};
+
 // ─── iDoklad full proxy (V21) ───────────────────────────────────────
 export interface IDokladInvoiceItemDto {
   name: string;
