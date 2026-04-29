@@ -43,8 +43,19 @@ function AcceptShareInner() {
       await accountShares.accept(at, token);
       setDone(true);
     } catch (e) {
-      if (e instanceof ApiError && e.status === 403) {
-        setError(t("wrong_email_desc"));
+      if (e instanceof ApiError) {
+        if (e.status === 401) {
+          // Stale/expired JWT — clear it and ask user to sign in fresh
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("accessToken");
+            localStorage.removeItem("refreshToken");
+          }
+          setNeedsLogin(true);
+        } else if (e.status === 403) {
+          setError(t("wrong_email_desc"));
+        } else {
+          setError(e.message || t("fail_default"));
+        }
       } else {
         setError(e instanceof Error ? e.message : t("fail_default"));
       }
