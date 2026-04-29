@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { auth, ApiError } from "@/lib/api";
 
-export default function LoginPage() {
+function LoginInner() {
   const router = useRouter();
+  const params = useSearchParams();
   const t = useTranslations("auth.login");
   const tc = useTranslations("common");
   const [email, setEmail] = useState("");
@@ -22,12 +23,15 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await auth.login(email, password);
-      // TODO: ulož tokeny do httpOnly cookie přes API route, zatím localStorage (dev only)
       if (typeof window !== "undefined") {
         localStorage.setItem("accessToken", res.accessToken);
         localStorage.setItem("refreshToken", res.refreshToken);
       }
-      router.push("/app/profiles");
+      // Po loginu redirect zpět na ?next=... (např. /accept-share)
+      // Bezpečnostní validace: musí začínat "/" a nesmí být "//..."
+      const next = params.get("next");
+      const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : "/app/profiles";
+      router.push(safeNext);
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
       else setError(tc("error"));
@@ -91,10 +95,21 @@ export default function LoginPage() {
 
       <p className="text-center text-sm text-ink-600 mt-6">
         {t("no_account")}{" "}
-        <Link href="/signup" className="text-brand-600 hover:text-brand-700 font-medium">
+        <Link
+          href={params.get("next") ? `/signup?next=${encodeURIComponent(params.get("next") ?? "")}` : "/signup"}
+          className="text-brand-600 hover:text-brand-700 font-medium"
+        >
           {t("signup_link")}
         </Link>
       </p>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="bg-white rounded-2xl border border-ink-200 p-8 text-center text-ink-600">…</div>}>
+      <LoginInner />
+    </Suspense>
   );
 }

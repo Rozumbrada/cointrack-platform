@@ -1,15 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { auth, ApiError } from "@/lib/api";
 
-export default function SignupPage() {
+function SignupInner() {
   const t = useTranslations("auth.signup");
   const tc = useTranslations("common");
   const locale = useLocale();
+  const params = useSearchParams();
+  const next = params.get("next");
+  const loginHref = next ? `/login?next=${encodeURIComponent(next)}` : "/login";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
@@ -52,7 +56,7 @@ export default function SignupPage() {
           {t("verify_sent", { email })}
         </p>
         <Button asChild variant="outline" className="w-full">
-          <Link href="/login">{t("login_link")}</Link>
+          <Link href={loginHref}>{t("login_link")}</Link>
         </Button>
       </div>
     );
@@ -151,10 +155,18 @@ export default function SignupPage() {
 
       <p className="text-center text-sm text-ink-600 mt-6">
         {t("have_account")}{" "}
-        <Link href="/login" className="text-brand-600 hover:text-brand-700 font-medium">
+        <Link href={loginHref} className="text-brand-600 hover:text-brand-700 font-medium">
           {t("login_link")}
         </Link>
       </p>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={<div className="bg-white rounded-2xl border border-ink-200 p-8 text-center text-ink-600">…</div>}>
+      <SignupInner />
+    </Suspense>
   );
 }
