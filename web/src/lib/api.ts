@@ -175,6 +175,20 @@ export interface SharedAccountInfoDto {
   profileName: string;
 }
 
+export interface ShareWithAccountDto {
+  id: string;
+  accountId: string;
+  accountName: string;
+  accountCurrency: string;
+  profileName: string;
+  email: string;
+  role: string;
+  status: string;
+  acceptedAt?: string | null;
+  createdAt: string;
+  userDisplayName?: string | null;
+}
+
 export const accountShares = {
   invite: (token: string, accountId: string, email: string, role: "VIEWER" | "EDITOR" = "VIEWER") =>
     api<AccountShareDto>(`/api/v1/accounts/${accountId}/shares`, {
@@ -199,6 +213,9 @@ export const accountShares = {
 
   myShares: (token: string) =>
     api<SharedAccountInfoDto[]>(`/api/v1/accounts/shares/mine`, { token }),
+
+  listOwned: (token: string) =>
+    api<ShareWithAccountDto[]>(`/api/v1/accounts/shares/owned`, { token }),
 };
 
 // ─── iDoklad full proxy (V21) ───────────────────────────────────────

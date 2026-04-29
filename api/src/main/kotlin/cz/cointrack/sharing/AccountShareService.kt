@@ -70,6 +70,21 @@ class AccountShareService(
     )
 
     @Serializable
+    data class ShareWithAccountDto(
+        val id: String,
+        val accountId: String,
+        val accountName: String,
+        val accountCurrency: String,
+        val profileName: String,
+        val email: String,
+        val role: String,
+        val status: String,
+        val acceptedAt: String? = null,
+        val createdAt: String,
+        val userDisplayName: String? = null,
+    )
+
+    @Serializable
     data class InvitePreview(
         val ownerEmail: String,
         val accountName: String,
@@ -286,6 +301,58 @@ class AccountShareService(
             }
             getShare(share[AccountShares.id].value)!!
         }
+    }
+
+    /**
+     * Owner: list všech share, které jsem vystavil (napříč všemi mými účty).
+     * Pro stránku "Členové" — vlastník vidí všechny pozvané přes všechny své účty.
+     */
+    suspend fun listOwnedShares(ownerUserId: UUID): List<ShareWithAccountDto> = db {
+        // Najdi všechny accounts, jejichž profile mám
+        val ownedAccountIds = (Accounts innerJoin Profiles).selectAll()
+            .where {
+                (Profiles.ownerUserId eq ownerUserId) and
+                    Accounts.deletedAt.isNull() and
+                    Profiles.deletedAt.isNull()
+            }
+            .map { it[Accounts.id].value }
+
+        if (ownedAccountIds.isEmpty()) return@db emptyList()
+
+        AccountShares.selectAll()
+            .where {
+                (AccountShares.accountId inList ownedAccountIds) and
+                    AccountShares.revokedAt.isNull()
+            }
+            .orderBy(AccountShares.createdAt, SortOrder.DESC)
+            .mapNotNull { share ->
+                val accountId = share[AccountShares.accountId].value
+                val acc = Accounts.selectAll().where { Accounts.id eq accountId }.singleOrNull()
+                    ?: return@mapNotNull null
+                val profile = Profiles.selectAll().where { Profiles.id eq acc[Accounts.profileId] }.singleOrNull()
+                    ?: return@mapNotNull null
+                val displayName = share[AccountShares.userId]?.value?.let { uid ->
+                    Users.selectAll().where { Users.id eq uid }.singleOrNull()?.get(Users.displayName)
+                }
+                val status = when {
+                    share[AccountShares.revokedAt] != null -> "revoked"
+                    share[AccountShares.acceptedAt] != null -> "active"
+                    else -> "pending"
+                }
+                ShareWithAccountDto(
+                    id = share[AccountShares.id].value.toString(),
+                    accountId = accountId.toString(),
+                    accountName = acc[Accounts.name],
+                    accountCurrency = acc[Accounts.currency],
+                    profileName = profile[Profiles.name],
+                    email = share[AccountShares.email],
+                    role = share[AccountShares.role],
+                    status = status,
+                    acceptedAt = share[AccountShares.acceptedAt]?.toString(),
+                    createdAt = share[AccountShares.createdAt].toString(),
+                    userDisplayName = displayName,
+                )
+            }
     }
 
     /**

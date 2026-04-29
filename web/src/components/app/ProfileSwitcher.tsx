@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { sync } from "@/lib/api";
+import { sync, accountShares } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import {
   getCurrentProfileSyncId,
@@ -13,7 +13,9 @@ import {
 
 export default function ProfileSwitcher() {
   const t = useTranslations("profile_switcher");
+  const tShare = useTranslations("profile_switcher_extras");
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [sharedProfileIds, setSharedProfileIds] = useState<Set<string>>(new Set());
   const [currentSyncId, setCurrentSyncIdState] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -21,11 +23,13 @@ export default function ProfileSwitcher() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await withAuth((t) => sync.pull(t));
+        const [res, mine] = await Promise.all([
+          withAuth((t) => sync.pull(t)),
+          withAuth((t) => accountShares.myShares(t)).catch(() => []),
+        ]);
         const raw = res.entities["profiles"] ?? [];
         const list: Profile[] = raw
           .filter((e) => {
-            // Smazané profily: envelope.deletedAt NEBO data.deletedAt
             if (e.deletedAt) return false;
             const d = e.data as Record<string, unknown>;
             if (d.deletedAt != null && d.deletedAt !== 0) return false;
@@ -37,8 +41,8 @@ export default function ProfileSwitcher() {
           }))
           .sort((a, b) => a.data.name.localeCompare(b.data.name));
         setProfiles(list);
+        setSharedProfileIds(new Set(mine.map((m) => m.profileId)));
 
-        // Auto-select: pokud není nic uloženo nebo uloženo neexistuje v aktuálním seznamu
         const existing = getCurrentProfileSyncId();
         const existsInList = list.some((p) => p.syncId === existing);
         if (!existsInList && list.length > 0) {
@@ -92,8 +96,16 @@ export default function ProfileSwitcher() {
           {current?.data?.icon || "👤"}
         </div>
         <div className="flex-1 min-w-0 text-left">
-          <div className="font-medium text-ink-900 truncate">
-            {current?.data?.name ?? t("default_label")}
+          <div className="font-medium text-ink-900 truncate flex items-center gap-1.5">
+            <span className="truncate">{current?.data?.name ?? t("default_label")}</span>
+            {currentSyncId && sharedProfileIds.has(currentSyncId) && (
+              <span
+                title={tShare("shared_tooltip")}
+                className="shrink-0 text-[9px] uppercase bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded"
+              >
+                🔗 {tShare("shared_badge")}
+              </span>
+            )}
           </div>
           <div className="text-[10px] uppercase tracking-wide text-ink-500">
             {labelType(current?.data?.type, t)}
@@ -121,7 +133,17 @@ export default function ProfileSwitcher() {
                 {p.data.icon || "👤"}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="truncate">{p.data.name}</div>
+                <div className="truncate flex items-center gap-1.5">
+                  <span className="truncate">{p.data.name}</span>
+                  {sharedProfileIds.has(p.syncId) && (
+                    <span
+                      title={tShare("shared_tooltip")}
+                      className="shrink-0 text-[9px] uppercase bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded"
+                    >
+                      🔗
+                    </span>
+                  )}
+                </div>
                 <div className="text-[10px] uppercase text-ink-500">
                   {labelType(p.data.type, t)}
                 </div>

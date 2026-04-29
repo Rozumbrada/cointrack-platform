@@ -63,6 +63,12 @@ fun Route.accountShareRoutes(service: AccountShareService) {
                 val userId = call.userId()
                 call.respond(service.activeSharesForUser(userId))
             }
+
+            // Owner: list všech share, které jsem vystavil napříč všemi mými účty
+            get("/shares/owned") {
+                val userId = call.userId()
+                call.respond(service.listOwnedShares(userId))
+            }
         }
     }
 }

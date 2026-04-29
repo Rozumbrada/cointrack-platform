@@ -78,6 +78,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/app/dashboard", label: ts("dashboard") },
     { href: "/app/accounts", label: ts("accounts") },
     { href: "/app/banks", label: ts("banks") },
+    { href: "/app/members", label: ts("members") },
     { href: "/app/transactions", label: ts("transactions") },
     { href: "/app/categories", label: ts("categories") },
     { href: "/app/statistics", label: ts("statistics") },
