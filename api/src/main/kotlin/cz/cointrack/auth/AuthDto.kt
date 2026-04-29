@@ -11,6 +11,12 @@ data class RegisterRequest(
 )
 
 @Serializable
+data class UpdateMeRequest(
+    val locale: String? = null,
+    val displayName: String? = null,
+)
+
+@Serializable
 data class LoginRequest(
     val email: String,
     val password: String,

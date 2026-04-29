@@ -70,10 +70,10 @@ export interface UserDto {
 }
 
 export const auth = {
-  register: (email: string, password: string, displayName?: string) =>
+  register: (email: string, password: string, displayName?: string, locale?: string) =>
     api<UserDto>("/api/v1/auth/register", {
       method: "POST",
-      body: { email, password, displayName },
+      body: { email, password, displayName, locale },
     }),
 
   login: (email: string, password: string) =>
@@ -95,6 +95,9 @@ export const auth = {
     }),
 
   me: (token: string) => api<UserDto>("/api/v1/auth/me", { token }),
+
+  updateMe: (token: string, body: { locale?: string; displayName?: string }) =>
+    api<UserDto>("/api/v1/auth/me", { method: "PATCH", token, body }),
 
   verifyEmail: (token: string) =>
     api<{ message: string }>("/api/v1/auth/verify-email", {

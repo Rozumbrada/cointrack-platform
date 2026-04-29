@@ -3,10 +3,15 @@
 import { useLocale } from "next-intl";
 import { useTransition } from "react";
 import { setLocaleAction } from "@/lib/locale-action";
+import { auth } from "@/lib/api";
+import { getAccessToken } from "@/lib/auth-store";
 
 /**
- * Jednoduchý CS/EN přepínač. Po změně uloží locale do cookie (server action)
- * a obnoví stránku, aby se znovu načetly server-side strings.
+ * Jednoduchý CS/EN přepínač. Po změně:
+ *  1. Uloží locale do cookie (server action) — pro server-side rendering hned
+ *  2. Pokud je user přihlášený, pošle PATCH /auth/me s novým locale
+ *     (aby emaily přicházely ve správném jazyce)
+ *  3. Obnoví stránku, aby se znovu načetly server-side strings
  */
 export function LocaleSwitcher({ className = "" }: { className?: string }) {
   const current = useLocale();
@@ -16,6 +21,13 @@ export function LocaleSwitcher({ className = "" }: { className?: string }) {
     if (next === current) return;
     startTransition(async () => {
       await setLocaleAction(next);
+      const token = getAccessToken();
+      if (token) {
+        // Best-effort sync s backendem — pokud selže, cookie už je nastavená
+        try {
+          await auth.updateMe(token, { locale: next });
+        } catch { /* ignore */ }
+      }
       window.location.reload();
     });
   }

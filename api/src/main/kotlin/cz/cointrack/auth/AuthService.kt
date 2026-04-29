@@ -152,6 +152,20 @@ class AuthService(
         return row.toUserDto()
     }
 
+    /** Patch profile fields (currently locale + displayName). */
+    suspend fun updateMe(userId: UUID, req: UpdateMeRequest): UserDto {
+        val now = Instant.now()
+        val newLocale = req.locale?.takeIf { it == "cs" || it == "en" }
+        db {
+            Users.update({ Users.id eq userId }) {
+                if (newLocale != null) it[locale] = newLocale
+                if (req.displayName != null) it[displayName] = req.displayName.trim().ifBlank { null }
+                it[updatedAt] = now
+            }
+        }
+        return me(userId)
+    }
+
     // ─── Email verification ─────────────────────────────────────────────
 
     suspend fun verifyEmail(token: String) {

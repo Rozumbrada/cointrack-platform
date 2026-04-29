@@ -1,131 +1,100 @@
 import type { Metadata } from "next";
+import { getLocale, getTranslations } from "next-intl/server";
 import { Container } from "@/components/ui/container";
 
-export const metadata: Metadata = {
-  title: "Ochrana osobních údajů",
-  description: "Jak Cointrack zpracovává tvá osobní a finanční data.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("privacy");
+  return {
+    title: t("meta_title"),
+    description: t("meta_description"),
+  };
+}
 
-export default function PrivacyPage() {
+export default async function PrivacyPage() {
+  const t = await getTranslations("privacy");
+  const locale = await getLocale();
+  const dateStr = new Date().toLocaleDateString(locale);
+
   return (
     <section className="pt-20 pb-24">
       <Container>
         <div className="max-w-3xl prose">
           <h1 className="text-5xl font-semibold tracking-tight text-ink-900 mb-4">
-            Ochrana osobních údajů
+            {t("title")}
           </h1>
-          <p className="text-sm text-ink-500 mb-12">
-            Poslední úprava: {new Date().toLocaleDateString("cs-CZ")}. Tento dokument bude
-            finalizován před produkčním spuštěním. Níže je pracovní verze pro beta uživatele.
-          </p>
+          <p className="text-sm text-ink-500 mb-12">{t("last_updated", { date: dateStr })}</p>
 
-          <h2>Kdo jsme</h2>
+          <h2>{t("h_who")}</h2>
           <p>
-            Cointrack je služba provozovaná [doplnit obchodní firmu], se sídlem v České
-            republice, IČO [doplnit], zapsaná v obchodním rejstříku vedeném [doplnit].
-            Kontakt: <a href="mailto:support@cointrack.cz">support@cointrack.cz</a>.
+            {t.rich("p_who", {
+              email: () => <a href="mailto:support@cointrack.cz">support@cointrack.cz</a>,
+            })}
           </p>
 
-          <h2>Co o tobě víme</h2>
+          <h2>{t("h_what")}</h2>
           <ul>
+            <li><strong>{t("what_register_b")}</strong>{t("what_register")}</li>
+            <li><strong>{t("what_finance_b")}</strong>{t("what_finance")}</li>
+            <li><strong>{t("what_files_b")}</strong>{t("what_files")}</li>
+            <li><strong>{t("what_tech_b")}</strong>{t("what_tech")}</li>
+          </ul>
+
+          <h2>{t("h_legal_basis")}</h2>
+          <p>{t("p_legal_basis")}</p>
+
+          <h2>{t("h_third")}</h2>
+          <p>{t("p_third_intro")}</p>
+          <ul>
+            <li><strong>{t("third_wedos_b")}</strong>{t("third_wedos")}</li>
+            <li><strong>{t("third_hetzner_b")}</strong>{t("third_hetzner")}</li>
+            <li><strong>{t("third_vercel_b")}</strong>{t("third_vercel")}</li>
+            <li><strong>{t("third_stripe_b")}</strong>{t("third_stripe")}</li>
+            <li><strong>{t("third_resend_b")}</strong>{t("third_resend")}</li>
+            <li><strong>{t("third_psd2_b")}</strong>{t("third_psd2")}</li>
+            <li><strong>{t("third_google_b")}</strong>{t("third_google")}</li>
+          </ul>
+          <p>{t("p_third_dpa")}</p>
+
+          <h2>{t("h_retention")}</h2>
+          <ul>
+            <li>{t("retention_finance")}</li>
+            <li>{t("retention_invoices")}</li>
+            <li>{t("retention_logs")}</li>
+          </ul>
+
+          <h2>{t("h_rights")}</h2>
+          <ul>
+            <li><strong>{t("rights_access_b")}</strong>{t("rights_access")}</li>
+            <li><strong>{t("rights_correction_b")}</strong>{t("rights_correction")}</li>
+            <li><strong>{t("rights_deletion_b")}</strong>{t("rights_deletion")}</li>
+            <li><strong>{t("rights_restrict_b")}</strong>{t("rights_restrict")}</li>
+            <li><strong>{t("rights_portability_b")}</strong>{t("rights_portability")}</li>
             <li>
-              <strong>Údaje při registraci</strong>: emailová adresa, heslo (hashované Argon2id),
-              volitelně jméno a jazyk.
-            </li>
-            <li>
-              <strong>Finanční data</strong>: transakce z tvých bankovních účtů (po tvém souhlasu),
-              faktury, účtenky, rozpočty, cíle. Vše uložené šifrovaně v Postgres v České republice.
-            </li>
-            <li>
-              <strong>Soubory</strong>: fotky účtenek, PDF faktur. V object storage (MinIO / Backblaze B2) v Evropské unii.
-            </li>
-            <li>
-              <strong>Technické údaje</strong>: IP adresa, user-agent, časové značky — pro bezpečnost a prevenci zneužití.
+              <strong>{t("rights_complaint_b")}</strong> — <a href="https://uoou.gov.cz" target="_blank">{t("rights_complaint_link")}</a>.
             </li>
           </ul>
 
-          <h2>Právní titul zpracování</h2>
-          <p>
-            Smlouva — zpracování je nezbytné pro plnění služby, kterou sis objednal(a).
-            Pro marketing emaily máš možnost se odhlásit.
-          </p>
-
-          <h2>Komu data předáváme</h2>
-          <p>
-            Zpracovatelé (třetí strany), kteří nám pomáhají službu provozovat:
-          </p>
+          <h2>{t("h_security")}</h2>
           <ul>
-            <li>
-              <strong>WEDOS Internet, a.s.</strong> — hosting databáze a souborů, DC Hluboká nad Vltavou, ČR.
-            </li>
-            <li>
-              <strong>Hetzner Online GmbH</strong> — záložní výpočetní kapacita v Německu.
-            </li>
-            <li>
-              <strong>Vercel Inc.</strong> — CDN pro webové rozhraní, EU edge.
-            </li>
-            <li>
-              <strong>Stripe Payments Europe Ltd.</strong> — zpracování plateb předplatného.
-            </li>
-            <li>
-              <strong>Resend</strong> — doručování transakčních emailů.
-            </li>
-            <li>
-              <strong>GoCardless Bank Account Data / Enable Banking</strong> — licencovaní PSD2 AIS poskytovatelé pro napojení bank.
-            </li>
-            <li>
-              <strong>Google LLC</strong> — Gemini API pro OCR účtenek (zpracování v EU, bez uchovávání obsahu).
-            </li>
-          </ul>
-          <p>
-            S každým zpracovatelem máme Data Processing Agreement (DPA) v souladu s GDPR.
-            Data neprodáváme, nesdílíme pro reklamu, nepředáváme mimo Evropský hospodářský prostor.
-          </p>
-
-          <h2>Jak dlouho data uchováváme</h2>
-          <ul>
-            <li>Finanční data — dokud je u nás tvůj účet. Po smazání účtu: 30 dní zpoždění, pak trvale smazány.</li>
-            <li>Faktury a účtenky — v souladu s českou zákonnou povinností 10 let pro účetní doklady.</li>
-            <li>Provozní a bezpečnostní logy — 90 dní.</li>
+            <li>{t("security_tls")}</li>
+            <li>{t("security_argon")}</li>
+            <li>{t("security_db")}</li>
+            <li>{t("security_aes")}</li>
+            <li>{t("security_audits")}</li>
+            <li>{t("security_incident")}</li>
           </ul>
 
-          <h2>Tvá práva</h2>
-          <ul>
-            <li><strong>Přístup</strong> — export všech dat v ZIP (JSON + soubory) v Nastavení → Účet.</li>
-            <li><strong>Oprava</strong> — všechna data můžeš editovat v aplikaci.</li>
-            <li><strong>Smazání</strong> — Nastavení → Smazat účet. Operace je nevratná.</li>
-            <li><strong>Omezení zpracování</strong> — pozastavením účtu (Nastavení → Deaktivovat).</li>
-            <li><strong>Přenositelnost</strong> — export v otevřeném JSON formátu.</li>
-            <li><strong>Stížnost u ÚOOÚ</strong> — <a href="https://uoou.gov.cz" target="_blank">uoou.gov.cz</a>.</li>
-          </ul>
+          <h2>{t("h_cookies")}</h2>
+          <p>{t("p_cookies")}</p>
 
-          <h2>Bezpečnost</h2>
-          <ul>
-            <li>TLS 1.3 pro veškerou komunikaci</li>
-            <li>Hesla hashovaná Argon2id (OWASP standard)</li>
-            <li>Databáze šifrovaná na úrovni disku + citlivá pole navíc s pgcrypto</li>
-            <li>API tokeny a bankovní credentials v AES-256-GCM</li>
-            <li>Pravidelné bezpečnostní audity a penetration testy (před produkčním launch)</li>
-            <li>Incident response: kritické incidenty oznamujeme postiženým uživatelům do 72 hodin podle GDPR čl. 33</li>
-          </ul>
+          <h2>{t("h_changes")}</h2>
+          <p>{t("p_changes")}</p>
 
-          <h2>Cookies a trackery</h2>
+          <h2>{t("h_contact")}</h2>
           <p>
-            Web <code>cointrack.cz</code> používá pouze technické cookies nezbytné pro fungování
-            (session, preference jazyka). Analytiku děláme přes Plausible, které je cookieless a
-            nevyžaduje souhlas dle ePrivacy Directive. Žádné Google Analytics, žádné Facebook Pixel.
-          </p>
-
-          <h2>Změny tohoto dokumentu</h2>
-          <p>
-            Pokud provedeme podstatné změny, oznámíme ti to emailem nejméně 30 dní předem.
-            Drobné úpravy (opravy překlepů, formální přepracování) provádíme bez notifikace.
-          </p>
-
-          <h2>Kontakt</h2>
-          <p>
-            Na otázky k ochraně osobních údajů odpovídáme na{" "}
-            <a href="mailto:privacy@cointrack.cz">privacy@cointrack.cz</a>.
+            {t.rich("p_contact", {
+              email: () => <a href="mailto:privacy@cointrack.cz">privacy@cointrack.cz</a>,
+            })}
           </p>
         </div>
       </Container>

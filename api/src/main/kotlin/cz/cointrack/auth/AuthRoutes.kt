@@ -10,6 +10,7 @@ import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
+import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import java.util.UUID
@@ -76,6 +77,15 @@ fun Route.authRoutes(authService: AuthService) {
                 val principal = call.principal<JWTPrincipal>()!!
                 val userId = UUID.fromString(principal.subject)
                 val user = authService.me(userId)
+                call.respond(user)
+            }
+
+            // PATCH /auth/me { locale?: string, displayName?: string }
+            patch("/me") {
+                val principal = call.principal<JWTPrincipal>()!!
+                val userId = UUID.fromString(principal.subject)
+                val req = call.receive<UpdateMeRequest>()
+                val user = authService.updateMe(userId, req)
                 call.respond(user)
             }
 

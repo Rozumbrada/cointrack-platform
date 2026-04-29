@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { auth, ApiError } from "@/lib/api";
 
 export default function SignupPage() {
   const t = useTranslations("auth.signup");
   const tc = useTranslations("common");
+  const locale = useLocale();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
@@ -30,7 +31,7 @@ export default function SignupPage() {
     }
     setLoading(true);
     try {
-      await auth.register(email, password, displayName || undefined);
+      await auth.register(email, password, displayName || undefined, locale);
       setDone(true);
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
