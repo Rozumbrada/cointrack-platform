@@ -421,6 +421,7 @@ function ReceiptEditDialog({
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
+  const t = useTranslations("receipt_edit");
   const r = receipt.data;
   const [merchantName, setMerchantName] = useState(r.merchantName ?? "");
   const [date, setDate] = useState(r.date ?? "");
@@ -473,12 +474,12 @@ function ReceiptEditDialog({
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl border border-ink-200 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="px-6 py-4 border-b border-ink-200 flex items-center justify-between">
-          <h2 className="font-semibold text-ink-900">Upravit účtenku</h2>
+          <h2 className="font-semibold text-ink-900">{t("title")}</h2>
           <button onClick={onClose} className="text-ink-500 hover:text-ink-900">✕</button>
         </div>
         <div className="p-6 space-y-4">
           <div>
-            <label className="block text-xs font-medium text-ink-700 mb-1">Obchodník</label>
+            <label className="block text-xs font-medium text-ink-700 mb-1">{t("merchant")}</label>
             <input
               type="text"
               value={merchantName}
@@ -488,7 +489,7 @@ function ReceiptEditDialog({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-ink-700 mb-1">Datum</label>
+              <label className="block text-xs font-medium text-ink-700 mb-1">{t("date")}</label>
               <input
                 type="date"
                 value={date}
@@ -497,22 +498,22 @@ function ReceiptEditDialog({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-ink-700 mb-1">Platba</label>
+              <label className="block text-xs font-medium text-ink-700 mb-1">{t("payment")}</label>
               <select
                 value={paymentMethod}
                 onChange={(e) => setPaymentMethod(e.target.value)}
                 className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm"
               >
                 <option value="">—</option>
-                <option value="CASH">Hotově</option>
-                <option value="CARD">Kartou</option>
-                <option value="UNKNOWN">Převodem</option>
+                <option value="CASH">{t("payment_cash")}</option>
+                <option value="CARD">{t("payment_card")}</option>
+                <option value="UNKNOWN">{t("payment_transfer")}</option>
               </select>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-ink-700 mb-1">Celkem s DPH (Kč)</label>
+              <label className="block text-xs font-medium text-ink-700 mb-1">{t("total_with_vat")}</label>
               <input
                 type="text"
                 value={totalWithVat}
@@ -521,7 +522,7 @@ function ReceiptEditDialog({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-ink-700 mb-1">Bez DPH</label>
+              <label className="block text-xs font-medium text-ink-700 mb-1">{t("total_without_vat")}</label>
               <input
                 type="text"
                 value={totalWithoutVat}
@@ -531,20 +532,20 @@ function ReceiptEditDialog({
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-ink-700 mb-1">Bankovní účet / hotovost</label>
+            <label className="block text-xs font-medium text-ink-700 mb-1">{t("linked_account")}</label>
             <select
               value={linkedAccountId}
               onChange={(e) => setLinkedAccountId(e.target.value)}
               className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm"
             >
-              <option value="">Nepřiřazeno</option>
+              <option value="">{t("unassigned")}</option>
               {accounts.map((a) => (
                 <option key={a.syncId} value={a.syncId}>{a.data.name}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-ink-700 mb-1">Poznámka</label>
+            <label className="block text-xs font-medium text-ink-700 mb-1">{t("note")}</label>
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -564,14 +565,14 @@ function ReceiptEditDialog({
             className="h-10 px-4 rounded-lg border border-ink-300 text-sm text-ink-700 hover:bg-ink-50"
             disabled={saving}
           >
-            Zrušit
+            {t("cancel")}
           </button>
           <button
             onClick={save}
             className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium disabled:opacity-50"
             disabled={saving}
           >
-            {saving ? "Ukládám…" : "Uložit"}
+            {saving ? t("saving") : t("save")}
           </button>
         </div>
       </div>

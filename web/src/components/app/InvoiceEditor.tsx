@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { sync, SyncEntity } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { FormDialog, Field, inputClass } from "./FormDialog";
@@ -70,6 +71,7 @@ export function InvoiceEditor({
   onClose: () => void;
   onSaved: (syncId: string) => void;
 }) {
+  const t = useTranslations("invoice_editor");
   const [invoiceNumber, setInvoiceNumber] = useState(initial?.data.invoiceNumber ?? "");
   const [isExpense, setIsExpense] = useState(initial?.data.isExpense ?? true);
   const [issueDate, setIssueDate] = useState(
@@ -138,10 +140,10 @@ export function InvoiceEditor({
   }
 
   async function save() {
-    if (!profileSyncId) return setErr("Není vybraný profil.");
-    if (totalToSave <= 0) return setErr("Vyplň celkovou částku nebo položky.");
+    if (!profileSyncId) return setErr(t("no_profile"));
+    if (totalToSave <= 0) return setErr(t("fill_amount"));
     if (!isExpense && !customerName.trim() && !supplierName.trim()) {
-      setErr("U vystavené faktury vyplň odběratele.");
+      setErr(t("fill_customer"));
       return;
     }
 
@@ -234,12 +236,12 @@ export function InvoiceEditor({
 
   return (
     <FormDialog
-      title={initial ? "Upravit fakturu" : "Nová faktura"}
+      title={initial ? t("edit_title") : t("new_title")}
       onClose={onClose}
       onSave={save}
       saving={saving}
       error={err}
-      saveLabel={initial ? "Uložit změny" : "Vytvořit fakturu"}
+      saveLabel={initial ? t("save_changes") : t("create_invoice")}
     >
       <div className="flex rounded-lg border border-ink-300 overflow-hidden text-sm">
         <button
@@ -247,19 +249,19 @@ export function InvoiceEditor({
           onClick={() => setIsExpense(true)}
           className={`flex-1 py-2 ${isExpense ? "bg-red-50 text-red-700 font-medium" : "text-ink-700"}`}
         >
-          Přijatá (výdaj)
+          {t("received_expense")}
         </button>
         <button
           type="button"
           onClick={() => setIsExpense(false)}
           className={`flex-1 py-2 ${!isExpense ? "bg-emerald-50 text-emerald-700 font-medium" : "text-ink-700"}`}
         >
-          Vystavená (příjem)
+          {t("issued_income")}
         </button>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Číslo faktury">
+        <Field label={t("invoice_number")}>
           <input
             type="text"
             value={invoiceNumber}
@@ -268,7 +270,7 @@ export function InvoiceEditor({
             placeholder="2026001"
           />
         </Field>
-        <Field label="Měna">
+        <Field label={t("currency")}>
           <select value={currency} onChange={(e) => setCurrency(e.target.value)} className={inputClass}>
             {["CZK", "EUR", "USD"].map((c) => (
               <option key={c} value={c}>{c}</option>
@@ -278,7 +280,7 @@ export function InvoiceEditor({
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Datum vystavení">
+        <Field label={t("issue_date")}>
           <input
             type="date"
             value={issueDate}
@@ -286,7 +288,7 @@ export function InvoiceEditor({
             className={inputClass}
           />
         </Field>
-        <Field label="Splatnost">
+        <Field label={t("due_date")}>
           <input
             type="date"
             value={dueDate}
@@ -297,13 +299,13 @@ export function InvoiceEditor({
       </div>
 
       {accounts.length > 0 && (
-        <Field label="Bankovní účet / hotovost">
+        <Field label={t("linked_account")}>
           <select
             value={linkedAccountId}
             onChange={(e) => setLinkedAccountId(e.target.value)}
             className={inputClass}
           >
-            <option value="">Nepřiřazeno</option>
+            <option value="">{t("unassigned")}</option>
             {accounts.map((a) => (
               <option key={a.syncId} value={a.syncId}>{a.data.name}</option>
             ))}
@@ -314,9 +316,9 @@ export function InvoiceEditor({
       {/* Partner */}
       <div className="border border-ink-200 rounded-lg p-3 space-y-3">
         <div className="text-xs font-semibold text-ink-700">
-          {isExpense ? "Dodavatel" : "Odběratel"}
+          {isExpense ? t("supplier") : t("customer")}
         </div>
-        <Field label="Název">
+        <Field label={t("name")}>
           <input
             type="text"
             value={isExpense ? supplierName : customerName}
@@ -329,7 +331,7 @@ export function InvoiceEditor({
         {isExpense && (
           <>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="IČO">
+              <Field label={t("ico")}>
                 <input
                   type="text"
                   value={supplierIco}
@@ -337,7 +339,7 @@ export function InvoiceEditor({
                   className={inputClass}
                 />
               </Field>
-              <Field label="DIČ">
+              <Field label={t("dic")}>
                 <input
                   type="text"
                   value={supplierDic}
@@ -346,7 +348,7 @@ export function InvoiceEditor({
                 />
               </Field>
             </div>
-            <Field label="Ulice">
+            <Field label={t("street")}>
               <input
                 type="text"
                 value={supplierStreet}
@@ -355,7 +357,7 @@ export function InvoiceEditor({
               />
             </Field>
             <div className="grid grid-cols-3 gap-3">
-              <Field label="PSČ">
+              <Field label={t("zip")}>
                 <input
                   type="text"
                   value={supplierZip}
@@ -364,7 +366,7 @@ export function InvoiceEditor({
                 />
               </Field>
               <div className="col-span-2">
-                <Field label="Město">
+                <Field label={t("city")}>
                   <input
                     type="text"
                     value={supplierCity}
@@ -378,12 +380,12 @@ export function InvoiceEditor({
         )}
       </div>
 
-      {/* Položky */}
+      {/* Items */}
       <div className="border border-ink-200 rounded-lg p-3 space-y-2">
         <div className="flex items-center justify-between">
-          <div className="text-xs font-semibold text-ink-700">Položky</div>
+          <div className="text-xs font-semibold text-ink-700">{t("items")}</div>
           <div className="text-xs text-ink-500 tabular-nums">
-            Součet: {itemsTotal.toFixed(2)} {currency}
+            {t("totals")}: {itemsTotal.toFixed(2)} {currency}
           </div>
         </div>
         {items.map((it, idx) => (
@@ -394,7 +396,7 @@ export function InvoiceEditor({
                   type="text"
                   value={it.name}
                   onChange={(e) => updateItem(idx, { name: e.target.value })}
-                  placeholder="Název položky"
+                  placeholder={t("item_name_placeholder")}
                   className={`${inputClass} text-xs`}
                 />
               </div>
@@ -402,7 +404,7 @@ export function InvoiceEditor({
                 type="button"
                 onClick={() => removeItem(idx)}
                 className="text-red-500 hover:text-red-700 text-sm shrink-0 px-1"
-                title="Odebrat řádek"
+                title={t("remove_row")}
               >
                 ✕
               </button>
@@ -412,7 +414,7 @@ export function InvoiceEditor({
                 type="text"
                 value={it.quantity}
                 onChange={(e) => updateItem(idx, { quantity: e.target.value })}
-                placeholder="ks"
+                placeholder={t("item_qty")}
                 className={`${inputClass} text-xs`}
               />
               <select
@@ -430,7 +432,7 @@ export function InvoiceEditor({
                 inputMode="decimal"
                 value={it.totalPriceWithVat}
                 onChange={(e) => updateItem(idx, { totalPriceWithVat: e.target.value })}
-                placeholder="Celkem"
+                placeholder={t("item_total_with_vat")}
                 className={`${inputClass} text-xs tabular-nums`}
               />
             </div>
@@ -441,38 +443,38 @@ export function InvoiceEditor({
           onClick={addItem}
           className="w-full py-1.5 rounded border border-dashed border-ink-300 hover:border-brand-500 hover:bg-brand-50 text-xs text-ink-600 hover:text-brand-700"
         >
-          + Přidat položku
+          {t("add_item")}
         </button>
       </div>
 
-      <Field label={`Celkem s DPH (${currency})`}>
+      <Field label={`${t("total_with_vat")} (${currency})`}>
         <input
           type="text"
           inputMode="decimal"
           value={overrideTotal}
           onChange={(e) => setOverrideTotal(e.target.value)}
-          placeholder={itemsTotal > 0 ? itemsTotal.toFixed(2) + " (z položek)" : "0.00"}
+          placeholder={itemsTotal > 0 ? `${itemsTotal.toFixed(2)} ${t("from_items_suffix")}` : "0.00"}
           className={inputClass}
         />
       </Field>
 
-      {/* Platební údaje */}
+      {/* Payment */}
       <div className="border border-ink-200 rounded-lg p-3 space-y-3">
-        <div className="text-xs font-semibold text-ink-700">Platba</div>
+        <div className="text-xs font-semibold text-ink-700">{t("method")}</div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Způsob">
+          <Field label={t("method")}>
             <select
               value={paymentMethod}
               onChange={(e) => setPaymentMethod(e.target.value)}
               className={inputClass}
             >
-              <option value="BANK_TRANSFER">Převod</option>
-              <option value="CARD">Kartou</option>
-              <option value="CASH">Hotově</option>
-              <option value="OTHER">Jiné</option>
+              <option value="BANK_TRANSFER">{t("method_bank")}</option>
+              <option value="CARD">{t("method_card")}</option>
+              <option value="CASH">{t("method_cash")}</option>
+              <option value="OTHER">{t("method_other")}</option>
             </select>
           </Field>
-          <Field label="Variabilní symbol">
+          <Field label={t("vs")}>
             <input
               type="text"
               value={variableSymbol}
@@ -481,7 +483,7 @@ export function InvoiceEditor({
             />
           </Field>
         </div>
-        <Field label="Bankovní účet">
+        <Field label={t("bank_account")}>
           <input
             type="text"
             value={bankAccount}
@@ -497,11 +499,11 @@ export function InvoiceEditor({
             onChange={(e) => setPaid(e.target.checked)}
             className="w-4 h-4"
           />
-          Uhrazeno
+          {t("paid_label")}
         </label>
       </div>
 
-      <Field label="Poznámka">
+      <Field label={t("note")}>
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}

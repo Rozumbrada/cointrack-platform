@@ -114,10 +114,10 @@ export default function InvoiceDetailPage() {
     return (
       <div className="space-y-4">
         <Link href="/app/invoices" className="text-sm text-brand-600 hover:text-brand-700">
-          ← Zpět
+          {t("back")}
         </Link>
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-          Fakturu <code>{params.syncId}</code> jsem nenašel.
+          {t.rich("not_found", { id: () => <code>{params.syncId}</code> })}
         </div>
       </div>
     );
@@ -370,7 +370,7 @@ function InvoiceFiles({ keys }: { keys: string[] }) {
                   ) : (
                     <img
                       src={urls[k]}
-                      alt="příloha"
+                      alt={t("attachment_alt")}
                       className="w-full h-full object-contain hover:scale-105 transition-transform"
                     />
                   )}

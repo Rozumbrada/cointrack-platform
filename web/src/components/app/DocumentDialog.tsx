@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
@@ -30,6 +31,8 @@ export function DocumentDialog({
   onClose: () => void;
 }) {
   const router = useRouter();
+  const t = useTranslations("document_dialog");
+  const tInvEditor = useTranslations("invoice_editor");
   const { profileSyncId, entitiesByProfile } = useSyncData();
   const accounts = entitiesByProfile<ServerAccount>("accounts");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -115,9 +118,9 @@ export function DocumentDialog({
   }
 
   async function save() {
-    if (!profileSyncId) return setErr("Není vybraný profil.");
+    if (!profileSyncId) return setErr(t("no_profile"));
     const total = parseFloat(totalWithVat.replace(",", "."));
-    if (!total || total <= 0) return setErr("Vyplň platnou celkovou částku.");
+    if (!total || total <= 0) return setErr(t("fill_amount"));
 
     setSaving(true);
     setErr(null);
@@ -187,7 +190,7 @@ export function DocumentDialog({
                   accountId: cashAccountSyncId,
                   amount: (-Math.abs(total)).toFixed(2),
                   currency,
-                  description: merchant.trim() || "Hotovostní platba",
+                  description: merchant.trim() || t("cash_payment_default"),
                   merchant: merchant.trim() || undefined,
                   date,
                   isTransfer: false,
@@ -264,7 +267,7 @@ export function DocumentDialog({
                   currency,
                   description:
                     (isExpense ? merchant : (parsed?.customerName ?? merchant))
-                      .trim() || "Hotovostní platba",
+                      .trim() || t("cash_payment_default"),
                   merchant: merchant.trim() || undefined,
                   date,
                   isTransfer: false,
@@ -304,18 +307,18 @@ export function DocumentDialog({
   if (!parsed) {
     return (
       <FormDialog
-        title={mode === "scan" ? "Skenovat doklad" : "Nahrát doklad"}
+        title={mode === "scan" ? t("scan_title") : t("upload_title")}
         onClose={onClose}
         onSave={onParse}
         saving={parsing}
         error={err}
-        saveLabel="Načíst přes AI"
+        saveLabel={t("load_via_ai")}
         saveDisabled={!file}
       >
         <p className="text-sm text-ink-600">
           {mode === "scan"
-            ? "Vyfoť účtenku nebo fakturu zadní kamerou. AI sama rozezná typ dokladu a vyplní pole."
-            : "Nahraj PDF nebo obrázek dokladu. AI sama rozezná, jestli je to účtenka nebo faktura."}
+            ? t("scan_subtitle")
+            : t("upload_subtitle")}
         </p>
         <input
           ref={fileInputRef}
@@ -361,16 +364,12 @@ export function DocumentDialog({
   // Fáze 2: review extracted data
   return (
     <FormDialog
-      title={
-        docType === "receipt"
-          ? "Zkontroluj data účtenky"
-          : "Zkontroluj data faktury"
-      }
+      title={docType === "receipt" ? t("review_receipt") : t("review_invoice")}
       onClose={onClose}
       onSave={save}
       saving={saving}
       error={err}
-      saveLabel={docType === "receipt" ? "Uložit účtenku" : "Uložit fakturu"}
+      saveLabel={docType === "receipt" ? t("save_receipt") : t("save_invoice")}
     >
       {/* Type toggle — AI ji předvyplní, user může přepnout */}
       <div className="flex rounded-lg border border-ink-300 overflow-hidden text-sm">
@@ -416,7 +415,7 @@ export function DocumentDialog({
               Vystavená (příjem)
             </button>
           </div>
-          <Field label="Číslo faktury">
+          <Field label={t("invoice_number")}>
             <input
               type="text"
               value={invoiceNumber}
@@ -430,10 +429,10 @@ export function DocumentDialog({
       <Field
         label={
           docType === "receipt"
-            ? "Obchodník"
+            ? t("merchant")
             : isExpense
-              ? "Dodavatel"
-              : "Odběratel"
+              ? t("supplier")
+              : t("customer")
         }
       >
         <input
@@ -445,7 +444,7 @@ export function DocumentDialog({
       </Field>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label={docType === "receipt" ? "Datum" : "Datum vystavení"}>
+        <Field label={docType === "receipt" ? t("date") : t("issue_date")}>
           <input
             type="date"
             value={date}
@@ -454,7 +453,7 @@ export function DocumentDialog({
           />
         </Field>
         {docType === "receipt" ? (
-          <Field label="Čas">
+          <Field label={t("time")}>
             <input
               type="time"
               value={time}
@@ -463,7 +462,7 @@ export function DocumentDialog({
             />
           </Field>
         ) : (
-          <Field label="Splatnost">
+          <Field label={t("due_date")}>
             <input
               type="date"
               value={dueDate}
@@ -476,7 +475,7 @@ export function DocumentDialog({
 
       <div className="grid grid-cols-3 gap-3">
         <div className="col-span-2">
-          <Field label="Celkem s DPH">
+          <Field label={t("total_with_vat")}>
             <input
               type="text"
               inputMode="decimal"
@@ -486,7 +485,7 @@ export function DocumentDialog({
             />
           </Field>
         </div>
-        <Field label="Měna">
+        <Field label={t("currency")}>
           <select
             value={currency}
             onChange={(e) => setCurrency(e.target.value)}
@@ -502,7 +501,7 @@ export function DocumentDialog({
       </div>
 
       {docType === "invoice" ? (
-        <Field label="Variabilní symbol">
+        <Field label={t("vs")}>
           <input
             type="text"
             value={variableSymbol}
@@ -511,36 +510,34 @@ export function DocumentDialog({
           />
         </Field>
       ) : (
-        <Field label="Způsob platby">
+        <Field label={t("payment_method")}>
           <select
             value={paymentMethod}
             onChange={(e) => setPaymentMethod(e.target.value)}
             className={inputClass}
           >
-            <option value="CARD">Kartou</option>
-            <option value="CASH">Hotově</option>
-            <option value="UNKNOWN">Neznámo</option>
+            <option value="CARD">{t("payment_card")}</option>
+            <option value="CASH">{t("payment_cash")}</option>
+            <option value="UNKNOWN">{t("payment_unknown")}</option>
           </select>
         </Field>
       )}
 
-      {/* Účet — CASH se automaticky zařadí na Hotovost (locked).
-          Pro ostatní zdroje uživatel volí účet (default z profilu). */}
       {paymentMethod === "CASH" ? (
-        <Field label="Účet">
+        <Field label={t("account")}>
           <div className="h-10 rounded-lg border border-ink-300 bg-ink-50 px-3 flex items-center text-sm text-ink-700">
-            💵 Hotovost (automaticky)
+            {t("cash_locked")}
           </div>
         </Field>
       ) : (
-        <Field label="Účet">
+        <Field label={t("account")}>
           <select
             value={selectedAccountId}
             onChange={(e) => setSelectedAccountId(e.target.value)}
             className={inputClass}
           >
             {nonCashAccounts.length === 0 && (
-              <option value="">— žádný účet —</option>
+              <option value="">{t("no_account")}</option>
             )}
             {nonCashAccounts.map((a) => (
               <option key={a.syncId} value={a.syncId}>
@@ -554,7 +551,7 @@ export function DocumentDialog({
       {parsed.items && parsed.items.length > 0 && (
         <div className="bg-ink-50 rounded-lg p-3 text-xs">
           <div className="font-medium text-ink-700 mb-1">
-            Položky ({parsed.items.length})
+            {tInvEditor("items")} ({parsed.items.length})
           </div>
           <ul className="space-y-1 max-h-32 overflow-y-auto">
             {parsed.items.map((it, i) => (
@@ -570,7 +567,7 @@ export function DocumentDialog({
       )}
 
       {docType === "receipt" && (
-        <Field label="Poznámka">
+        <Field label={t("note")}>
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
