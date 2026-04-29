@@ -12,7 +12,7 @@ import {
 } from "@/lib/api";
 import { withAuth, getAccessToken } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
-import { ServerAccount } from "@/lib/sync-types";
+import { ServerAccount, ServerCategory } from "@/lib/sync-types";
 import { getCurrentProfileSyncId } from "@/lib/profile-store";
 
 type Role = "VIEWER" | "EDITOR" | "ACCOUNTANT";
@@ -23,6 +23,10 @@ interface MemberGroup {
   status: "active" | "pending" | "revoked";
   userDisplayName?: string | null;
   shares: ShareWithAccountDto[]; // všechny shares pro tento email
+  /** Spojený filter z prvního share — předpokládáme, že shares jednoho člena mají stejný filter. */
+  visibilityIncome: boolean;
+  visibilityExpenses: boolean;
+  visibilityCategories: string[] | null;
 }
 
 export default function MembersPage() {
@@ -40,6 +44,7 @@ export default function MembersPage() {
 
   const { entitiesByProfile, rawEntities } = useSyncData();
   const accounts = entitiesByProfile<ServerAccount>("accounts");
+  const categories = entitiesByProfile<ServerCategory>("categories");
 
   // Aktuální profil (jeho syncId + type) — sekce Členové dává smysl jen pro
   // firemní/organizační profil; navíc seznam členů filtrujeme jen na ten profil.
@@ -94,6 +99,9 @@ export default function MembersPage() {
           status: s.status as "active" | "pending" | "revoked",
           userDisplayName: s.userDisplayName,
           shares: [s],
+          visibilityIncome: s.visibilityIncome,
+          visibilityExpenses: s.visibilityExpenses,
+          visibilityCategories: s.visibilityCategories,
         });
       }
     }
@@ -282,6 +290,7 @@ export default function MembersPage() {
       {showInviteDialog && (
         <InviteDialog
           accounts={accounts}
+          categories={categories}
           onClose={() => setShowInviteDialog(false)}
           onCreated={async () => {
             setShowInviteDialog(false);
@@ -294,6 +303,7 @@ export default function MembersPage() {
         <EditMemberDialog
           member={editingMember}
           accounts={accounts}
+          categories={categories}
           onClose={() => setEditingMember(null)}
           onSaved={async () => {
             setEditingMember(null);
@@ -307,10 +317,12 @@ export default function MembersPage() {
 
 function InviteDialog({
   accounts,
+  categories,
   onClose,
   onCreated,
 }: {
   accounts: Array<{ syncId: string; data: ServerAccount }>;
+  categories: Array<{ syncId: string; data: ServerCategory }>;
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -320,6 +332,9 @@ function InviteDialog({
     accounts.length > 0 ? new Set([accounts[0].syncId]) : new Set(),
   );
   const [role, setRole] = useState<Role>("VIEWER");
+  const [visibilityIncome, setVisibilityIncome] = useState(true);
+  const [visibilityExpenses, setVisibilityExpenses] = useState(true);
+  const [visibilityCategories, setVisibilityCategories] = useState<string[] | null>(null);
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -358,9 +373,16 @@ function InviteDialog({
     setErr(null);
     try {
       const normalizedEmail = email.trim().toLowerCase();
+      const visibility = role === "ACCOUNTANT"
+        ? undefined  // ACCOUNTANT vidí všechno, filtry se neaplikují
+        : {
+            visibilityIncome,
+            visibilityExpenses,
+            visibilityCategories,
+          };
       for (const accountSyncId of selectedAccountIds) {
         await withAuth((tk) =>
-          accountShares.invite(tk, accountSyncId, normalizedEmail, role),
+          accountShares.invite(tk, accountSyncId, normalizedEmail, role, visibility),
         );
       }
       onCreated();
@@ -426,6 +448,17 @@ function InviteDialog({
 
         <RolePicker role={role} setRole={setRole} />
 
+        <VisibilityPicker
+          role={role}
+          categories={categories}
+          income={visibilityIncome}
+          setIncome={setVisibilityIncome}
+          expenses={visibilityExpenses}
+          setExpenses={setVisibilityExpenses}
+          categoriesFilter={visibilityCategories}
+          setCategoriesFilter={setVisibilityCategories}
+        />
+
         {err && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">{err}</div>
         )}
@@ -454,11 +487,13 @@ function InviteDialog({
 function EditMemberDialog({
   member,
   accounts,
+  categories,
   onClose,
   onSaved,
 }: {
   member: MemberGroup;
   accounts: Array<{ syncId: string; data: ServerAccount }>;
+  categories: Array<{ syncId: string; data: ServerCategory }>;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -477,6 +512,10 @@ function EditMemberDialog({
   const [selectedAccountIds, setSelectedAccountIds] =
     useState<Set<string>>(initiallySelectedSyncIds);
   const [role, setRole] = useState<Role>(member.role);
+  const [visibilityIncome, setVisibilityIncome] = useState(member.visibilityIncome);
+  const [visibilityExpenses, setVisibilityExpenses] = useState(member.visibilityExpenses);
+  const [visibilityCategories, setVisibilityCategories] =
+    useState<string[] | null>(member.visibilityCategories);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -513,23 +552,49 @@ function EditMemberDialog({
     setSaving(true);
     setErr(null);
     try {
-      // 1) Změnit roli u všech existujících (ne-revoknutých) shares
       const roleChanged = role !== member.role;
-      if (roleChanged) {
+      const incomeChanged = visibilityIncome !== member.visibilityIncome;
+      const expensesChanged = visibilityExpenses !== member.visibilityExpenses;
+      const categoriesChanged =
+        JSON.stringify(visibilityCategories ?? null) !==
+        JSON.stringify(member.visibilityCategories ?? null);
+
+      // 1) Update existující shares (role + visibility filter pokud se změnil)
+      if (roleChanged || incomeChanged || expensesChanged || categoriesChanged) {
+        const update: {
+          role?: "VIEWER" | "EDITOR" | "ACCOUNTANT";
+          visibilityIncome?: boolean;
+          visibilityExpenses?: boolean;
+          visibilityCategories?: string[] | null;
+          resetVisibilityCategories?: boolean;
+        } = {};
+        if (roleChanged) update.role = role;
+        if (incomeChanged) update.visibilityIncome = visibilityIncome;
+        if (expensesChanged) update.visibilityExpenses = visibilityExpenses;
+        if (categoriesChanged) {
+          if (visibilityCategories === null) {
+            update.resetVisibilityCategories = true;
+          } else {
+            update.visibilityCategories = visibilityCategories;
+          }
+        }
         for (const s of member.shares) {
-          await withAuth((tk) => accountShares.updateRole(tk, s.id, role));
+          await withAuth((tk) => accountShares.updateShare(tk, s.id, update));
         }
       }
 
-      // 2) Najít účty k přidání (selected, ale není mezi current shares)
+      // 2) Diff účtů
       const currentSyncIds = new Set(initiallySelectedSyncIds);
       const toAdd = [...selectedAccountIds].filter((sid) => !currentSyncIds.has(sid));
       const toRemove = [...currentSyncIds].filter((sid) => !selectedAccountIds.has(sid));
 
-      // 3) Přidat shares pro nové účty
+      // 3) Přidat shares pro nové účty (s aktuálním visibility filtrem)
+      const visibility = role === "ACCOUNTANT"
+        ? undefined
+        : { visibilityIncome, visibilityExpenses, visibilityCategories };
       for (const accountSyncId of toAdd) {
         await withAuth((tk) =>
-          accountShares.invite(tk, accountSyncId, member.email, role),
+          accountShares.invite(tk, accountSyncId, member.email, role, visibility),
         );
       }
 
@@ -595,6 +660,17 @@ function EditMemberDialog({
 
         <RolePicker role={role} setRole={setRole} />
 
+        <VisibilityPicker
+          role={role}
+          categories={categories}
+          income={visibilityIncome}
+          setIncome={setVisibilityIncome}
+          expenses={visibilityExpenses}
+          setExpenses={setVisibilityExpenses}
+          categoriesFilter={visibilityCategories}
+          setCategoriesFilter={setVisibilityCategories}
+        />
+
         {err && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">{err}</div>
         )}
@@ -616,6 +692,148 @@ function EditMemberDialog({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function VisibilityPicker({
+  role,
+  categories,
+  income,
+  setIncome,
+  expenses,
+  setExpenses,
+  categoriesFilter,
+  setCategoriesFilter,
+}: {
+  role: Role;
+  categories: Array<{ syncId: string; data: ServerCategory }>;
+  income: boolean;
+  setIncome: (v: boolean) => void;
+  expenses: boolean;
+  setExpenses: (v: boolean) => void;
+  categoriesFilter: string[] | null;
+  setCategoriesFilter: (v: string[] | null) => void;
+}) {
+  const t = useTranslations("members_page");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
+  // ACCOUNTANT vidí všechno — visibility filtry se neaplikují.
+  if (role === "ACCOUNTANT") {
+    return (
+      <div className="rounded-lg bg-ink-50 border border-ink-200 px-3 py-2 text-xs text-ink-700">
+        {t("dialog_visibility_acct_warning")}
+      </div>
+    );
+  }
+
+  const sortedCategories = [...categories].sort((a, b) =>
+    a.data.name.localeCompare(b.data.name),
+  );
+
+  const filterArray = categoriesFilter ?? [];
+  const allCategoriesSelected =
+    sortedCategories.length > 0 && filterArray.length === sortedCategories.length;
+
+  function toggleCategory(syncId: string) {
+    const next = new Set(filterArray);
+    if (next.has(syncId)) next.delete(syncId);
+    else next.add(syncId);
+    if (next.size === 0) {
+      setCategoriesFilter(null); // empty = všechny (default)
+    } else {
+      setCategoriesFilter([...next]);
+    }
+  }
+
+  function selectAllCategories() {
+    setCategoriesFilter(sortedCategories.map((c) => c.syncId));
+  }
+
+  function clearCategoriesFilter() {
+    setCategoriesFilter(null);
+  }
+
+  return (
+    <div>
+      <div className="text-xs font-medium text-ink-700 mb-2">{t("dialog_visibility")}</div>
+      <div className="flex gap-3 mb-2">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={income}
+            onChange={(e) => setIncome(e.target.checked)}
+            className="w-4 h-4"
+          />
+          <span className="text-sm text-ink-900">{t("dialog_visibility_income")}</span>
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={expenses}
+            onChange={(e) => setExpenses(e.target.checked)}
+            className="w-4 h-4"
+          />
+          <span className="text-sm text-ink-900">{t("dialog_visibility_expenses")}</span>
+        </label>
+      </div>
+
+      {!income && !expenses && (
+        <div className="text-xs text-amber-700 mb-2">
+          {t("dialog_visibility_warn_nothing")}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setAdvancedOpen((o) => !o)}
+        className="text-xs text-brand-600 hover:text-brand-700 font-medium"
+      >
+        {advancedOpen ? "▾" : "▸"} {t("dialog_visibility_advanced")}
+      </button>
+
+      {advancedOpen && (
+        <div className="mt-2">
+          <div className="flex items-baseline justify-between mb-1">
+            <div className="text-xs text-ink-600">{t("dialog_visibility_categories")}</div>
+            {sortedCategories.length > 0 && (
+              <button
+                type="button"
+                onClick={
+                  allCategoriesSelected || filterArray.length > 0
+                    ? clearCategoriesFilter
+                    : selectAllCategories
+                }
+                className="text-xs text-brand-600 hover:text-brand-700 font-medium"
+              >
+                {filterArray.length > 0
+                  ? t("dialog_visibility_clear_categories")
+                  : t("dialog_visibility_select_all_categories")}
+              </button>
+            )}
+          </div>
+          {sortedCategories.length === 0 ? (
+            <p className="text-xs text-amber-700">{t("dialog_visibility_no_categories")}</p>
+          ) : (
+            <div className="border border-ink-300 rounded-lg max-h-40 overflow-y-auto divide-y divide-ink-100">
+              {sortedCategories.map((c) => (
+                <label
+                  key={c.syncId}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-ink-50 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={filterArray.includes(c.syncId)}
+                    onChange={() => toggleCategory(c.syncId)}
+                    className="w-4 h-4"
+                  />
+                  <span className="flex-1 text-ink-900">{c.data.name}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

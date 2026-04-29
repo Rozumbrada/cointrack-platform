@@ -1786,7 +1786,17 @@
     "dialog_sending": "Sending…",
     "dialog_cancel": "Cancel",
     "dialog_no_accounts": "You have no bank accounts. Create one in the Bank accounts section.",
-    "dialog_invalid_email": "Invalid email."
+    "dialog_invalid_email": "Invalid email.",
+    "dialog_visibility": "What they see",
+    "dialog_visibility_income": "Income",
+    "dialog_visibility_expenses": "Expenses",
+    "dialog_visibility_advanced": "Advanced: only selected categories",
+    "dialog_visibility_categories": "Categories (if none selected, all are visible)",
+    "dialog_visibility_select_all_categories": "Select all",
+    "dialog_visibility_clear_categories": "Clear",
+    "dialog_visibility_no_categories": "This profile has no categories.",
+    "dialog_visibility_warn_nothing": "If both toggles are off, the member will see nothing.",
+    "dialog_visibility_acct_warning": "Accountant sees everything — filters don't apply."
   },
   "sidebar": {
     "dashboard": "Dashboard",

@@ -90,11 +90,19 @@ class SyncService {
     }
 
     /**
-     * V21 — per-account sharing. Vrátí seznam account IDs, které má user aktivně přijaté
-     * jako share (od jiného vlastníka) s rolí VIEWER nebo EDITOR.
-     * Pro ACCOUNTANT viz [accountantSharedProfileIds] — ten dostává plný přístup k profilu.
+     * V21/V23 — per-account sharing. Vrátí seznam sdílených účtů s visibility filtry.
+     * Jen pro role VIEWER/EDITOR. ACCOUNTANT je v [accountantSharedProfileIds].
      */
-    private fun Transaction.sharedAccountInfoForUser(userId: UUID): List<Pair<UUID, UUID>> {
+    data class SharedAccountSpec(
+        val accountId: UUID,
+        val profileId: UUID,
+        val visibilityIncome: Boolean,
+        val visibilityExpenses: Boolean,
+        /** null = bez filtru, jinak whitelist syncId kategorií. Empty list = nic. */
+        val visibilityCategories: Set<String>?,
+    )
+
+    private fun Transaction.sharedAccountInfoForUser(userId: UUID): List<SharedAccountSpec> {
         return AccountShares.selectAll()
             .where {
                 (AccountShares.userId eq userId) and
@@ -108,8 +116,46 @@ class SyncService {
                     ?: return@mapNotNull null
                 if (acc[Accounts.deletedAt] != null) return@mapNotNull null
                 val profileId = acc[Accounts.profileId].value
-                accountId to profileId
+                SharedAccountSpec(
+                    accountId = accountId,
+                    profileId = profileId,
+                    visibilityIncome = share[AccountShares.visibilityIncome],
+                    visibilityExpenses = share[AccountShares.visibilityExpenses],
+                    visibilityCategories = AccountShareService
+                        .parseCategoryFilter(share[AccountShares.visibilityCategories])
+                        ?.toSet(),
+                )
             }
+    }
+
+    /**
+     * V23 — vrací zda tx splňuje visibility filter sdíleného účtu (VIEWER/EDITOR).
+     * Pro ACCOUNTANT a vlastníka se nevolá — ti vidí vše.
+     */
+    private fun passesShareVisibility(
+        row: ResultRow,
+        specByAccount: Map<UUID, SharedAccountSpec>,
+        categoryIdToSync: Map<UUID, UUID>,
+    ): Boolean {
+        val accId = row[Transactions.accountId]?.value ?: return true
+        val spec = specByAccount[accId] ?: return true  // ne-sdílený = bez filteru
+
+        val amount = row[Transactions.amount]
+        val isTransfer = row[Transactions.isTransfer]
+        val isIncome = amount.signum() > 0
+        val passesType = when {
+            isTransfer -> spec.visibilityIncome || spec.visibilityExpenses
+            isIncome -> spec.visibilityIncome
+            else -> spec.visibilityExpenses
+        }
+        if (!passesType) return false
+
+        val catFilter = spec.visibilityCategories ?: return true
+        if (catFilter.isEmpty()) return false  // explicit "nic"
+        val catId = row[Transactions.categoryId]?.value
+            ?: return true  // tx bez kategorie — tolerantně pouštíme
+        val catSyncId = categoryIdToSync[catId]?.toString() ?: return false
+        return catFilter.contains(catSyncId)
     }
 
     /**
@@ -176,10 +222,12 @@ class SyncService {
             val userProfileIds = (userProfileIdsRaw + accountantProfileIds).distinct()
 
             // V21 — per-account sharing: účty které mám přijaté jako VIEWER/EDITOR share
-            val sharedAccountInfo = sharedAccountInfoForUser(userId)
-            val sharedAccountIds = sharedAccountInfo.map { it.first }
+            val sharedAccountSpecs = sharedAccountInfoForUser(userId)
+            val sharedAccountIds = sharedAccountSpecs.map { it.accountId }
+            val specByAccount: Map<UUID, SharedAccountSpec> =
+                sharedAccountSpecs.associateBy { it.accountId }
             // Parent profily sdílených účtů — frontend je zobrazí jako "shared" read-only
-            val sharedProfileIds = sharedAccountInfo.map { it.second }
+            val sharedProfileIds = sharedAccountSpecs.map { it.profileId }
                 .filter { it !in userProfileIds }
                 .distinct()
 
@@ -210,16 +258,19 @@ class SyncService {
                     .where { Categories.profileId inList visibleProfileIds }
                     .associate { it[Categories.id].value to it[Categories.syncId] }
 
-            // Transactions/Receipts/Invoices: owned profiles + napojené na sdílené účty
+            // Transactions/Receipts/Invoices: owned profiles + napojené na sdílené účty.
+            // V23: shared tx procházejí visibility filtrem (per share role/income/expenses/categories).
+            val sharedTxRowsAllVisible: List<ResultRow> = if (sharedAccountIds.isEmpty()) emptyList() else
+                Transactions.selectAll()
+                    .where { Transactions.accountId inList sharedAccountIds }
+                    .filter { passesShareVisibility(it, specByAccount, categoryIdToSync) }
             val transactionIdToSync = run {
                 val owned = if (userProfileIds.isEmpty()) emptyMap() else
                     Transactions.selectAll()
                         .where { Transactions.profileId inList userProfileIds }
                         .associate { it[Transactions.id].value to it[Transactions.syncId] }
-                val shared = if (sharedAccountIds.isEmpty()) emptyMap() else
-                    Transactions.selectAll()
-                        .where { Transactions.accountId inList sharedAccountIds }
-                        .associate { it[Transactions.id].value to it[Transactions.syncId] }
+                val shared = sharedTxRowsAllVisible
+                    .associate { it[Transactions.id].value to it[Transactions.syncId] }
                 owned + shared
             }
 
@@ -278,14 +329,12 @@ class SyncService {
                     Transactions.selectAll()
                         .where { (Transactions.profileId inList userProfileIds) and (Transactions.updatedAt greater effectiveSince) }
                         .map { transactionToEntity(it, profileIdToSync, accountIdToSync, categoryIdToSync) }
-                val shared = if (sharedAccountIds.isEmpty()) emptyList() else
-                    Transactions.selectAll()
-                        .where {
-                            (Transactions.accountId inList sharedAccountIds) and
-                                (Transactions.profileId notInList userProfileIds) and
-                                (Transactions.updatedAt greater effectiveSince)
-                        }
-                        .map { transactionToEntity(it, profileIdToSync, accountIdToSync, categoryIdToSync) }
+                val shared = sharedTxRowsAllVisible
+                    .filter { row ->
+                        row[Transactions.profileId].value !in userProfileIds &&
+                            row[Transactions.updatedAt] > effectiveSince
+                    }
+                    .map { transactionToEntity(it, profileIdToSync, accountIdToSync, categoryIdToSync) }
                 owned + shared
             }
 

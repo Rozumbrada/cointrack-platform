@@ -11,6 +11,9 @@ import cz.cointrack.email.EmailTemplates
 import cz.cointrack.plugins.ApiException
 import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
 import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SortOrder
@@ -45,7 +48,29 @@ class AccountShareService(
     @Serializable
     data class InviteRequest(
         val email: String,
-        val role: String = "VIEWER",  // VIEWER | EDITOR
+        val role: String = "VIEWER",  // VIEWER | EDITOR | ACCOUNTANT
+        /** Vidí pozvaný příjmy? Default ano. */
+        val visibilityIncome: Boolean = true,
+        /** Vidí pozvaný výdaje? Default ano. */
+        val visibilityExpenses: Boolean = true,
+        /** Whitelist kategorií (syncId UUID). Null = bez omezení. Empty list = nic neuvidí. */
+        val visibilityCategories: List<String>? = null,
+    )
+
+    @Serializable
+    data class UpdateShareRequest(
+        val role: String? = null,
+        val visibilityIncome: Boolean? = null,
+        val visibilityExpenses: Boolean? = null,
+        /**
+         * `null` jako hodnota fieldu = neaktualizovat (= zachovat existing).
+         * Pro reset filtru pošli prázdný prefix "__none__"? Hmm, raději přidat
+         * separate flag. Pro teď: pokud klient pošle "[]" nebo neposlal nic,
+         * neměníme. Klient ovládá explicit "set to null" přes resetVisibilityCategories.
+         */
+        val visibilityCategories: List<String>? = null,
+        /** True = `visibilityCategories` se má nastavit na NULL (= žádný filter). */
+        val resetVisibilityCategories: Boolean = false,
     )
 
     @Serializable
@@ -58,6 +83,9 @@ class AccountShareService(
         val acceptedAt: String? = null,
         val createdAt: String,
         val userDisplayName: String? = null,
+        val visibilityIncome: Boolean = true,
+        val visibilityExpenses: Boolean = true,
+        val visibilityCategories: List<String>? = null,
     )
 
     @Serializable
@@ -84,7 +112,23 @@ class AccountShareService(
         val acceptedAt: String? = null,
         val createdAt: String,
         val userDisplayName: String? = null,
+        val visibilityIncome: Boolean = true,
+        val visibilityExpenses: Boolean = true,
+        val visibilityCategories: List<String>? = null,
     )
+
+    companion object {
+        private val categoriesJson = Json { ignoreUnknownKeys = true }
+        private val categoriesSerializer = ListSerializer(String.serializer())
+
+        internal fun parseCategoryFilter(raw: String?): List<String>? = raw?.let {
+            runCatching { categoriesJson.decodeFromString(categoriesSerializer, it) }.getOrNull()
+        }
+
+        internal fun encodeCategoryFilter(list: List<String>?): String? = list?.let {
+            categoriesJson.encodeToString(categoriesSerializer, it)
+        }
+    }
 
     @Serializable
     data class InvitePreview(
@@ -185,6 +229,9 @@ class AccountShareService(
                     it[AccountShares.accountId] = EntityID(accountId, Accounts)
                     it[AccountShares.email] = normalizedEmail
                     it[AccountShares.role] = req.role
+                    it[AccountShares.visibilityIncome] = req.visibilityIncome
+                    it[AccountShares.visibilityExpenses] = req.visibilityExpenses
+                    it[AccountShares.visibilityCategories] = encodeCategoryFilter(req.visibilityCategories)
                     // Pokud již existuje aktivní share pro daný email, nový share je
                     // automaticky "accepted" (= aktivní hned), protože uživatel už dříve
                     // přijal pozvánku tímto emailem. Najdeme jeho userId.
@@ -273,15 +320,22 @@ class AccountShareService(
     }
 
     /**
-     * Owner: změna role existujícího sdílení.
-     * @param shareId DB id share
-     * @param ownerUserId ID vlastníka (musí vlastnit účet share)
-     * @param newRole VIEWER | EDITOR | ACCOUNTANT
+     * Owner: změna existujícího sdílení (role + visibility filtry).
+     *
+     * Všechny parametry (role, visibilityIncome/Expenses/Categories) jsou volitelné —
+     * `null` znamená neměnit. Pro reset visibilityCategories na "bez filtru" pošli
+     * `resetVisibilityCategories = true`.
      */
-    suspend fun updateRole(shareId: UUID, ownerUserId: UUID, newRole: String): ShareDto {
-        if (newRole !in setOf("VIEWER", "EDITOR", "ACCOUNTANT")) {
-            throw ApiException(HttpStatusCode.BadRequest, "invalid_role",
-                "Role musí být VIEWER, EDITOR nebo ACCOUNTANT.")
+    suspend fun updateShare(
+        shareId: UUID,
+        ownerUserId: UUID,
+        update: UpdateShareRequest,
+    ): ShareDto {
+        update.role?.let {
+            if (it !in setOf("VIEWER", "EDITOR", "ACCOUNTANT")) {
+                throw ApiException(HttpStatusCode.BadRequest, "invalid_role",
+                    "Role musí být VIEWER, EDITOR nebo ACCOUNTANT.")
+            }
         }
         return db {
             val share = AccountShares.selectAll().where { AccountShares.id eq shareId }.singleOrNull()
@@ -302,9 +356,18 @@ class AccountShareService(
             }
 
             AccountShares.update({ AccountShares.id eq shareId }) {
-                it[role] = newRole
+                update.role?.let { newRole -> it[role] = newRole }
+                update.visibilityIncome?.let { v -> it[visibilityIncome] = v }
+                update.visibilityExpenses?.let { v -> it[visibilityExpenses] = v }
+                if (update.resetVisibilityCategories) {
+                    it[visibilityCategories] = null
+                } else {
+                    update.visibilityCategories?.let { list ->
+                        it[visibilityCategories] = encodeCategoryFilter(list)
+                    }
+                }
             }
-            log.info("Account share role updated: id=$shareId newRole=$newRole")
+            log.info("Account share updated: id=$shareId update=$update")
             getShare(shareId)!!
         }
     }
@@ -449,6 +512,9 @@ class AccountShareService(
                     acceptedAt = share[AccountShares.acceptedAt]?.toString(),
                     createdAt = share[AccountShares.createdAt].toString(),
                     userDisplayName = displayName,
+                    visibilityIncome = share[AccountShares.visibilityIncome],
+                    visibilityExpenses = share[AccountShares.visibilityExpenses],
+                    visibilityCategories = parseCategoryFilter(share[AccountShares.visibilityCategories]),
                 )
             }
     }
@@ -508,6 +574,9 @@ class AccountShareService(
             acceptedAt = row[AccountShares.acceptedAt]?.toString(),
             createdAt = row[AccountShares.createdAt].toString(),
             userDisplayName = displayName,
+            visibilityIncome = row[AccountShares.visibilityIncome],
+            visibilityExpenses = row[AccountShares.visibilityExpenses],
+            visibilityCategories = parseCategoryFilter(row[AccountShares.visibilityCategories]),
         )
     }
 }

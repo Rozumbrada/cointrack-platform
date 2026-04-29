@@ -105,6 +105,12 @@ object AccountShares : UUIDTable("account_shares") {
     val revokedAt      = timestamp("revoked_at").nullable()
     val inviterUserId  = reference("inviter_user_id", Users).nullable()
     val createdAt      = timestamp("created_at")
+
+    // V23 — visibility filtry (jen pro VIEWER/EDITOR; ACCOUNTANT vidí všechno)
+    val visibilityIncome     = bool("visibility_income").default(true)
+    val visibilityExpenses   = bool("visibility_expenses").default(true)
+    /** JSON-encoded array UUID kategorií. NULL = bez omezení (= všechny kategorie). */
+    val visibilityCategories = text("visibility_categories").nullable()
 }
 
 // ─── Payments (V16) ───────────────────────────────────────────────

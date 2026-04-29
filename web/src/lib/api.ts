@@ -189,6 +189,16 @@ export interface ShareWithAccountDto {
   acceptedAt?: string | null;
   createdAt: string;
   userDisplayName?: string | null;
+  visibilityIncome: boolean;
+  visibilityExpenses: boolean;
+  /** Whitelist syncId kategorií. null = bez omezení, [] = nic. */
+  visibilityCategories: string[] | null;
+}
+
+export interface VisibilityFilter {
+  visibilityIncome?: boolean;
+  visibilityExpenses?: boolean;
+  visibilityCategories?: string[] | null;
 }
 
 export const accountShares = {
@@ -197,9 +207,18 @@ export const accountShares = {
     accountId: string,
     email: string,
     role: "VIEWER" | "EDITOR" | "ACCOUNTANT" = "VIEWER",
+    visibility?: VisibilityFilter,
   ) =>
     api<AccountShareDto>(`/api/v1/accounts/${accountId}/shares`, {
-      method: "POST", token, body: { email, role },
+      method: "POST",
+      token,
+      body: {
+        email,
+        role,
+        visibilityIncome: visibility?.visibilityIncome ?? true,
+        visibilityExpenses: visibility?.visibilityExpenses ?? true,
+        visibilityCategories: visibility?.visibilityCategories ?? null,
+      },
     }),
 
   list: (token: string, accountId: string) =>
@@ -217,6 +236,21 @@ export const accountShares = {
   ) =>
     api<AccountShareDto>(`/api/v1/accounts/shares/${shareId}`, {
       method: "PATCH", token, body: { role },
+    }),
+
+  updateShare: (
+    token: string,
+    shareId: string,
+    update: {
+      role?: "VIEWER" | "EDITOR" | "ACCOUNTANT";
+      visibilityIncome?: boolean;
+      visibilityExpenses?: boolean;
+      visibilityCategories?: string[] | null;
+      resetVisibilityCategories?: boolean;
+    },
+  ) =>
+    api<AccountShareDto>(`/api/v1/accounts/shares/${shareId}`, {
+      method: "PATCH", token, body: update,
     }),
 
   preview: (shareToken: string) =>

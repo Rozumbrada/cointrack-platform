@@ -1786,7 +1786,17 @@
     "dialog_sending": "Odesílám…",
     "dialog_cancel": "Zrušit",
     "dialog_no_accounts": "Nemáš žádný bankovní účet. Vytvoř ho v sekci Bankovní účty.",
-    "dialog_invalid_email": "Neplatný email."
+    "dialog_invalid_email": "Neplatný email.",
+    "dialog_visibility": "Co uvidí",
+    "dialog_visibility_income": "Příjmy",
+    "dialog_visibility_expenses": "Výdaje",
+    "dialog_visibility_advanced": "Pokročilé: jen vybrané kategorie",
+    "dialog_visibility_categories": "Kategorie (pokud nejsou vybrané, uvidí všechny)",
+    "dialog_visibility_select_all_categories": "Vybrat všechny",
+    "dialog_visibility_clear_categories": "Zrušit výběr",
+    "dialog_visibility_no_categories": "V tomto profilu nejsou žádné kategorie.",
+    "dialog_visibility_warn_nothing": "Pokud zruším oba toggle, člen neuvidí žádné transakce.",
+    "dialog_visibility_acct_warning": "Účetní vidí všechny transakce — filtry se neaplikují."
   },
   "sidebar": {
     "dashboard": "Přehled",

@@ -19,9 +19,6 @@ import java.util.UUID
 @Serializable
 data class AcceptShareRequest(val token: String)
 
-@Serializable
-data class UpdateShareRoleRequest(val role: String)
-
 fun Route.accountShareRoutes(service: AccountShareService) {
     route("/accounts") {
         // Public preview pro accept stránku (potřebuje jen token)
@@ -55,12 +52,12 @@ fun Route.accountShareRoutes(service: AccountShareService) {
                 call.respond(mapOf("ok" to true))
             }
 
-            // Owner: změna role existujícího sdílení
+            // Owner: úprava existujícího sdílení (role + visibility filtry)
             patch("/shares/{shareId}") {
                 val userId = call.userId()
                 val shareId = call.pathUuid("shareId")
-                val req = call.receive<UpdateShareRoleRequest>()
-                call.respond(service.updateRole(shareId, userId, req.role))
+                val req = call.receive<AccountShareService.UpdateShareRequest>()
+                call.respond(service.updateShare(shareId, userId, req))
             }
 
             // Recipient: accept invite
