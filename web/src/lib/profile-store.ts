@@ -44,6 +44,38 @@ export function setCurrentProfileId(syncId: string | null) {
   setCurrentProfileSyncId(syncId);
 }
 
+// ─── Profile type cache ─────────────────────────────────────────
+// Cache jen pro UX — layout potřebuje znát typ aktivního profilu při prvním
+// renderu (rozhodování o "Členové" v menu). Bez cache je activeProfileType=null
+// dokud sync.pull nedoběhne, takže menu flickne / Členové se chvíli neukáže.
+// Cache je per-syncId, naplňuje ji ProfileSwitcher (zná data z pull) a layout
+// (po vlastním pullu).
+
+const PROFILE_TYPE_CACHE_KEY = "cointrack_profileTypeBySyncId";
+
+function readProfileTypeMap(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(localStorage.getItem(PROFILE_TYPE_CACHE_KEY) ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
+export function getCachedProfileType(syncId: string | null): string | null {
+  if (!syncId) return null;
+  return readProfileTypeMap()[syncId] ?? null;
+}
+
+export function setCachedProfileType(syncId: string, type: string | null) {
+  if (typeof window === "undefined" || !syncId) return;
+  const map = readProfileTypeMap();
+  if (type == null) delete map[syncId];
+  else map[syncId] = type;
+  localStorage.setItem(PROFILE_TYPE_CACHE_KEY, JSON.stringify(map));
+  window.dispatchEvent(new CustomEvent("cointrack:profile-type-changed"));
+}
+
 // ─── Default profile (client-side preference) ──────────────────
 
 const DEFAULT_KEY = "cointrack_defaultProfileSyncId";

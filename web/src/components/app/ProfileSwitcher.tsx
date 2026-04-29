@@ -8,6 +8,7 @@ import { withAuth } from "@/lib/auth-store";
 import {
   getCurrentProfileSyncId,
   setCurrentProfileSyncId,
+  setCachedProfileType,
   Profile,
   ProfileData,
 } from "@/lib/profile-store";
@@ -43,6 +44,12 @@ export default function ProfileSwitcher() {
           .sort((a, b) => a.data.name.localeCompare(b.data.name));
         setProfiles(list);
         setSharedProfileIds(new Set(mine.map((m) => m.profileId)));
+
+        // Cache profile types do localStorage — layout je čte synchronně
+        // při prvním renderu, aby menu (Členové) bylo stabilní bez flickeru.
+        for (const p of list) {
+          if (p.data.type) setCachedProfileType(p.syncId, p.data.type);
+        }
 
         const existing = getCurrentProfileSyncId();
         const existsInList = list.some((p) => p.syncId === existing);

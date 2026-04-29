@@ -10,7 +10,11 @@ import {
   getStoredUser,
 } from "@/lib/auth-store";
 import { auth, sync, UserDto } from "@/lib/api";
-import { getCurrentProfileSyncId } from "@/lib/profile-store";
+import {
+  getCurrentProfileSyncId,
+  getCachedProfileType,
+  setCachedProfileType,
+} from "@/lib/profile-store";
 import ProfileSwitcher from "@/components/app/ProfileSwitcher";
 import { QuickActionFab } from "@/components/app/QuickActionFab";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
@@ -23,7 +27,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [activeProfileType, setActiveProfileType] = useState<string | null>(null);
+  // Init z localStorage cache — layout má od první frame správný typ
+  // (pokud user už profil dříve používal). Bez cache by Členové menu
+  // chvíli flickly do/z viditelnosti při každém načtení.
+  const [activeProfileType, setActiveProfileType] = useState<string | null>(
+    () => getCachedProfileType(getCurrentProfileSyncId()),
+  );
 
   // Zavřít drawer při změně cesty
   useEffect(() => {
@@ -34,6 +43,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // jen pro firemní/organizační profily (ne osobní/skupinové).
   useEffect(() => {
     let cancelled = false;
+
+    // 1) Synchronní reload z cache — pokrývá scénář kdy user přepne profil
+    //    (event "cointrack:profile-changed") a cache už ten profil zná.
+    const reloadFromCache = () => {
+      const syncId = getCurrentProfileSyncId();
+      const cached = getCachedProfileType(syncId);
+      if (!cancelled) setActiveProfileType(cached);
+    };
+
+    // 2) Async fetch ze serveru — refresh cache + state pro případ že profil
+    //    nebyl v cache (čerstvý login) nebo se změnil typ.
     const loadProfileType = async () => {
       const token = getAccessToken();
       if (!token) return;
@@ -44,6 +64,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       }
       try {
         const res = await sync.pull(token);
+        // Cache typů všech viditelných profilů
+        for (const e of res.entities["profiles"] ?? []) {
+          if (e.deletedAt) continue;
+          const type = (e.data as Record<string, unknown>).type;
+          if (typeof type === "string") setCachedProfileType(e.syncId, type);
+        }
         const profile = (res.entities["profiles"] ?? []).find(
           (e) => e.syncId === syncId && !e.deletedAt,
         );
@@ -54,12 +80,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         // ignorujeme — sidebar i bez tohoto musí fungovat
       }
     };
+
+    reloadFromCache();
     loadProfileType();
-    const onChange = () => loadProfileType();
-    window.addEventListener("cointrack:profile-changed", onChange);
+
+    const onProfileChange = () => {
+      reloadFromCache();
+      loadProfileType();
+    };
+    const onTypeChange = () => reloadFromCache();
+    window.addEventListener("cointrack:profile-changed", onProfileChange);
+    window.addEventListener("cointrack:profile-type-changed", onTypeChange);
     return () => {
       cancelled = true;
-      window.removeEventListener("cointrack:profile-changed", onChange);
+      window.removeEventListener("cointrack:profile-changed", onProfileChange);
+      window.removeEventListener("cointrack:profile-type-changed", onTypeChange);
     };
   }, [pathname]);
 
@@ -110,15 +145,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const isProfileSelection = pathname?.startsWith("/app/profiles");
 
   const isOrganizationTier = user?.tier === "ORGANIZATION";
-  // Sekce Členové se zobrazuje pro Organization tier vždy — stránka sama
-  // řeší pokud aktivní profil není firemní (ukáže warning + redirect na profile).
-  // Drobné UX odlišnost od mobilu: tam se kvůli compact draweru schovává,
-  // na webu se vejde i pro non-business profil a uživatel může rovnou kliknout
-  // a dostat instrukce. Tier ORGANIZATION je hard-required (cena za feature).
-  const showMembers = isOrganizationTier;
-  // activeProfileType je stále k dispozici pro budoucí použití (např. badge "neaktivní v tomto profilu"),
-  // ale menu je teď stabilní (= žádný flicker závislý na pomalém sync.pull).
-  void activeProfileType;
+  const isOrganizationalProfile =
+    activeProfileType === "BUSINESS" || activeProfileType === "ORGANIZATION";
+  // Členové = jen Organization tier + firemní/organizační profil. Pro osobní
+  // a skupinové se schová. activeProfileType se hydratuje z localStorage cache
+  // synchronně (init), takže menu je stabilní bez flickeru.
+  const showMembers = isOrganizationTier && isOrganizationalProfile;
 
   const nav: Array<{ href: string; label: string; section?: string }> = [
     { href: "/app/dashboard", label: ts("dashboard") },
