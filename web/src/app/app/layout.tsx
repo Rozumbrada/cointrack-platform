@@ -145,18 +145,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const isProfileSelection = pathname?.startsWith("/app/profiles");
 
   const isOrganizationTier = user?.tier === "ORGANIZATION";
-  // Členové se zobrazují pro firemní profil + tier Business Pro.
-  // Logika (sjednoceno s /app/members page):
-  //   - tier není ORGANIZATION → schováno (paywall)
-  //   - profil typu **explicitně** PERSONAL/GROUP → schováno
-  //   - cokoli ostatní (BUSINESS, legacy ORGANIZATION, null/unknown)
-  //     → zobrazeno; legacy/null se posuzuje jako "možná firemní",
-  //     stejně jako Members page (tam warning vidí jen pro explicitní
-  //     PERSONAL/GROUP). User s firemním profilem co má v DB type=""
-  //     z legacy stavu nepřijde o feature.
-  const profileExplicitlyNonBusiness =
-    activeProfileType === "PERSONAL" || activeProfileType === "GROUP";
-  const showMembers = isOrganizationTier && !profileExplicitlyNonBusiness;
+  // Členové = pro tier Business Pro. Stránka /app/members sama varuje
+  // pokud aktivní profil není firemní (= PERSONAL/GROUP), což pokrývá
+  // jak detekci typu profilu, tak edge cases s prázdnou cache.
+  // Layout-level filtrování podle profile type bylo flaky kvůli race
+  // condition s sync.pull v různých zdrojích (cache vs rawEntities) —
+  // jednotně řešíme v page, layout dělá jen tier-gate.
+  const showMembers = isOrganizationTier;
+  void activeProfileType;
 
   const nav: Array<{ href: string; label: string; section?: string }> = [
     { href: "/app/dashboard", label: ts("dashboard") },
