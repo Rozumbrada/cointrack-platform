@@ -1739,7 +1739,8 @@
   },
   "profile_switcher_extras": {
     "shared_badge": "Sdíleno",
-    "shared_tooltip": "Tento profil ti někdo nasdílel — vidíš jen přidělený účet."
+    "shared_tooltip": "Tento profil ti někdo nasdílel — vidíš jen přidělený účet.",
+    "manage_profiles_action": "Spravovat profily"
   },
   "members_page": {
     "title": "Členové",

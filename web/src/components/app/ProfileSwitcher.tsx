@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { sync, accountShares } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
@@ -153,6 +154,15 @@ export default function ProfileSwitcher() {
               )}
             </button>
           ))}
+          {/* Vždy přístupné — i když má user 1 profil, dropdown sloužil
+              jen jako hluché info. Teď z něho vede správa profilů. */}
+          <Link
+            href="/app/profiles"
+            onClick={() => setOpen(false)}
+            className="block w-full px-3 py-2 text-sm text-brand-600 hover:bg-brand-50 border-t border-ink-100"
+          >
+            ⚙ {tShare("manage_profiles_action")}
+          </Link>
         </div>
       )}
     </div>

@@ -110,11 +110,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const isProfileSelection = pathname?.startsWith("/app/profiles");
 
   const isOrganizationTier = user?.tier === "ORGANIZATION";
-  const isOrganizationalProfile =
-    activeProfileType === "BUSINESS" || activeProfileType === "ORGANIZATION";
-  // Sekce Členové dává smysl jen ve firemním profilu — osobní profil nemá co
-  // sdílet; navíc tier ORGANIZATION je nutný (cena za feature).
-  const showMembers = isOrganizationTier && isOrganizationalProfile;
+  // Sekce Členové se zobrazuje pro Organization tier vždy — stránka sama
+  // řeší pokud aktivní profil není firemní (ukáže warning + redirect na profile).
+  // Drobné UX odlišnost od mobilu: tam se kvůli compact draweru schovává,
+  // na webu se vejde i pro non-business profil a uživatel může rovnou kliknout
+  // a dostat instrukce. Tier ORGANIZATION je hard-required (cena za feature).
+  const showMembers = isOrganizationTier;
+  // activeProfileType je stále k dispozici pro budoucí použití (např. badge "neaktivní v tomto profilu"),
+  // ale menu je teď stabilní (= žádný flicker závislý na pomalém sync.pull).
+  void activeProfileType;
 
   const nav: Array<{ href: string; label: string; section?: string }> = [
     { href: "/app/dashboard", label: ts("dashboard") },

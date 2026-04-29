@@ -2,6 +2,7 @@
 
 import { useLocale } from "next-intl";
 import { useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { setLocaleAction } from "@/lib/locale-action";
 import { auth } from "@/lib/api";
 import { getAccessToken } from "@/lib/auth-store";
@@ -9,9 +10,11 @@ import { getAccessToken } from "@/lib/auth-store";
 /**
  * Vlajkový přepínač CS/EN. Po změně:
  *  1. Uloží locale do cookie (server action) — pro server-side rendering hned
- *  2. Pokud je user přihlášený, pošle PATCH /auth/me s novým locale
- *     (aby emaily přicházely ve správném jazyce)
- *  3. Obnoví stránku, aby se znovu načetly server-side strings
+ *  2. Pokud je user přihlášený, fire-and-forget pošle PATCH /auth/me s novým
+ *     locale (kvůli emailům). Selhání ignorujeme — nesmí ovlivnit UI.
+ *  3. router.refresh() — soft rerender ze serveru s novým locale; **zachovává
+ *     klientský state včetně tokenů v localStorage** (na rozdíl od full reload,
+ *     který by spustil layout useEffect od nuly a hrozí flash na /login).
  */
 const LOCALES: Array<{
   code: "cs" | "en";
@@ -25,19 +28,21 @@ const LOCALES: Array<{
 
 export function LocaleSwitcher({ className = "" }: { className?: string }) {
   const current = useLocale();
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   function change(next: "cs" | "en") {
     if (next === current) return;
+
+    // Backend update na pozadí — uživatel nečeká, případné selhání nás nezajímá.
+    const token = getAccessToken();
+    if (token) {
+      auth.updateMe(token, { locale: next }).catch(() => {});
+    }
+
     startTransition(async () => {
       await setLocaleAction(next);
-      const token = getAccessToken();
-      if (token) {
-        try {
-          await auth.updateMe(token, { locale: next });
-        } catch { /* ignore */ }
-      }
-      window.location.reload();
+      router.refresh();
     });
   }
 

@@ -1739,7 +1739,8 @@
   },
   "profile_switcher_extras": {
     "shared_badge": "Shared",
-    "shared_tooltip": "This profile was shared with you — you only see the assigned account."
+    "shared_tooltip": "This profile was shared with you — you only see the assigned account.",
+    "manage_profiles_action": "Manage profiles"
   },
   "members_page": {
     "title": "Members",
