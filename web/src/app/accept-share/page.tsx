@@ -114,7 +114,13 @@ function AcceptShareInner() {
         <Row label={t("profile")} value={preview.profileName} />
         <Row
           label={t("role_label")}
-          value={preview.role === "EDITOR" ? t("role_editor") : t("role_viewer")}
+          value={
+            preview.role === "EDITOR"
+              ? t("role_editor")
+              : preview.role === "ACCOUNTANT"
+                ? t("role_accountant")
+                : t("role_viewer")
+          }
         />
       </div>
       {preview.expiresAt && (

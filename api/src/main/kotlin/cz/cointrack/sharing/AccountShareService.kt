@@ -106,9 +106,9 @@ class AccountShareService(
         if (normalizedEmail.isBlank() || !normalizedEmail.contains("@")) {
             throw ApiException(HttpStatusCode.BadRequest, "invalid_email", "Neplatný email.")
         }
-        if (req.role !in setOf("VIEWER", "EDITOR")) {
+        if (req.role !in setOf("VIEWER", "EDITOR", "ACCOUNTANT")) {
             throw ApiException(HttpStatusCode.BadRequest, "invalid_role",
-                "Role musí být VIEWER nebo EDITOR.")
+                "Role musí být VIEWER, EDITOR nebo ACCOUNTANT.")
         }
 
         // Tier check — jen ORGANIZATION může sdílet účty

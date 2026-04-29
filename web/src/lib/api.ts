@@ -190,7 +190,12 @@ export interface ShareWithAccountDto {
 }
 
 export const accountShares = {
-  invite: (token: string, accountId: string, email: string, role: "VIEWER" | "EDITOR" = "VIEWER") =>
+  invite: (
+    token: string,
+    accountId: string,
+    email: string,
+    role: "VIEWER" | "EDITOR" | "ACCOUNTANT" = "VIEWER",
+  ) =>
     api<AccountShareDto>(`/api/v1/accounts/${accountId}/shares`, {
       method: "POST", token, body: { email, role },
     }),

@@ -348,11 +348,17 @@ object EmailTemplates {
         locale: String? = null,
     ): String {
         val roleLabel = if (locale?.startsWith("en") == true) {
-            if (role == "EDITOR") "Editor (can add and edit transactions)"
-            else "Viewer (read-only)"
+            when (role) {
+                "EDITOR" -> "Editor (can add and edit transactions)"
+                "ACCOUNTANT" -> "Accountant (read-only + export for tax filing)"
+                else -> "Viewer (read-only)"
+            }
         } else {
-            if (role == "EDITOR") "Editor (může přidávat a upravovat transakce)"
-            else "Pouze čtení"
+            when (role) {
+                "EDITOR" -> "Editor (může přidávat a upravovat transakce)"
+                "ACCOUNTANT" -> "Účetní (čtení + export pro daňové přiznání)"
+                else -> "Pouze čtení"
+            }
         }
         return layout(
             title = pick(

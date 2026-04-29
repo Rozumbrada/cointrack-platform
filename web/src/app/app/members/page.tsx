@@ -134,7 +134,11 @@ export default function MembersPage() {
                   </td>
                   <td className="px-6 py-3">
                     <span className="text-xs uppercase tracking-wide bg-ink-100 text-ink-700 px-1.5 py-0.5 rounded">
-                      {s.role === "EDITOR" ? t("role_editor") : t("role_viewer")}
+                      {s.role === "EDITOR"
+                        ? t("role_editor")
+                        : s.role === "ACCOUNTANT"
+                          ? t("role_accountant")
+                          : t("role_viewer")}
                     </span>
                   </td>
                   <td className="px-6 py-3">
@@ -189,7 +193,7 @@ function InviteDialog({
   const t = useTranslations("members_page");
   const [email, setEmail] = useState("");
   const [accountSyncId, setAccountSyncId] = useState(accounts[0]?.syncId ?? "");
-  const [role, setRole] = useState<"VIEWER" | "EDITOR">("VIEWER");
+  const [role, setRole] = useState<"VIEWER" | "EDITOR" | "ACCOUNTANT">("VIEWER");
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -278,6 +282,18 @@ function InviteDialog({
               <div className="flex-1">
                 <div className="text-sm font-medium text-ink-900">{t("role_editor")}</div>
                 <div className="text-xs text-ink-600 mt-0.5">{t("dialog_role_editor_desc")}</div>
+              </div>
+            </label>
+            <label className="flex gap-2 p-3 rounded-lg border border-ink-200 hover:border-brand-300 cursor-pointer">
+              <input
+                type="radio"
+                checked={role === "ACCOUNTANT"}
+                onChange={() => setRole("ACCOUNTANT")}
+                className="mt-0.5"
+              />
+              <div className="flex-1">
+                <div className="text-sm font-medium text-ink-900">{t("role_accountant")}</div>
+                <div className="text-xs text-ink-600 mt-0.5">{t("dialog_role_accountant_desc")}</div>
               </div>
             </label>
           </div>
