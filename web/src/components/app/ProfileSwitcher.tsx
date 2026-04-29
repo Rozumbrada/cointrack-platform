@@ -76,6 +76,13 @@ export default function ProfileSwitcher() {
   }, []);
 
   function choose(syncId: string) {
+    // Synchronně přeplň cache typu profilu PŘED dispatchem profile-changed
+    // eventu — layout + Members page reagují na event a okamžitě potřebují
+    // znát typ pro rozhodnutí o menu/warning.
+    const target = profiles.find((p) => p.syncId === syncId);
+    if (target?.data.type) {
+      setCachedProfileType(syncId, target.data.type);
+    }
     setCurrentProfileSyncId(syncId);
     setCurrentSyncIdState(syncId);
     setOpen(false);

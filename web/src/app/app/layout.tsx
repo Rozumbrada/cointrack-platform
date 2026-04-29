@@ -143,18 +143,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const isProfileSelection = pathname?.startsWith("/app/profiles");
 
   const isOrganizationTier = user?.tier === "ORGANIZATION";
-  // Členové = tier Business Pro AND profil **NENÍ** explicitně osobní/skupinový.
-  // Schováno pro: PERSONAL nebo GROUP profil. Pro BUSINESS / ORGANIZATION
-  // / null (cache prázdná) → zobrazeno.
-  // Důvod: strict 'must be BUSINESS' je flaky, když cache je null
-  // (čerstvý deploy / race condition s sync.pull) — uživatel s firemním
-  // profilem pak nevidí menu. Inverse-default opraví tento scénář:
-  // pro firemní (BUSINESS/legacy ORGANIZATION) + Business Pro tier = zobrazeno
-  // pro osobní (PERSONAL) + Business Pro tier = schováno
-  // pro neznámý typ + Business Pro tier = zobrazeno (konzistentní s Members page).
-  const profileExplicitlyNonBusiness =
-    activeProfileType === "PERSONAL" || activeProfileType === "GROUP";
-  const showMembers = isOrganizationTier && !profileExplicitlyNonBusiness;
+  // Členové v menu = jen pro tier Business Pro. Page /app/members sama
+  // řeší, pokud aktivní profil není firemní (= ukáže warning + tlačítko
+  // pro přepnutí). Layout neřeší profile type, aby nedocházelo k race
+  // conditions s asynchronním sync.pull a localStorage cache.
+  const showMembers = isOrganizationTier;
+  void activeProfileType;
 
   const nav: Array<{ href: string; label: string; section?: string }> = [
     { href: "/app/dashboard", label: ts("dashboard") },
