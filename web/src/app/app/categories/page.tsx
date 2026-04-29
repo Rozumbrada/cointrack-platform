@@ -6,6 +6,7 @@ import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
 import { ServerCategory, ServerTransaction, toUiTransaction } from "@/lib/sync-types";
+import { Pencil, Trash2 } from "lucide-react";
 
 type CategoryRow = { syncId: string; data: ServerCategory };
 
@@ -256,20 +257,26 @@ function CategoryList({
                   )}
                 </div>
               )}
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              {/* Inline edit + delete — vždy viditelné, ne hover-only.
+                  Sjednoceno s transactions list (lucide-react ikonky). */}
+              <div className="flex items-center gap-1 shrink-0">
                 <button
+                  type="button"
                   onClick={() => onEdit(c)}
-                  className="w-7 h-7 grid place-items-center rounded hover:bg-ink-100 text-ink-500 hover:text-ink-700"
+                  className="p-2 rounded-lg text-ink-500 hover:text-brand-700 hover:bg-brand-50 transition-colors"
                   title={t("edit")}
+                  aria-label={t("edit")}
                 >
-                  ✏️
+                  <Pencil className="w-4 h-4" />
                 </button>
                 <button
+                  type="button"
                   onClick={() => onDelete(c)}
-                  className="w-7 h-7 grid place-items-center rounded hover:bg-red-50 text-red-500 hover:text-red-700"
+                  className="p-2 rounded-lg text-ink-500 hover:text-red-700 hover:bg-red-50 transition-colors"
                   title={t("delete")}
+                  aria-label={t("delete")}
                 >
-                  🗑
+                  <Trash2 className="w-4 h-4" />
                 </button>
               </div>
             </li>
