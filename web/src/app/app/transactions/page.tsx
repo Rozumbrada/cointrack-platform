@@ -19,6 +19,7 @@ import {
   PeriodSelector,
   periodRange,
 } from "@/components/app/PeriodSelector";
+import { Pencil, Trash2 } from "lucide-react";
 
 export default function TransactionsPage() {
   const t = useTranslations("transactions_page");
@@ -102,6 +103,40 @@ export default function TransactionsPage() {
 
   function clearSelection() {
     setSelected(new Set());
+  }
+
+  /** Soft-delete jedné transakce přes sync push. */
+  async function deleteOne(syncId: string) {
+    const entity = txEntities.find((r) => r.syncId === syncId);
+    if (!entity) return;
+    if (!confirm(t("delete_one_confirm"))) return;
+    setBulkError(null);
+    try {
+      const now = new Date().toISOString();
+      await withAuth((tk) =>
+        sync.push(tk, {
+          entities: {
+            transactions: [
+              {
+                syncId: entity.syncId,
+                updatedAt: now,
+                deletedAt: now,
+                clientVersion: 1,
+                data: entity.data as unknown as Record<string, unknown>,
+              },
+            ],
+          },
+        }),
+      );
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(syncId);
+        return next;
+      });
+      await reload();
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : String(e));
+    }
   }
 
   async function bulkDelete() {
@@ -362,6 +397,28 @@ export default function TransactionsPage() {
                         {fmt(tx.amount, tx.currency, locale)}
                       </div>
                     </Link>
+                    {/* Inline edit + delete — vždy viditelné, ne hover-only */}
+                    <Link
+                      href={`/app/transactions/${tx.syncId}/edit`}
+                      onClick={(e) => e.stopPropagation()}
+                      title={t("edit_action")}
+                      aria-label={t("edit_action")}
+                      className="shrink-0 p-2 rounded-lg text-ink-500 hover:text-brand-700 hover:bg-brand-50 transition-colors"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteOne(tx.syncId);
+                      }}
+                      title={t("delete_action")}
+                      aria-label={t("delete_action")}
+                      className="shrink-0 p-2 rounded-lg text-ink-500 hover:text-red-700 hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </li>
                 );
               })}
