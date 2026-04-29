@@ -33,6 +33,8 @@ import cz.cointrack.gdpr.GdprDeletionWorker
 import cz.cointrack.gdpr.GdprService
 import cz.cointrack.gdpr.gdprRoutes
 import cz.cointrack.storage.storageRoutes
+import cz.cointrack.sharing.AccountShareService
+import cz.cointrack.sharing.accountShareRoutes
 import cz.cointrack.sync.SyncService
 import cz.cointrack.sync.syncRoutes
 import io.ktor.server.application.*
@@ -108,6 +110,9 @@ fun Application.module() {
     // Gemini AI proxy (key v env, klienti volají bez vlastního klíče)
     val geminiService = loadGeminiProxy()
 
+    // V21 — per-account sharing (Organization tier)
+    val accountShareService = AccountShareService(email = emailService, webBaseUrl = webBaseUrl)
+
     // GDPR — data export + account deletion (čl. 17, 20)
     val gdprService = GdprService(storage = storageService)
     @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
@@ -145,6 +150,7 @@ fun Application.module() {
             geminiRoutes(geminiService)
             exportRoutes()
             gdprRoutes(gdprService)
+            accountShareRoutes(accountShareService)
 
             // TODO (Sprint 8): billing endpoints
         }

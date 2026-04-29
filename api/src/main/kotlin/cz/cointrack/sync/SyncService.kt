@@ -90,6 +90,28 @@ class SyncService {
     }
 
     /**
+     * V21 — per-account sharing. Vrátí seznam account IDs, které má user aktivně přijaté
+     * jako share (od jiného vlastníka). Pro každý vrací i parent profileId pro potřeby
+     * sync vrstvy (zobrazí se i parent profil v read-only módu).
+     */
+    private fun Transaction.sharedAccountInfoForUser(userId: UUID): List<Pair<UUID, UUID>> {
+        return AccountShares.selectAll()
+            .where {
+                (AccountShares.userId eq userId) and
+                    AccountShares.acceptedAt.isNotNull() and
+                    AccountShares.revokedAt.isNull()
+            }
+            .mapNotNull { share ->
+                val accountId = share[AccountShares.accountId].value
+                val acc = Accounts.selectAll().where { Accounts.id eq accountId }.singleOrNull()
+                    ?: return@mapNotNull null
+                if (acc[Accounts.deletedAt] != null) return@mapNotNull null
+                val profileId = acc[Accounts.profileId].value
+                accountId to profileId
+            }
+    }
+
+    /**
      * Může user zapisovat do profilu?
      * Podmínky:
      *   - vlastní profil, nebo
@@ -124,76 +146,162 @@ class SyncService {
         return db {
             val userProfileIds = accessibleProfileIds(userId)
 
+            // V21 — per-account sharing: účty které mám přijaté jako share od jiného owners
+            val sharedAccountInfo = sharedAccountInfoForUser(userId)
+            val sharedAccountIds = sharedAccountInfo.map { it.first }
+            // Parent profily sdílených účtů — frontend je zobrazí jako "shared" read-only
+            val sharedProfileIds = sharedAccountInfo.map { it.second }
+                .filter { it !in userProfileIds }
+                .distinct()
+
+            // Union pro entity, které musí vidět celý profile (profile metadata, kategorie)
+            val visibleProfileIds = (userProfileIds + sharedProfileIds).distinct()
+
             // Mapování db_id → sync_id pro každou referenční tabulku
-            val profileIdToSync = Profiles.selectAll()
-                .where { Profiles.id inList userProfileIds }
-                .associate { it[Profiles.id].value to it[Profiles.syncId] }
+            val profileIdToSync = if (visibleProfileIds.isEmpty()) emptyMap() else
+                Profiles.selectAll()
+                    .where { Profiles.id inList visibleProfileIds }
+                    .associate { it[Profiles.id].value to it[Profiles.syncId] }
 
-            val accountIdToSync = if (userProfileIds.isEmpty()) emptyMap() else
-                Accounts.selectAll()
-                    .where { Accounts.profileId inList userProfileIds }
-                    .associate { it[Accounts.id].value to it[Accounts.syncId] }
+            // Účty: vlastní + sdílené
+            val accountIdToSync = run {
+                val ownedQuery = if (userProfileIds.isEmpty()) emptyMap() else
+                    Accounts.selectAll()
+                        .where { Accounts.profileId inList userProfileIds }
+                        .associate { it[Accounts.id].value to it[Accounts.syncId] }
+                val sharedQuery = if (sharedAccountIds.isEmpty()) emptyMap() else
+                    Accounts.selectAll()
+                        .where { Accounts.id inList sharedAccountIds }
+                        .associate { it[Accounts.id].value to it[Accounts.syncId] }
+                ownedQuery + sharedQuery
+            }
 
-            val categoryIdToSync = if (userProfileIds.isEmpty()) emptyMap() else
+            val categoryIdToSync = if (visibleProfileIds.isEmpty()) emptyMap() else
                 Categories.selectAll()
-                    .where { Categories.profileId inList userProfileIds }
+                    .where { Categories.profileId inList visibleProfileIds }
                     .associate { it[Categories.id].value to it[Categories.syncId] }
 
-            val transactionIdToSync = if (userProfileIds.isEmpty()) emptyMap() else
-                Transactions.selectAll()
-                    .where { Transactions.profileId inList userProfileIds }
-                    .associate { it[Transactions.id].value to it[Transactions.syncId] }
+            // Transactions/Receipts/Invoices: owned profiles + napojené na sdílené účty
+            val transactionIdToSync = run {
+                val owned = if (userProfileIds.isEmpty()) emptyMap() else
+                    Transactions.selectAll()
+                        .where { Transactions.profileId inList userProfileIds }
+                        .associate { it[Transactions.id].value to it[Transactions.syncId] }
+                val shared = if (sharedAccountIds.isEmpty()) emptyMap() else
+                    Transactions.selectAll()
+                        .where { Transactions.accountId inList sharedAccountIds }
+                        .associate { it[Transactions.id].value to it[Transactions.syncId] }
+                owned + shared
+            }
 
-            val receiptIdToSync = if (userProfileIds.isEmpty()) emptyMap() else
-                Receipts.selectAll()
-                    .where { Receipts.profileId inList userProfileIds }
-                    .associate { it[Receipts.id].value to it[Receipts.syncId] }
+            val receiptIdToSync = run {
+                val owned = if (userProfileIds.isEmpty()) emptyMap() else
+                    Receipts.selectAll()
+                        .where { Receipts.profileId inList userProfileIds }
+                        .associate { it[Receipts.id].value to it[Receipts.syncId] }
+                // Receipts napojené na sdílené účty přes transactionId.accountId
+                val sharedTransactionIds = transactionIdToSync.keys.toList() // už zahrnuje sdílené
+                val shared = if (sharedTransactionIds.isEmpty()) emptyMap() else
+                    Receipts.selectAll()
+                        .where { Receipts.transactionId inList sharedTransactionIds }
+                        .associate { it[Receipts.id].value to it[Receipts.syncId] }
+                owned + shared
+            }
 
-            val invoiceIdToSync = if (userProfileIds.isEmpty()) emptyMap() else
-                Invoices.selectAll()
-                    .where { Invoices.profileId inList userProfileIds }
-                    .associate { it[Invoices.id].value to it[Invoices.syncId] }
+            val invoiceIdToSync = run {
+                val owned = if (userProfileIds.isEmpty()) emptyMap() else
+                    Invoices.selectAll()
+                        .where { Invoices.profileId inList userProfileIds }
+                        .associate { it[Invoices.id].value to it[Invoices.syncId] }
+                val shared = if (sharedAccountIds.isEmpty()) emptyMap() else
+                    Invoices.selectAll()
+                        .where { Invoices.linkedAccountId inList sharedAccountIds }
+                        .associate { it[Invoices.id].value to it[Invoices.syncId] }
+                owned + shared
+            }
 
             val result = mutableMapOf<String, List<SyncEntity>>()
 
-            result["profiles"] = if (userProfileIds.isEmpty()) emptyList() else
+            result["profiles"] = if (visibleProfileIds.isEmpty()) emptyList() else
                 Profiles.selectAll()
-                    .where { (Profiles.id inList userProfileIds) and (Profiles.updatedAt greater effectiveSince) }
+                    .where { (Profiles.id inList visibleProfileIds) and (Profiles.updatedAt greater effectiveSince) }
                     .map { profileToEntity(it) }
 
-            result["accounts"] = if (userProfileIds.isEmpty()) emptyList() else
-                Accounts.selectAll()
-                    .where { (Accounts.profileId inList userProfileIds) and (Accounts.updatedAt greater effectiveSince) }
-                    .map { accountToEntity(it, profileIdToSync) }
+            result["accounts"] = run {
+                val owned = if (userProfileIds.isEmpty()) emptyList() else
+                    Accounts.selectAll()
+                        .where { (Accounts.profileId inList userProfileIds) and (Accounts.updatedAt greater effectiveSince) }
+                        .map { accountToEntity(it, profileIdToSync) }
+                val shared = if (sharedAccountIds.isEmpty()) emptyList() else
+                    Accounts.selectAll()
+                        .where { (Accounts.id inList sharedAccountIds) and (Accounts.updatedAt greater effectiveSince) }
+                        .map { accountToEntity(it, profileIdToSync) }
+                owned + shared
+            }
 
-            result["categories"] = if (userProfileIds.isEmpty()) emptyList() else
+            result["categories"] = if (visibleProfileIds.isEmpty()) emptyList() else
                 Categories.selectAll()
-                    .where { (Categories.profileId inList userProfileIds) and (Categories.updatedAt greater effectiveSince) }
+                    .where { (Categories.profileId inList visibleProfileIds) and (Categories.updatedAt greater effectiveSince) }
                     .map { categoryToEntity(it, profileIdToSync) }
 
-            result["transactions"] = if (userProfileIds.isEmpty()) emptyList() else
-                Transactions.selectAll()
-                    .where { (Transactions.profileId inList userProfileIds) and (Transactions.updatedAt greater effectiveSince) }
-                    .map { transactionToEntity(it, profileIdToSync, accountIdToSync, categoryIdToSync) }
+            result["transactions"] = run {
+                val owned = if (userProfileIds.isEmpty()) emptyList() else
+                    Transactions.selectAll()
+                        .where { (Transactions.profileId inList userProfileIds) and (Transactions.updatedAt greater effectiveSince) }
+                        .map { transactionToEntity(it, profileIdToSync, accountIdToSync, categoryIdToSync) }
+                val shared = if (sharedAccountIds.isEmpty()) emptyList() else
+                    Transactions.selectAll()
+                        .where {
+                            (Transactions.accountId inList sharedAccountIds) and
+                                (Transactions.profileId notInList userProfileIds) and
+                                (Transactions.updatedAt greater effectiveSince)
+                        }
+                        .map { transactionToEntity(it, profileIdToSync, accountIdToSync, categoryIdToSync) }
+                owned + shared
+            }
 
-            result["receipts"] = if (userProfileIds.isEmpty()) emptyList() else
-                Receipts.selectAll()
-                    .where { (Receipts.profileId inList userProfileIds) and (Receipts.updatedAt greater effectiveSince) }
-                    .map { receiptToEntity(it, profileIdToSync, categoryIdToSync, transactionIdToSync) }
+            result["receipts"] = run {
+                val owned = if (userProfileIds.isEmpty()) emptyList() else
+                    Receipts.selectAll()
+                        .where { (Receipts.profileId inList userProfileIds) and (Receipts.updatedAt greater effectiveSince) }
+                        .map { receiptToEntity(it, profileIdToSync, categoryIdToSync, transactionIdToSync) }
+                val sharedTxIds = transactionIdToSync.keys.toList()
+                val shared = if (sharedTxIds.isEmpty()) emptyList() else
+                    Receipts.selectAll()
+                        .where {
+                            (Receipts.transactionId inList sharedTxIds) and
+                                (Receipts.profileId notInList userProfileIds) and
+                                (Receipts.updatedAt greater effectiveSince)
+                        }
+                        .map { receiptToEntity(it, profileIdToSync, categoryIdToSync, transactionIdToSync) }
+                owned + shared
+            }
 
-            result["invoices"] = if (userProfileIds.isEmpty()) emptyList() else
-                Invoices.selectAll()
-                    .where { (Invoices.profileId inList userProfileIds) and (Invoices.updatedAt greater effectiveSince) }
-                    .map { invoiceToEntity(it, profileIdToSync, categoryIdToSync, accountIdToSync, transactionIdToSync) }
+            result["invoices"] = run {
+                val owned = if (userProfileIds.isEmpty()) emptyList() else
+                    Invoices.selectAll()
+                        .where { (Invoices.profileId inList userProfileIds) and (Invoices.updatedAt greater effectiveSince) }
+                        .map { invoiceToEntity(it, profileIdToSync, categoryIdToSync, accountIdToSync, transactionIdToSync) }
+                val shared = if (sharedAccountIds.isEmpty()) emptyList() else
+                    Invoices.selectAll()
+                        .where {
+                            (Invoices.linkedAccountId inList sharedAccountIds) and
+                                (Invoices.profileId notInList userProfileIds) and
+                                (Invoices.updatedAt greater effectiveSince)
+                        }
+                        .map { invoiceToEntity(it, profileIdToSync, categoryIdToSync, accountIdToSync, transactionIdToSync) }
+                owned + shared
+            }
 
-            result["receipt_items"] = if (userProfileIds.isEmpty()) emptyList() else
-                (ReceiptItems innerJoin Receipts).selectAll()
-                    .where { (Receipts.profileId inList userProfileIds) and (ReceiptItems.updatedAt greater effectiveSince) }
+            // receipt_items / invoice_items: parent v viditelných receipts/invoices
+            result["receipt_items"] = if (receiptIdToSync.isEmpty()) emptyList() else
+                ReceiptItems.selectAll()
+                    .where { (ReceiptItems.receiptId inList receiptIdToSync.keys.toList()) and (ReceiptItems.updatedAt greater effectiveSince) }
                     .map { receiptItemToEntity(it, receiptIdToSync) }
 
-            result["invoice_items"] = if (userProfileIds.isEmpty()) emptyList() else
-                (InvoiceItems innerJoin Invoices).selectAll()
-                    .where { (Invoices.profileId inList userProfileIds) and (InvoiceItems.updatedAt greater effectiveSince) }
+            result["invoice_items"] = if (invoiceIdToSync.isEmpty()) emptyList() else
+                InvoiceItems.selectAll()
+                    .where { (InvoiceItems.invoiceId inList invoiceIdToSync.keys.toList()) and (InvoiceItems.updatedAt greater effectiveSince) }
                     .map { invoiceItemToEntity(it, invoiceIdToSync) }
 
             result["loyalty_cards"] = if (userProfileIds.isEmpty()) emptyList() else

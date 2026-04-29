@@ -93,6 +93,20 @@ object AuditLog : Table("audit_log") {
     override val primaryKey = PrimaryKey(id)
 }
 
+// ─── Account shares (V21) — per-account sharing pro Organization tier ──
+object AccountShares : UUIDTable("account_shares") {
+    val accountId      = reference("account_id", Accounts)
+    val userId         = reference("user_id", Users).nullable()
+    val email          = varchar("email", 255)
+    val role           = varchar("role", 16).default("VIEWER")
+    val inviteToken    = varchar("invite_token", 128).nullable()
+    val expiresAt      = timestamp("expires_at").nullable()
+    val acceptedAt     = timestamp("accepted_at").nullable()
+    val revokedAt      = timestamp("revoked_at").nullable()
+    val inviterUserId  = reference("inviter_user_id", Users).nullable()
+    val createdAt      = timestamp("created_at")
+}
+
 // ─── Payments (V16) ───────────────────────────────────────────────
 object Payments : org.jetbrains.exposed.dao.id.UUIDTable("payments") {
     val userId           = reference("user_id", Users)

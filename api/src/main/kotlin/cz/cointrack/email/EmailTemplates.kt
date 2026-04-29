@@ -337,4 +337,67 @@ object EmailTemplates {
 
     fun tierDowngradedSubject(locale: String? = null): String =
         pick(locale, "Cointrack — přepnuto na FREE", "Cointrack — switched to FREE")
+
+    /** V21 — pozvánka ke sdílení konkrétního účtu (per-account share). */
+    fun accountShareInvite(
+        accountName: String,
+        profileName: String,
+        inviterEmail: String,
+        role: String,
+        acceptUrl: String,
+        locale: String? = null,
+    ): String {
+        val roleLabel = if (locale?.startsWith("en") == true) {
+            if (role == "EDITOR") "Editor (can add and edit transactions)"
+            else "Viewer (read-only)"
+        } else {
+            if (role == "EDITOR") "Editor (může přidávat a upravovat transakce)"
+            else "Pouze čtení"
+        }
+        return layout(
+            title = pick(
+                locale,
+                "Pozvánka ke sdílení účtu $accountName",
+                "Invitation to access $accountName",
+            ),
+            locale = locale,
+            body = """
+                <p>${pick(
+                    locale,
+                    "Uživatel <strong>$inviterEmail</strong> ti nasdílel bankovní účet <strong>$accountName</strong> v profilu <strong>$profileName</strong>.",
+                    "User <strong>$inviterEmail</strong> shared the bank account <strong>$accountName</strong> from profile <strong>$profileName</strong> with you.",
+                )}</p>
+                <p>${pick(locale, "Role:", "Role:")} <strong>$roleLabel</strong></p>
+                <p>${pick(
+                    locale,
+                    "Po přijetí pozvánky uvidíš v Cointracku tento sdílený profil a v něm jen tento jeden účet (a transakce, účtenky, faktury k němu napojené). Ostatní data profilu nevidíš.",
+                    "After accepting, you'll see a shared profile in Cointrack containing only this one account (and transactions, receipts, invoices linked to it). Other profile data is not visible.",
+                )}</p>
+                <p>
+                    <a href="$acceptUrl"
+                       style="display:inline-block;background:#111;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;">
+                       ${pick(locale, "Přijmout pozvánku", "Accept invitation")}
+                    </a>
+                </p>
+                <p style="color:#666;font-size:14px;">
+                    ${pick(locale, "Odkaz platí 14 dní.", "Link is valid for 14 days.")}
+                </p>
+                <p style="color:#666;font-size:12px;">
+                    ${pick(
+                        locale,
+                        "Pokud ještě nemáš účet Cointrack, budeš si moct nejdřív vytvořit na tento email.",
+                        "If you don't have a Cointrack account yet, you'll be able to create one with this email.",
+                    )}
+                    <br>${pick(locale, "Nebo zkopíruj:", "Or copy:")}<br><code>$acceptUrl</code>
+                </p>
+            """,
+        )
+    }
+
+    fun accountShareInviteSubject(accountName: String, locale: String? = null): String =
+        pick(
+            locale,
+            "Cointrack — sdílení účtu $accountName",
+            "Cointrack — invitation to access $accountName",
+        )
 }
