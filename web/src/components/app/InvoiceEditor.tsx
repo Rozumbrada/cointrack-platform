@@ -155,13 +155,17 @@ export function InvoiceEditor({
     setSaving(true);
     setErr(null);
     try {
-      // Kontrola duplicity — jen u nových faktur s vyplněným číslem.
-      // Match je v rámci aktivního profilu a ignoruje smazané (deletedAt).
-      // Mobile používá stejnou heuristiku (InvoiceViewModel.saveInvoice).
+      // Kontrola duplicity podle čísla faktury — pro nové i upravované.
+      // Match je v rámci aktivního profilu, ignoruje smazané (deletedAt) a
+      // při editaci vylučuje fakturu, kterou právě upravujeme (initial.syncId).
+      // Tj. zachytí: 1) novou fakturu s číslem, co už existuje,
+      //              2) editaci, která změní číslo na číslo jiné existující.
       const trimmedNumber = invoiceNumber.trim();
-      if (!force && !initial && trimmedNumber) {
+      if (!force && trimmedNumber) {
         const res = await withAuth((tk) => sync.pull(tk));
+        const selfSyncId = initial?.syncId;
         const dupEntity = (res.entities["invoices"] ?? []).find((e) => {
+          if (e.syncId === selfSyncId) return false;       // sebe ignoruj
           if (e.deletedAt) return false;
           const d = e.data as Record<string, unknown>;
           if (d.deletedAt != null && d.deletedAt !== 0) return false;
