@@ -200,7 +200,9 @@ function InviteDialog({
 }) {
   const t = useTranslations("members_page");
   const [email, setEmail] = useState("");
-  const [accountSyncId, setAccountSyncId] = useState(accounts[0]?.syncId ?? "");
+  const [selectedAccountIds, setSelectedAccountIds] = useState<Set<string>>(
+    accounts.length > 0 ? new Set([accounts[0].syncId]) : new Set(),
+  );
   const [role, setRole] = useState<"VIEWER" | "EDITOR" | "ACCOUNTANT">("VIEWER");
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -211,16 +213,41 @@ function InviteDialog({
     [accounts],
   );
 
+  function toggleAccount(syncId: string) {
+    setSelectedAccountIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(syncId)) next.delete(syncId);
+      else next.add(syncId);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelectedAccountIds(new Set(sortedAccounts.map((a) => a.syncId)));
+  }
+
+  function clearSelection() {
+    setSelectedAccountIds(new Set());
+  }
+
+  const allSelected = sortedAccounts.length > 0 && selectedAccountIds.size === sortedAccounts.length;
+
   async function send() {
     if (!email.trim() || !email.includes("@")) {
       setErr(t("dialog_invalid_email"));
       return;
     }
-    if (!accountSyncId) return;
+    if (selectedAccountIds.size === 0) return;
     setSending(true);
     setErr(null);
     try {
-      await withAuth((tk) => accountShares.invite(tk, accountSyncId, email.trim().toLowerCase(), role));
+      // Invite per-account: one share row per selected account
+      const normalizedEmail = email.trim().toLowerCase();
+      for (const accountSyncId of selectedAccountIds) {
+        await withAuth((tk) =>
+          accountShares.invite(tk, accountSyncId, normalizedEmail, role),
+        );
+      }
       onCreated();
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : String(e));
@@ -246,24 +273,41 @@ function InviteDialog({
           />
         </label>
 
-        <label className="block">
-          <div className="text-xs font-medium text-ink-700 mb-1">{t("dialog_account")}</div>
+        <div>
+          <div className="flex items-baseline justify-between mb-1">
+            <div className="text-xs font-medium text-ink-700">{t("dialog_accounts")}</div>
+            {sortedAccounts.length > 0 && (
+              <button
+                type="button"
+                onClick={allSelected ? clearSelection : selectAll}
+                className="text-xs text-brand-600 hover:text-brand-700 font-medium"
+              >
+                {allSelected ? t("dialog_unselect_all_accounts") : t("dialog_select_all_accounts")}
+              </button>
+            )}
+          </div>
           {sortedAccounts.length === 0 ? (
             <p className="text-xs text-amber-700">{t("dialog_no_accounts")}</p>
           ) : (
-            <select
-              value={accountSyncId}
-              onChange={(e) => setAccountSyncId(e.target.value)}
-              className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm"
-            >
+            <div className="border border-ink-300 rounded-lg max-h-48 overflow-y-auto divide-y divide-ink-100">
               {sortedAccounts.map((a) => (
-                <option key={a.syncId} value={a.syncId}>
-                  {a.data.name} ({a.data.currency})
-                </option>
+                <label
+                  key={a.syncId}
+                  className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-ink-50 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedAccountIds.has(a.syncId)}
+                    onChange={() => toggleAccount(a.syncId)}
+                    className="w-4 h-4"
+                  />
+                  <span className="flex-1 text-ink-900">{a.data.name}</span>
+                  <span className="text-xs text-ink-500">{a.data.currency}</span>
+                </label>
               ))}
-            </select>
+            </div>
           )}
-        </label>
+        </div>
 
         <div>
           <div className="text-xs font-medium text-ink-700 mb-2">{t("dialog_role")}</div>
@@ -321,7 +365,7 @@ function InviteDialog({
           </button>
           <button
             onClick={send}
-            disabled={sending || !accountSyncId}
+            disabled={sending || selectedAccountIds.size === 0}
             className="flex-1 h-10 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium"
           >
             {sending ? t("dialog_sending") : t("dialog_send")}

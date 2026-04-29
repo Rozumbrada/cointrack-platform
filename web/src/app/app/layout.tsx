@@ -74,11 +74,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // Profile selection nemá sidebar — zobrazí se jen content
   const isProfileSelection = pathname?.startsWith("/app/profiles");
 
+  const isOrganizationTier = user?.tier === "ORGANIZATION";
+
   const nav: Array<{ href: string; label: string; section?: string }> = [
     { href: "/app/dashboard", label: ts("dashboard") },
     { href: "/app/accounts", label: ts("accounts") },
     { href: "/app/banks", label: ts("banks") },
-    { href: "/app/members", label: ts("members") },
+    // Členové — pouze pro Organization tier (sdílení účtů)
+    ...(isOrganizationTier
+      ? [{ href: "/app/members", label: ts("members") }]
+      : []),
     { href: "/app/transactions", label: ts("transactions") },
     { href: "/app/categories", label: ts("categories") },
     { href: "/app/statistics", label: ts("statistics") },
