@@ -35,7 +35,8 @@ export async function Navbar() {
           <Button asChild variant="ghost" size="sm">
             <Link href="/login">{t("login")}</Link>
           </Button>
-          <Button asChild variant="brand" size="sm">
+          {/* "Vyzkoušet zdarma" jen na desktopu — mobilní hlavička ho neunese */}
+          <Button asChild variant="brand" size="sm" className="hidden sm:inline-flex">
             <Link href="/signup">{t("signup")}</Link>
           </Button>
         </div>
