@@ -93,9 +93,12 @@ class AccountShareService(
         val expiresAt: String?,
     )
 
-    /** Pozve email pro daný účet. Vrátí status share row. */
+    /**
+     * Pozve email pro daný účet.
+     * @param accountSyncId — sync_id z klientské strany (mobil + web posílají syncId)
+     */
     suspend fun inviteEmail(
-        accountId: UUID,
+        accountSyncId: UUID,
         ownerUserId: UUID,
         req: InviteRequest,
     ): ShareDto {
@@ -117,10 +120,12 @@ class AccountShareService(
                 "Sdílení účtů vyžaduje předplatné Organization.")
         }
 
-        // Verify account ownership
-        val (accountName, profileName, profileSyncId) = db {
-            val acc = Accounts.selectAll().where { Accounts.id eq accountId }.singleOrNull()
-                ?: throw ApiException(HttpStatusCode.NotFound, "account_not_found", "Účet nenalezen.")
+        // Verify account ownership; klient pošle syncId, mapujeme ho na DB id
+        data class AccLookup(val id: UUID, val name: String, val profileName: String)
+        val lookup = db {
+            val acc = Accounts.selectAll().where { Accounts.syncId eq accountSyncId }.singleOrNull()
+                ?: throw ApiException(HttpStatusCode.NotFound, "account_not_found",
+                    "Účet nenalezen (syncId=$accountSyncId).")
             val profileId = acc[Accounts.profileId].value
             val profile = Profiles.selectAll().where { Profiles.id eq profileId }.singleOrNull()
                 ?: throw ApiException(HttpStatusCode.NotFound, "profile_not_found", "Profil nenalezen.")
@@ -128,8 +133,11 @@ class AccountShareService(
                 throw ApiException(HttpStatusCode.Forbidden, "not_owner",
                     "Nejsi vlastníkem tohoto účtu.")
             }
-            Triple(acc[Accounts.name], profile[Profiles.name], profile[Profiles.syncId])
+            AccLookup(acc[Accounts.id].value, acc[Accounts.name], profile[Profiles.name])
         }
+        val accountId = lookup.id
+        val accountName = lookup.name
+        val profileName = lookup.profileName
 
         // Self-invite check
         val ownerEmail = db {
@@ -190,16 +198,21 @@ class AccountShareService(
         } catch (e: Exception) {
             log.warn("Failed to send account share invite to $normalizedEmail: ${e.message}")
         }
-        log.info("Account share created: account=$accountId email=$normalizedEmail role=${req.role} (profileSync=$profileSyncId)")
+        log.info("Account share created: accountSync=$accountSyncId email=$normalizedEmail role=${req.role}")
 
         return getShare(shareId)!!
     }
 
-    /** Owner: list shares for account. */
-    suspend fun listForAccount(accountId: UUID, ownerUserId: UUID): List<ShareDto> = db {
-        // Verify ownership
-        val acc = Accounts.selectAll().where { Accounts.id eq accountId }.singleOrNull()
-            ?: throw ApiException(HttpStatusCode.NotFound, "account_not_found", "Účet nenalezen.")
+    /**
+     * Owner: list shares for account.
+     * @param accountSyncId klient pošle syncId, mapujeme na DB id
+     */
+    suspend fun listForAccount(accountSyncId: UUID, ownerUserId: UUID): List<ShareDto> = db {
+        // Verify ownership; klient posílá syncId
+        val acc = Accounts.selectAll().where { Accounts.syncId eq accountSyncId }.singleOrNull()
+            ?: throw ApiException(HttpStatusCode.NotFound, "account_not_found",
+                "Účet nenalezen (syncId=$accountSyncId).")
+        val accountDbId = acc[Accounts.id].value
         val profileId = acc[Accounts.profileId].value
         val profile = Profiles.selectAll().where { Profiles.id eq profileId }.singleOrNull()
             ?: throw ApiException(HttpStatusCode.NotFound, "profile_not_found", "Profil nenalezen.")
@@ -208,7 +221,7 @@ class AccountShareService(
         }
 
         AccountShares.selectAll()
-            .where { (AccountShares.accountId eq accountId) and AccountShares.revokedAt.isNull() }
+            .where { (AccountShares.accountId eq accountDbId) and AccountShares.revokedAt.isNull() }
             .orderBy(AccountShares.createdAt, SortOrder.DESC)
             .map { row -> rowToDto(row) }
     }
