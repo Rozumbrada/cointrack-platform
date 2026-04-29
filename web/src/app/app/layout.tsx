@@ -149,21 +149,27 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (isProfileSelection) {
     return (
       <div className="min-h-screen bg-ink-50">
-        <header className="h-16 bg-white border-b border-ink-200">
-          <div className="max-w-6xl mx-auto h-full flex items-center justify-between px-4 md:px-8">
-            <Link href="/app" className="font-semibold text-ink-900 text-lg">
+        <header className="h-14 md:h-16 bg-white border-b border-ink-200">
+          <div className="max-w-6xl mx-auto h-full flex items-center justify-between gap-2 px-3 md:px-8">
+            <Link
+              href="/app"
+              className="font-semibold text-ink-900 text-base md:text-lg shrink-0"
+            >
               Cointrack
             </Link>
-            <div className="flex items-center gap-4">
-              <div className="text-xs text-ink-600 hidden sm:block">
+            <div className="flex items-center gap-2 md:gap-4 min-w-0">
+              <div className="text-xs text-ink-600 hidden md:block truncate max-w-[200px]">
                 {user?.email}
               </div>
               <LocaleSwitcher />
               <button
                 onClick={onLogout}
-                className="text-sm text-ink-700 hover:text-ink-900"
+                className="shrink-0 text-sm text-ink-700 hover:text-ink-900 px-2 py-1 rounded-lg hover:bg-ink-100"
+                aria-label={ts("logout")}
+                title={ts("logout")}
               >
-                {ts("logout")}
+                <span className="hidden sm:inline">{ts("logout")}</span>
+                <span className="sm:hidden text-base" aria-hidden="true">↪</span>
               </button>
             </div>
           </div>
@@ -242,24 +248,30 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* Main content — vlevo */}
       <main className="flex-1 min-w-0">
-        <header className="md:hidden h-14 bg-white border-b border-ink-200 flex items-center justify-between px-4 sticky top-0 z-30">
-          <Link href="/app/dashboard" className="font-semibold text-ink-900">
+        <header className="md:hidden h-14 bg-white border-b border-ink-200 flex items-center justify-between gap-2 px-3 sticky top-0 z-30">
+          <Link
+            href="/app/dashboard"
+            className="font-semibold text-ink-900 shrink-0"
+          >
             Cointrack
           </Link>
-          <button
-            onClick={() => setDrawerOpen(true)}
-            className="w-9 h-9 grid place-items-center rounded-lg hover:bg-ink-100"
-            aria-label={ts("open_menu")}
-          >
-            <span className="block w-5 space-y-[5px]">
-              <span className="block h-0.5 bg-ink-700 rounded" />
-              <span className="block h-0.5 bg-ink-700 rounded" />
-              <span className="block h-0.5 bg-ink-700 rounded" />
-            </span>
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <LocaleSwitcher />
+            <button
+              onClick={() => setDrawerOpen(true)}
+              className="w-9 h-9 grid place-items-center rounded-lg hover:bg-ink-100"
+              aria-label={ts("open_menu")}
+            >
+              <span className="block w-5 space-y-[5px]">
+                <span className="block h-0.5 bg-ink-700 rounded" />
+                <span className="block h-0.5 bg-ink-700 rounded" />
+                <span className="block h-0.5 bg-ink-700 rounded" />
+              </span>
+            </button>
+          </div>
         </header>
 
-        <div className="max-w-6xl mx-auto p-4 md:p-8">{children}</div>
+        <div className="max-w-6xl mx-auto p-3 md:p-8">{children}</div>
       </main>
 
       {/* Mobile drawer — slide-in zprava */}
@@ -286,7 +298,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 href="/app/profiles"
                 className="block mt-2 text-xs text-brand-600 hover:text-brand-700 px-2"
               >
-                Spravovat profily →
+                {ts("manage_profiles")}
               </Link>
             </div>
             <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
@@ -321,12 +333,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   {user?.displayName || user?.email}
                 </div>
                 <div className="truncate">{user?.email}</div>
+                <div className="mt-1 text-[10px] uppercase tracking-wide text-ink-500">
+                  {user?.tier ?? "free"}
+                </div>
+              </div>
+              <div className="px-3 pb-2">
+                <LocaleSwitcher />
               </div>
               <button
                 onClick={onLogout}
                 className="w-full text-left rounded-lg px-3 py-2 text-sm text-ink-700 hover:bg-ink-100"
               >
-                Odhlásit
+                {ts("logout")}
               </button>
             </div>
           </aside>
