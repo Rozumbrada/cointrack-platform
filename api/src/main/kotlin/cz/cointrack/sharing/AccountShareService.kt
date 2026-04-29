@@ -154,8 +154,12 @@ class AccountShareService(
         val token = TokenGenerator.newToken()
         val expiresAt = now.plus(14, ChronoUnit.DAYS)
 
-        val shareId = db {
-            // Pokud existuje aktivní share pro stejný email → vrátit existující (idempotent)
+        // (shareId, sendEmail) — email posíláme jen pokud je to úplně první sdílení
+        // s tímto emailem od tohoto vlastníka. Při přidání dalšího účtu existujícímu
+        // členovi (změna nastavení) se email už neopakuje.
+        data class ShareResult(val shareId: UUID, val sendEmail: Boolean)
+        val result = db {
+            // Pokud existuje aktivní share pro stejnou kombinaci (email + účet) → idempotent.
             val existing = AccountShares.selectAll().where {
                 (AccountShares.accountId eq accountId) and
                     (AccountShares.email.lowerCase() eq normalizedEmail) and
@@ -163,42 +167,82 @@ class AccountShareService(
             }.singleOrNull()
 
             if (existing != null) {
-                existing[AccountShares.id].value
+                ShareResult(existing[AccountShares.id].value, sendEmail = false)
             } else {
-                AccountShares.insertAndGetId {
+                // Má vlastník už jiný aktivní share pro tento email (jiný účet)?
+                // Pak email znovu nezasíláme — člen už ví, kde Cointrack najde.
+                val ownerAlreadyHasShareForEmail = AccountShares
+                    .innerJoin(Accounts).innerJoin(Profiles)
+                    .selectAll()
+                    .where {
+                        (AccountShares.email.lowerCase() eq normalizedEmail) and
+                            (Profiles.ownerUserId eq ownerUserId) and
+                            AccountShares.revokedAt.isNull()
+                    }
+                    .any()
+
+                val newId = AccountShares.insertAndGetId {
                     it[AccountShares.accountId] = EntityID(accountId, Accounts)
                     it[AccountShares.email] = normalizedEmail
                     it[AccountShares.role] = req.role
-                    it[AccountShares.inviteToken] = TokenGenerator.hash(token)
+                    // Pokud již existuje aktivní share pro daný email, nový share je
+                    // automaticky "accepted" (= aktivní hned), protože uživatel už dříve
+                    // přijal pozvánku tímto emailem. Najdeme jeho userId.
+                    val existingUser = AccountShares
+                        .innerJoin(Accounts).innerJoin(Profiles)
+                        .selectAll()
+                        .where {
+                            (AccountShares.email.lowerCase() eq normalizedEmail) and
+                                (Profiles.ownerUserId eq ownerUserId) and
+                                AccountShares.revokedAt.isNull() and
+                                AccountShares.acceptedAt.isNotNull()
+                        }
+                        .firstOrNull()
+                    if (existingUser != null) {
+                        // Auto-accept: linkuj na stejného usera, který už přijal jiný share
+                        existingUser[AccountShares.userId]?.let { uid ->
+                            it[AccountShares.userId] = uid
+                            it[AccountShares.acceptedAt] = now
+                            // inviteToken zůstane pro případnou re-pozvánku, ale není potřeba
+                        }
+                        it[AccountShares.inviteToken] = null
+                    } else {
+                        it[AccountShares.inviteToken] = TokenGenerator.hash(token)
+                    }
                     it[AccountShares.expiresAt] = expiresAt
                     it[AccountShares.inviterUserId] = EntityID(ownerUserId, Users)
                     it[AccountShares.createdAt] = now
                 }.value
+                ShareResult(newId, sendEmail = !ownerAlreadyHasShareForEmail)
             }
         }
+        val shareId = result.shareId
 
-        // Send email — jen pokud nový (existující ho už dostal). Idempotent re-send by
-        // udělali nový endpoint /shares/{id}/resend, zatím vyhodíme jen u nových.
+        // Email pošleme jen u úplně nového člena (žádné jiné aktivní shares pro tento email).
         val acceptUrl = "$webBaseUrl/accept-share?token=$token"
         val recipientLocale = db {
             Users.selectAll().where { Users.email.lowerCase() eq normalizedEmail }
                 .singleOrNull()?.get(Users.locale)
         }
-        try {
-            email?.send(
-                to = normalizedEmail,
-                subject = EmailTemplates.accountShareInviteSubject(accountName, recipientLocale),
-                htmlBody = EmailTemplates.accountShareInvite(
-                    accountName = accountName,
-                    profileName = profileName,
-                    inviterEmail = ownerEmail ?: "owner",
-                    role = req.role,
-                    acceptUrl = acceptUrl,
-                    locale = recipientLocale,
-                ),
-            )
-        } catch (e: Exception) {
-            log.warn("Failed to send account share invite to $normalizedEmail: ${e.message}")
+        if (result.sendEmail) {
+            try {
+                email?.send(
+                    to = normalizedEmail,
+                    subject = EmailTemplates.accountShareInviteSubject(accountName, recipientLocale),
+                    htmlBody = EmailTemplates.accountShareInvite(
+                        accountName = accountName,
+                        profileName = profileName,
+                        inviterEmail = ownerEmail ?: "owner",
+                        role = req.role,
+                        acceptUrl = acceptUrl,
+                        locale = recipientLocale,
+                    ),
+                )
+            } catch (e: Exception) {
+                log.warn("Failed to send account share invite to $normalizedEmail: ${e.message}")
+            }
+        } else {
+            log.info("Account share added without email — owner $ownerUserId already has shares for $normalizedEmail")
         }
         log.info("Account share created: accountSync=$accountSyncId email=$normalizedEmail role=${req.role}")
 
