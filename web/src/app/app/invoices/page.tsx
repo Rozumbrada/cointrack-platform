@@ -54,6 +54,23 @@ export default function InvoicesPage() {
 
   const range = useMemo(() => periodRange(period, customRange), [period, customRange]);
 
+  // Detekce existujících duplicit v rámci profilu — počítáno *před* aplikací
+  // UI filtrů (datum/typ/uhrazeno), aby badge svítil i tehdy, když je
+  // partner v jiném zobrazení. Save-time check (v InvoiceEditor) brání
+  // dalšímu vzniku, tohle slouží k úklidu starých dupů.
+  const dupNumbers = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of invoices) {
+      const n = (r.data.invoiceNumber ?? "").trim();
+      if (n) counts.set(n, (counts.get(n) ?? 0) + 1);
+    }
+    const result = new Set<string>();
+    counts.forEach((c, n) => {
+      if (c > 1) result.add(n);
+    });
+    return result;
+  }, [invoices]);
+
   const filtered = useMemo(() => {
     return [...invoices]
       .filter((r) => {
@@ -164,6 +181,12 @@ export default function InvoicesPage() {
         </div>
       )}
 
+      {dupNumbers.size > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+          {t("dup_warning", { count: dupNumbers.size })}
+        </div>
+      )}
+
       {loading ? (
         <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>
       ) : filtered.length === 0 ? (
@@ -193,7 +216,18 @@ export default function InvoicesPage() {
                   onClick={() => { window.location.href = `/app/invoices/${r.syncId}`; }}
                 >
                   <td className="px-6 py-3 font-medium text-ink-900 tabular-nums">
-                    {r.data.invoiceNumber || "—"}
+                    <div className="flex items-center gap-2">
+                      <span>{r.data.invoiceNumber || "—"}</span>
+                      {r.data.invoiceNumber &&
+                        dupNumbers.has(r.data.invoiceNumber.trim()) && (
+                          <span
+                            className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium whitespace-nowrap"
+                            title={t("dup_badge_tooltip")}
+                          >
+                            {t("dup_badge")}
+                          </span>
+                        )}
+                    </div>
                   </td>
                   <td className="px-6 py-3 text-ink-700 max-w-xs truncate">
                     {r.data.isExpense

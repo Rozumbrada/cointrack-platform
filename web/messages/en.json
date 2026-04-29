@@ -1149,7 +1149,10 @@
     "type_received": "incoming",
     "type_issued": "outgoing",
     "status_paid": "✓ paid",
-    "status_unpaid": "unpaid"
+    "status_unpaid": "unpaid",
+    "dup_badge": "duplicate",
+    "dup_badge_tooltip": "This invoice has the same number as another in this profile — open it and delete the redundant copy.",
+    "dup_warning": "{count, plural, one {1 duplicate invoice number} other {{count} duplicate invoice numbers}} in this profile. Open the highlighted invoices and delete the redundant ones."
   },
   "accounts_page": {
     "title": "Bank accounts / cash",

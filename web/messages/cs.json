@@ -1149,7 +1149,10 @@
     "type_received": "přijatá",
     "type_issued": "vystavená",
     "status_paid": "✓ uhrazeno",
-    "status_unpaid": "nezaplaceno"
+    "status_unpaid": "nezaplaceno",
+    "dup_badge": "duplicita",
+    "dup_badge_tooltip": "Tato faktura má stejné číslo jako jiná v profilu — můžeš ji otevřít a smazat.",
+    "dup_warning": "V tomto profilu je {count, plural, one {1 duplicitní číslo} few {{count} duplicitní čísla} other {{count} duplicitních čísel}} faktur. Otevři dotčené faktury (žluté označení) a smaž ty zbytečné."
   },
   "accounts_page": {
     "title": "Bankovní účty / hotovost",
