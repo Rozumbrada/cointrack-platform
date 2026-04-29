@@ -145,14 +145,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const isProfileSelection = pathname?.startsWith("/app/profiles");
 
   const isOrganizationTier = user?.tier === "ORGANIZATION";
-  // Členové = pro tier Business Pro. Stránka /app/members sama varuje
-  // pokud aktivní profil není firemní (= PERSONAL/GROUP), což pokrývá
-  // jak detekci typu profilu, tak edge cases s prázdnou cache.
-  // Layout-level filtrování podle profile type bylo flaky kvůli race
-  // condition s sync.pull v různých zdrojích (cache vs rawEntities) —
-  // jednotně řešíme v page, layout dělá jen tier-gate.
-  const showMembers = isOrganizationTier;
-  void activeProfileType;
+  // Členové **strict**: tier Business Pro **A** profil typu BUSINESS/
+  // ORGANIZATION. Pro PERSONAL/GROUP profil schováno z menu.
+  //
+  // Pokud `activeProfileType` je null (cache je prázdná = poprvé po deploy
+  // nového bundlu, sync.pull ještě nedoběhl), menu položka **chybí** dokud
+  // se typ neurčí. Po prvním pullu se cache naplní (vč. localStorage), takže
+  // další refreshes mají typ od první frame ihned. Tedy max ~1s "loading"
+  // při prvním načtení po update — pak konzistentní.
+  const isOrganizationalProfile =
+    activeProfileType === "BUSINESS" || activeProfileType === "ORGANIZATION";
+  const showMembers = isOrganizationTier && isOrganizationalProfile;
 
   const nav: Array<{ href: string; label: string; section?: string }> = [
     { href: "/app/dashboard", label: ts("dashboard") },
