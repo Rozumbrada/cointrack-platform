@@ -147,17 +147,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const isOrganizationTier =
     user?.tier === "BUSINESS_PRO" || user?.tier === "ORGANIZATION";
-  // Členové = tier Business Pro AND profil **NENÍ** explicitně PERSONAL/GROUP.
-  // Pro neznámý/null typ schováno (strict podle user feedbacku).
-  const profileExplicitlyNonBusiness =
+  // Členové: schováno **jen** když VÍME, že profil je PERSONAL nebo GROUP.
+  // Pro BUSINESS / ORGANIZATION / null / cokoli jiného → ukázáno.
+  // Cache fill (ProfileSwitcher i layout pull) doplní typ pro stávající
+  // profily; pro PERSONAL/GROUP se schová okamžitě po naplnění.
+  const profileIsExplicitlyNonBusiness =
     activeProfileType === "PERSONAL" || activeProfileType === "GROUP";
-  const profileExplicitlyBusiness =
-    activeProfileType === "BUSINESS" || activeProfileType === "ORGANIZATION";
-  // Show jen pokud explicitně víme, že profil je BUSINESS/ORG. Pro null/unknown
-  // schováme — uživatel po přepnutí na firemní profil ProfileSwitcher
-  // synchronně doplní cache (viz `choose()` tam) → menu se objeví okamžitě.
-  const showMembers = isOrganizationTier && profileExplicitlyBusiness;
-  void profileExplicitlyNonBusiness;
+  const showMembers = isOrganizationTier && !profileIsExplicitlyNonBusiness;
 
   const nav: Array<{ href: string; label: string; section?: string }> = [
     { href: "/app/dashboard", label: ts("dashboard") },
