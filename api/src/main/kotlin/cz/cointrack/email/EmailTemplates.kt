@@ -10,6 +10,15 @@ object EmailTemplates {
     private fun pick(locale: String?, cs: String, en: String): String =
         if (locale?.startsWith("en") == true) en else cs
 
+    /**
+     * Display label tieru pro UI/email. DB hodnota "ORGANIZATION" se uživateli
+     * prezentuje jako "Business Pro" — interní string zůstává stejný kvůli kompat.
+     */
+    private fun tierLabel(tier: String): String = when (tier.uppercase()) {
+        "ORGANIZATION" -> "Business Pro"
+        else -> tier
+    }
+
     private fun layout(title: String, body: String, locale: String?) = """
         <!doctype html>
         <html lang="${pick(locale, "cs", "en")}">
@@ -178,8 +187,8 @@ object EmailTemplates {
             </h2>
             <p>${pick(
                 locale,
-                "Předplatné <strong>Cointrack ${d.tier}</strong> (${if (d.period == "MONTHLY") "měsíčně" else "ročně"}) je aktivní. Faktura k platbě je v příloze tohoto emailu.",
-                "Subscription <strong>Cointrack ${d.tier}</strong> (${if (d.period == "MONTHLY") "monthly" else "yearly"}) is active. Invoice is attached.",
+                "Předplatné <strong>Cointrack ${tierLabel(d.tier)}</strong> (${if (d.period == "MONTHLY") "měsíčně" else "ročně"}) je aktivní. Faktura k platbě je v příloze tohoto emailu.",
+                "Subscription <strong>Cointrack ${tierLabel(d.tier)}</strong> (${if (d.period == "MONTHLY") "monthly" else "yearly"}) is active. Invoice is attached.",
             )}</p>
 
             <table style="width:100%;border-collapse:collapse;margin:24px 0;">
@@ -239,8 +248,8 @@ object EmailTemplates {
                         <td style="padding:12px;">
                             ${pick(
                                 locale,
-                                "Cointrack ${d.tier} — ${if (d.period == "MONTHLY") "měsíční" else "roční"} předplatné",
-                                "Cointrack ${d.tier} — ${if (d.period == "MONTHLY") "monthly" else "yearly"} subscription",
+                                "Cointrack ${tierLabel(d.tier)} — ${if (d.period == "MONTHLY") "měsíční" else "roční"} předplatné",
+                                "Cointrack ${tierLabel(d.tier)} — ${if (d.period == "MONTHLY") "monthly" else "yearly"} subscription",
                             )}
                         </td>
                         <td style="padding:12px;text-align:right;font-weight:600;">${d.amount} ${d.currency}</td>
@@ -282,8 +291,8 @@ object EmailTemplates {
             </h2>
             <p>${pick(
                 locale,
-                "Tarif <strong>Cointrack $tier</strong> ti vyprší <strong>$expiresAtDate</strong> (za $daysLeft ${if (daysLeft == 1) "den" else "dny"}).",
-                "Your <strong>Cointrack $tier</strong> subscription expires on <strong>$expiresAtDate</strong> (in $daysLeft ${if (daysLeft == 1) "day" else "days"}).",
+                "Tarif <strong>Cointrack ${tierLabel(tier)}</strong> ti vyprší <strong>$expiresAtDate</strong> (za $daysLeft ${if (daysLeft == 1) "den" else "dny"}).",
+                "Your <strong>Cointrack ${tierLabel(tier)}</strong> subscription expires on <strong>$expiresAtDate</strong> (in $daysLeft ${if (daysLeft == 1) "day" else "days"}).",
             )}</p>
             <p>${pick(
                 locale,

@@ -38,10 +38,13 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
   const router = useRouter();
   const isEdit = mode === "edit";
 
+  // ORGANIZATION typ profilu byl sjednocen s BUSINESS — pro běžného uživatele
+  // je rozdíl matoucí. Existující ORGANIZATION profily v DB zůstávají a ukazují
+  // se jako "Firemní" (viz mapping níže). Pro multi-user organizační strukturu
+  // s rolemi je samostatná stránka /app/organizations.
   const TYPES = [
     { value: "PERSONAL", label: t("type_personal"), desc: t("type_personal_desc") },
     { value: "BUSINESS", label: t("type_business"), desc: t("type_business_desc") },
-    { value: "ORGANIZATION", label: t("type_organization"), desc: t("type_organization_desc") },
     { value: "GROUP", label: t("type_group"), desc: t("type_group_desc") },
   ];
 

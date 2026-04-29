@@ -129,7 +129,7 @@
     "p_3_pre": "Pro používání služby je nutná registrace. Za bezpečnost přihlašovacích údajů odpovídá uživatel. V případě podezření na zneužití účtu kontaktuj",
     "p_3_post": ".",
     "h_4": "4. Cena a platby",
-    "p_4_a_pre": "Služba je poskytována v režimu Free (zdarma) a placených tierech (Personal, Business, Organization). Ceny jsou uvedeny na stránce",
+    "p_4_a_pre": "Služba je poskytována v režimu Free (zdarma) a placených tierech (Personal, Business, Business Pro). Ceny jsou uvedeny na stránce",
     "p_4_a_link": "Ceník",
     "p_4_a_post": ". Fakturace probíhá měsíčně nebo ročně dopředu. První 14 dní každého placeného tieru je zdarma.",
     "p_4_b": "Platby zpracovává Stripe Payments Europe Ltd. Uživatel může kdykoli zrušit předplatné — služba zůstane aktivní do konce zaplaceného období.",
@@ -1560,7 +1560,7 @@
     "popular": "Nejoblíbenější",
     "per_month": "/měsíc",
     "yearly_title": "Platíš ročně? Dostaneš 2 měsíce zdarma.",
-    "yearly_desc": "Personal za 690 Kč/rok, Business za 1990 Kč/rok, Organization za 3990 Kč/rok.",
+    "yearly_desc": "Personal za 690 Kč/rok, Business za 1990 Kč/rok, Business Pro za 3990 Kč/rok.",
     "free_name": "Free",
     "free_price": "0 Kč",
     "free_desc": "Pro osobní použití, lokálně na Androidu.",
@@ -1571,7 +1571,7 @@
     "business_name": "Business",
     "business_price": "199 Kč",
     "business_desc": "Pro OSVČ a s.r.o. Firemní profily.",
-    "organization_name": "Organization",
+    "organization_name": "Business Pro",
     "organization_price": "399 Kč",
     "organization_desc": "Pro firmy s více členy a sdílenou účetní.",
     "trial_cta": "14 dní zdarma",
@@ -1623,7 +1623,7 @@
       },
       {
         "q": "Jak funguje 14-denní trial?",
-        "a": "Registraci na Personal, Business nebo Organization ti dá plný přístup na 14 dní bez karty. V den 14 ti pošleme připomínku — pokud pokračuješ, přidáš kartu, jinak se přepneš automaticky na Free."
+        "a": "Registraci na Personal, Business nebo Business Pro ti dá plný přístup na 14 dní bez karty. V den 14 ti pošleme připomínku — pokud pokračuješ, přidáš kartu, jinak se přepneš automaticky na Free."
       },
       {
         "q": "Je Cointrack registrovaný u ČNB?",
@@ -1751,9 +1751,9 @@
     "loading": "Načítám…",
     "empty_title": "Zatím žádní členové",
     "empty_desc": "Sdílej své bankovní účty s kolegy nebo s účetní. Otevři účet → Sdílení účtu → zadej email.",
-    "tier_required_title": "Sdílení vyžaduje Organization tier",
-    "tier_required_desc": "Funkci sdílení účtů má jen tarif Organization (399 Kč/měs). Po upgradu uvidíš svým kolegům jen ty účty, které jim výslovně nasdílíš.",
-    "go_upgrade": "💎 Upgradovat na Organization",
+    "tier_required_title": "Sdílení vyžaduje Business Pro",
+    "tier_required_desc": "Funkci sdílení účtů má jen tarif Business Pro (399 Kč/měs). Po upgradu uvidíš svým kolegům jen ty účty, které jim výslovně nasdílíš.",
+    "go_upgrade": "💎 Upgradovat na Business Pro",
     "add_member": "+ Přidat člena",
     "th_email": "Email",
     "th_account": "Účet",

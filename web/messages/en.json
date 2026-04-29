@@ -129,7 +129,7 @@
     "p_3_pre": "Registration is required to use the service. The user is responsible for the security of login credentials. If you suspect account misuse, contact",
     "p_3_post": ".",
     "h_4": "4. Pricing and payments",
-    "p_4_a_pre": "The service is provided in Free mode and paid tiers (Personal, Business, Organization). Prices are listed on the",
+    "p_4_a_pre": "The service is provided in Free mode and paid tiers (Personal, Business, Business Pro). Prices are listed on the",
     "p_4_a_link": "Pricing",
     "p_4_a_post": " page. Billing is monthly or yearly in advance. The first 14 days of each paid tier are free.",
     "p_4_b": "Payments are processed by Stripe Payments Europe Ltd. The user can cancel the subscription at any time — the service remains active until the end of the paid period.",
@@ -1560,7 +1560,7 @@
     "popular": "Most popular",
     "per_month": "/month",
     "yearly_title": "Pay yearly and get 2 months free.",
-    "yearly_desc": "Personal CZK 690/year, Business CZK 1990/year, Organization CZK 3990/year.",
+    "yearly_desc": "Personal CZK 690/year, Business CZK 1990/year, Business Pro CZK 3990/year.",
     "free_name": "Free",
     "free_price": "CZK 0",
     "free_desc": "For personal use, locally on Android.",
@@ -1571,7 +1571,7 @@
     "business_name": "Business",
     "business_price": "CZK 199",
     "business_desc": "For freelancers and companies. Business profiles.",
-    "organization_name": "Organization",
+    "organization_name": "Business Pro",
     "organization_price": "CZK 399",
     "organization_desc": "For companies with multiple members and shared accountant.",
     "trial_cta": "14 days free",
@@ -1623,7 +1623,7 @@
       },
       {
         "q": "How does the 14-day trial work?",
-        "a": "Signing up for Personal, Business or Organization gives full access for 14 days without a card. On day 14 we send a reminder — if you continue, add a card; otherwise you switch automatically to Free."
+        "a": "Signing up for Personal, Business or Business Pro gives full access for 14 days without a card. On day 14 we send a reminder — if you continue, add a card; otherwise you switch automatically to Free."
       },
       {
         "q": "Is Cointrack registered with the central bank?",
@@ -1751,9 +1751,9 @@
     "loading": "Loading…",
     "empty_title": "No members yet",
     "empty_desc": "Share your bank accounts with colleagues or your accountant. Open an account → Account sharing → enter email.",
-    "tier_required_title": "Sharing requires the Organization tier",
-    "tier_required_desc": "Account sharing is available only on the Organization tier (CZK 399/mo). After upgrading, your colleagues will see only the accounts you explicitly share with them.",
-    "go_upgrade": "💎 Upgrade to Organization",
+    "tier_required_title": "Sharing requires Business Pro",
+    "tier_required_desc": "Account sharing is available only on the Business Pro tier (CZK 399/mo). After upgrading, your colleagues will see only the accounts you explicitly share with them.",
+    "go_upgrade": "💎 Upgrade to Business Pro",
     "add_member": "+ Add member",
     "th_email": "Email",
     "th_account": "Account",
