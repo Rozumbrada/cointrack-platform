@@ -142,13 +142,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // Profile selection nemá sidebar — zobrazí se jen content
   const isProfileSelection = pathname?.startsWith("/app/profiles");
 
-  const isOrganizationTier = user?.tier === "ORGANIZATION";
-  // Členové v menu = jen pro tier Business Pro. Page /app/members sama
-  // řeší, pokud aktivní profil není firemní (= ukáže warning + tlačítko
-  // pro přepnutí). Layout neřeší profile type, aby nedocházelo k race
-  // conditions s asynchronním sync.pull a localStorage cache.
-  const showMembers = isOrganizationTier;
-  void activeProfileType;
+  const isOrganizationTier =
+    user?.tier === "BUSINESS_PRO" || user?.tier === "ORGANIZATION";
+  // Členové = tier Business Pro AND profil **NENÍ** explicitně PERSONAL/GROUP.
+  // Pro neznámý/null typ schováno (strict podle user feedbacku).
+  const profileExplicitlyNonBusiness =
+    activeProfileType === "PERSONAL" || activeProfileType === "GROUP";
+  const profileExplicitlyBusiness =
+    activeProfileType === "BUSINESS" || activeProfileType === "ORGANIZATION";
+  // Show jen pokud explicitně víme, že profil je BUSINESS/ORG. Pro null/unknown
+  // schováme — uživatel po přepnutí na firemní profil ProfileSwitcher
+  // synchronně doplní cache (viz `choose()` tam) → menu se objeví okamžitě.
+  const showMembers = isOrganizationTier && profileExplicitlyBusiness;
+  void profileExplicitlyNonBusiness;
 
   const nav: Array<{ href: string; label: string; section?: string }> = [
     { href: "/app/dashboard", label: ts("dashboard") },

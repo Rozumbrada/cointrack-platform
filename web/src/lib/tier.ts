@@ -16,9 +16,17 @@ export function tierDisplayName(tier: string | null | undefined): string {
       return "Personal";
     case "BUSINESS":
       return "Business";
-    case "ORGANIZATION":
+    case "BUSINESS_PRO":
+    case "ORGANIZATION": // legacy alias
       return "Business Pro";
     default:
       return tier;
   }
+}
+
+/** Pravda pokud user má aspoň Business Pro tier (= odemčené sdílení účtů). */
+export function isBusinessProTier(tier: string | null | undefined): boolean {
+  if (!tier) return false;
+  const t = tier.toUpperCase();
+  return t === "BUSINESS_PRO" || t === "ORGANIZATION";
 }

@@ -11,11 +11,14 @@ object EmailTemplates {
         if (locale?.startsWith("en") == true) en else cs
 
     /**
-     * Display label tieru pro UI/email. DB hodnota "ORGANIZATION" se uživateli
-     * prezentuje jako "Business Pro" — interní string zůstává stejný kvůli kompat.
+     * Display label tieru pro UI/email. Akceptuje i legacy "ORGANIZATION"
+     * jako alias pro "BUSINESS_PRO" (starší klienti, faktury z minulosti).
      */
     private fun tierLabel(tier: String): String = when (tier.uppercase()) {
-        "ORGANIZATION" -> "Business Pro"
+        "BUSINESS_PRO", "ORGANIZATION" -> "Business Pro"
+        "FREE" -> "Free"
+        "PERSONAL" -> "Personal"
+        "BUSINESS" -> "Business"
         else -> tier
     }
 

@@ -17,12 +17,17 @@ object Pricing {
         ("PERSONAL"     to Period.YEARLY)  to BigDecimal("690"),
         ("BUSINESS"     to Period.MONTHLY) to BigDecimal("199"),
         ("BUSINESS"     to Period.YEARLY)  to BigDecimal("1990"),
-        ("ORGANIZATION" to Period.MONTHLY) to BigDecimal("399"),
-        ("ORGANIZATION" to Period.YEARLY)  to BigDecimal("3990"),
+        ("BUSINESS_PRO" to Period.MONTHLY) to BigDecimal("399"),
+        ("BUSINESS_PRO" to Period.YEARLY)  to BigDecimal("3990"),
     )
 
-    fun amount(tier: String, period: Period): BigDecimal? =
-        table[tier.uppercase() to period]
+    /** Lookup ceny — akceptuje i legacy 'ORGANIZATION' pro starší klienty. */
+    fun amount(tier: String, period: Period): BigDecimal? {
+        val normalized = tier.uppercase().let {
+            if (it == "ORGANIZATION") "BUSINESS_PRO" else it
+        }
+        return table[normalized to period]
+    }
 
     fun all(): List<Price> = table.entries.map { (k, v) -> Price(k.first, k.second, v) }
 

@@ -157,13 +157,14 @@ class AccountShareService(
                 "Role musí být VIEWER, EDITOR nebo ACCOUNTANT.")
         }
 
-        // Tier check — jen ORGANIZATION může sdílet účty
+        // Tier check — jen BUSINESS_PRO může sdílet účty (legacy ORGANIZATION
+        // ze starší DB hodnoty stále akceptujeme; V24 migrace většinu přepsala).
         val ownerTier = db {
             Users.selectAll().where { Users.id eq ownerUserId }.singleOrNull()?.get(Users.tier)
         }
-        if (ownerTier != "ORGANIZATION") {
+        if (ownerTier != "BUSINESS_PRO" && ownerTier != "ORGANIZATION") {
             throw ApiException(HttpStatusCode.PaymentRequired, "tier_required",
-                "Sdílení účtů vyžaduje předplatné Organization.")
+                "Sdílení účtů vyžaduje předplatné Business Pro.")
         }
 
         // Verify account ownership; klient pošle syncId, mapujeme ho na DB id

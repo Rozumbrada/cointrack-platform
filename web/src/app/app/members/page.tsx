@@ -154,7 +154,8 @@ export default function MembersPage() {
     load();
   }, []);
 
-  const isOrganizationTier = user?.tier === "ORGANIZATION";
+  const isOrganizationTier =
+    user?.tier === "BUSINESS_PRO" || user?.tier === "ORGANIZATION";
 
   async function onRevokeAll(group: MemberGroup) {
     if (!confirm(t("revoke_all_confirm", { email: group.email }))) return;

@@ -93,10 +93,13 @@ class PaymentService(
 
     /** Vytvoří PENDING platbu, vrátí QR data. */
     suspend fun startPayment(userId: UUID, req: StartRequest): StartResponse {
-        val tier = req.tier.uppercase()
-        if (tier !in setOf("PERSONAL", "BUSINESS", "ORGANIZATION")) {
+        // Normalizujeme legacy 'ORGANIZATION' z old klientů na nové 'BUSINESS_PRO'.
+        val tier = req.tier.uppercase().let {
+            if (it == "ORGANIZATION") "BUSINESS_PRO" else it
+        }
+        if (tier !in setOf("PERSONAL", "BUSINESS", "BUSINESS_PRO")) {
             throw ApiException(HttpStatusCode.BadRequest, "invalid_tier",
-                "Neplatný tier — musí být PERSONAL, BUSINESS nebo ORGANIZATION.")
+                "Neplatný tier — musí být PERSONAL, BUSINESS nebo BUSINESS_PRO.")
         }
         val period = runCatching { Pricing.Period.valueOf(req.period.uppercase()) }
             .getOrElse { throw ApiException(HttpStatusCode.BadRequest, "invalid_period",
