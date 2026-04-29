@@ -146,17 +146,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const isOrganizationTier = user?.tier === "ORGANIZATION";
   // Členové se zobrazují jen na firemním profilu + tier Business Pro.
-  // Logika:
-  //   - tier není ORGANIZATION → schováno vždy (paywall)
-  //   - typ profilu **explicitně PERSONAL/GROUP** → schováno
-  //   - typ profilu BUSINESS/ORGANIZATION → zobrazeno
-  //   - typ profilu ještě neznáme (null = cache prázdná, sync.pull běží)
-  //     → optimistic show pro tier ORGANIZATION (pull doběhne ~1 s a stav
-  //     se případně koriguje). Tím pádem user, který má firemní profil,
-  //     menu uvidí ihned i po deploy nového bundlu (kdy je cache prázdná).
-  const profileExplicitlyNonBusiness =
-    activeProfileType === "PERSONAL" || activeProfileType === "GROUP";
-  const showMembers = isOrganizationTier && !profileExplicitlyNonBusiness;
+  // **Strict** logika podle user feedbacku — žádné optimistic show:
+  //   - tier není ORGANIZATION → schováno (paywall)
+  //   - typ profilu **explicitně** BUSINESS/ORGANIZATION → zobrazeno
+  //   - cokoli jiné včetně null → schováno
+  // Po prvním pullu se cache naplní (per-syncId v localStorage), další
+  // načtení už mají typ známý ihned (žádný flicker pro firemní profil).
+  const isOrganizationalProfile =
+    activeProfileType === "BUSINESS" || activeProfileType === "ORGANIZATION";
+  const showMembers = isOrganizationTier && isOrganizationalProfile;
 
   const nav: Array<{ href: string; label: string; section?: string }> = [
     { href: "/app/dashboard", label: ts("dashboard") },
