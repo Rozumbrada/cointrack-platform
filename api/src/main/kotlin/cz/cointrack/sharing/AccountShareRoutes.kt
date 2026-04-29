@@ -10,6 +10,7 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
+import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import kotlinx.serialization.Serializable
@@ -17,6 +18,9 @@ import java.util.UUID
 
 @Serializable
 data class AcceptShareRequest(val token: String)
+
+@Serializable
+data class UpdateShareRoleRequest(val role: String)
 
 fun Route.accountShareRoutes(service: AccountShareService) {
     route("/accounts") {
@@ -49,6 +53,14 @@ fun Route.accountShareRoutes(service: AccountShareService) {
                 val shareId = call.pathUuid("shareId")
                 service.revoke(shareId, userId)
                 call.respond(mapOf("ok" to true))
+            }
+
+            // Owner: změna role existujícího sdílení
+            patch("/shares/{shareId}") {
+                val userId = call.userId()
+                val shareId = call.pathUuid("shareId")
+                val req = call.receive<UpdateShareRoleRequest>()
+                call.respond(service.updateRole(shareId, userId, req.role))
             }
 
             // Recipient: accept invite

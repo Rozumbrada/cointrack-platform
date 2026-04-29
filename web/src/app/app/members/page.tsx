@@ -14,16 +14,58 @@ import { withAuth, getAccessToken } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
 import { ServerAccount } from "@/lib/sync-types";
 
+type Role = "VIEWER" | "EDITOR" | "ACCOUNTANT";
+
+interface MemberGroup {
+  email: string;
+  role: Role;
+  status: "active" | "pending" | "revoked";
+  userDisplayName?: string | null;
+  shares: ShareWithAccountDto[]; // všechny shares pro tento email
+}
+
 export default function MembersPage() {
   const t = useTranslations("members_page");
   const [shares, setShares] = useState<ShareWithAccountDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<UserDto | null>(null);
-  const [showDialog, setShowDialog] = useState(false);
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [editingMember, setEditingMember] = useState<MemberGroup | null>(null);
 
   const { entitiesByProfile } = useSyncData();
   const accounts = entitiesByProfile<ServerAccount>("accounts");
+
+  // Seskupit shares podle emailu — "člen" = jeden email s N účty
+  const memberGroups: MemberGroup[] = useMemo(() => {
+    const map = new Map<string, MemberGroup>();
+    for (const s of shares) {
+      const key = s.email.toLowerCase();
+      const existing = map.get(key);
+      if (existing) {
+        existing.shares.push(s);
+        // Pokud mix rolí, prefer ACCOUNTANT > EDITOR > VIEWER (vyšší práva)
+        const order = { ACCOUNTANT: 3, EDITOR: 2, VIEWER: 1 } as const;
+        if ((order[s.role as Role] ?? 0) > (order[existing.role] ?? 0)) {
+          existing.role = s.role as Role;
+        }
+        // Status: aktivní pokud aspoň jedna aktivní
+        if (s.status === "active") existing.status = "active";
+        if (s.userDisplayName && !existing.userDisplayName) {
+          existing.userDisplayName = s.userDisplayName;
+        }
+      } else {
+        map.set(key, {
+          email: s.email,
+          role: s.role as Role,
+          status: s.status as "active" | "pending" | "revoked",
+          userDisplayName: s.userDisplayName,
+          shares: [s],
+        });
+      }
+    }
+    return [...map.values()].sort((a, b) => a.email.localeCompare(b.email));
+  }, [shares]);
 
   async function load() {
     setLoading(true);
@@ -48,10 +90,12 @@ export default function MembersPage() {
 
   const isOrganizationTier = user?.tier === "ORGANIZATION";
 
-  async function onRevoke(share: ShareWithAccountDto) {
-    if (!confirm(t("revoke_confirm", { email: share.email, account: share.accountName }))) return;
+  async function onRevokeAll(group: MemberGroup) {
+    if (!confirm(t("revoke_all_confirm", { email: group.email }))) return;
     try {
-      await withAuth((tk) => accountShares.revoke(tk, share.id));
+      for (const s of group.shares) {
+        await withAuth((tk) => accountShares.revoke(tk, s.id));
+      }
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
@@ -67,7 +111,7 @@ export default function MembersPage() {
         </div>
         {isOrganizationTier && (
           <button
-            onClick={() => setShowDialog(true)}
+            onClick={() => setShowInviteDialog(true)}
             disabled={accounts.length === 0}
             className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium"
           >
@@ -97,7 +141,7 @@ export default function MembersPage() {
 
       {loading ? (
         <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>
-      ) : shares.length === 0 ? (
+      ) : memberGroups.length === 0 ? (
         <div className="bg-white rounded-2xl border border-ink-200 p-12 text-center">
           <div className="text-4xl mb-3">👥</div>
           <div className="font-medium text-ink-900">{t("empty_title")}</div>
@@ -116,53 +160,66 @@ export default function MembersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-ink-100">
-              {shares.map((s) => (
-                <tr key={s.id} className="hover:bg-ink-50/50">
+              {memberGroups.map((g) => (
+                <tr key={g.email} className="hover:bg-ink-50/50 align-top">
                   <td className="px-6 py-3 text-ink-900">
-                    {s.userDisplayName ? (
-                      <span>
-                        <span className="font-medium">{s.userDisplayName}</span>
-                        <span className="text-ink-500 text-xs ml-2">{s.email}</span>
-                      </span>
+                    {g.userDisplayName ? (
+                      <div>
+                        <div className="font-medium">{g.userDisplayName}</div>
+                        <div className="text-ink-500 text-xs">{g.email}</div>
+                      </div>
                     ) : (
-                      s.email
+                      g.email
                     )}
                   </td>
                   <td className="px-6 py-3 text-ink-700">
-                    {s.role === "ACCOUNTANT" ? (
+                    {g.role === "ACCOUNTANT" ? (
                       <span>
-                        <span className="font-medium">Celý profil:</span> {s.profileName}
+                        <span className="font-medium">{t("whole_profile")}:</span>{" "}
+                        {g.shares[0]?.profileName}
                       </span>
                     ) : (
-                      <>
-                        <span>{s.accountName}</span>
-                        <span className="text-xs text-ink-400 ml-1.5">({s.accountCurrency} · {s.profileName})</span>
-                      </>
+                      <div className="space-y-0.5">
+                        {g.shares.map((s) => (
+                          <div key={s.id}>
+                            <span>{s.accountName}</span>
+                            <span className="text-xs text-ink-400 ml-1.5">
+                              ({s.accountCurrency} · {s.profileName})
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </td>
                   <td className="px-6 py-3">
                     <span className="text-xs uppercase tracking-wide bg-ink-100 text-ink-700 px-1.5 py-0.5 rounded">
-                      {s.role === "EDITOR"
+                      {g.role === "EDITOR"
                         ? t("role_editor")
-                        : s.role === "ACCOUNTANT"
+                        : g.role === "ACCOUNTANT"
                           ? t("role_accountant")
                           : t("role_viewer")}
                     </span>
                   </td>
                   <td className="px-6 py-3">
-                    {s.status === "active" && (
+                    {g.status === "active" && (
                       <span className="text-emerald-700 text-xs font-medium">{t("status_active")}</span>
                     )}
-                    {s.status === "pending" && (
+                    {g.status === "pending" && (
                       <span className="text-amber-700 text-xs font-medium">{t("status_pending")}</span>
                     )}
-                    {s.status === "revoked" && (
+                    {g.status === "revoked" && (
                       <span className="text-ink-500 text-xs">{t("status_revoked")}</span>
                     )}
                   </td>
-                  <td className="px-6 py-3 text-right">
+                  <td className="px-6 py-3 text-right whitespace-nowrap">
                     <button
-                      onClick={() => onRevoke(s)}
+                      onClick={() => setEditingMember(g)}
+                      className="text-sm text-brand-600 hover:text-brand-700 font-medium mr-3"
+                    >
+                      {t("edit")}
+                    </button>
+                    <button
+                      onClick={() => onRevokeAll(g)}
                       className="text-sm text-red-600 hover:text-red-700"
                     >
                       {t("revoke")}
@@ -175,12 +232,24 @@ export default function MembersPage() {
         </div>
       )}
 
-      {showDialog && (
+      {showInviteDialog && (
         <InviteDialog
           accounts={accounts}
-          onClose={() => setShowDialog(false)}
+          onClose={() => setShowInviteDialog(false)}
           onCreated={async () => {
-            setShowDialog(false);
+            setShowInviteDialog(false);
+            await load();
+          }}
+        />
+      )}
+
+      {editingMember && (
+        <EditMemberDialog
+          member={editingMember}
+          accounts={accounts}
+          onClose={() => setEditingMember(null)}
+          onSaved={async () => {
+            setEditingMember(null);
             await load();
           }}
         />
@@ -203,11 +272,10 @@ function InviteDialog({
   const [selectedAccountIds, setSelectedAccountIds] = useState<Set<string>>(
     accounts.length > 0 ? new Set([accounts[0].syncId]) : new Set(),
   );
-  const [role, setRole] = useState<"VIEWER" | "EDITOR" | "ACCOUNTANT">("VIEWER");
+  const [role, setRole] = useState<Role>("VIEWER");
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Sort accounts alphabetically
   const sortedAccounts = useMemo(
     () => [...accounts].sort((a, b) => a.data.name.localeCompare(b.data.name)),
     [accounts],
@@ -230,7 +298,8 @@ function InviteDialog({
     setSelectedAccountIds(new Set());
   }
 
-  const allSelected = sortedAccounts.length > 0 && selectedAccountIds.size === sortedAccounts.length;
+  const allSelected =
+    sortedAccounts.length > 0 && selectedAccountIds.size === sortedAccounts.length;
 
   async function send() {
     if (!email.trim() || !email.includes("@")) {
@@ -241,7 +310,6 @@ function InviteDialog({
     setSending(true);
     setErr(null);
     try {
-      // Invite per-account: one share row per selected account
       const normalizedEmail = email.trim().toLowerCase();
       for (const accountSyncId of selectedAccountIds) {
         await withAuth((tk) =>
@@ -309,47 +377,7 @@ function InviteDialog({
           )}
         </div>
 
-        <div>
-          <div className="text-xs font-medium text-ink-700 mb-2">{t("dialog_role")}</div>
-          <div className="space-y-2">
-            <label className="flex gap-2 p-3 rounded-lg border border-ink-200 hover:border-brand-300 cursor-pointer">
-              <input
-                type="radio"
-                checked={role === "VIEWER"}
-                onChange={() => setRole("VIEWER")}
-                className="mt-0.5"
-              />
-              <div className="flex-1">
-                <div className="text-sm font-medium text-ink-900">{t("role_viewer")}</div>
-                <div className="text-xs text-ink-600 mt-0.5">{t("dialog_role_viewer_desc")}</div>
-              </div>
-            </label>
-            <label className="flex gap-2 p-3 rounded-lg border border-ink-200 hover:border-brand-300 cursor-pointer">
-              <input
-                type="radio"
-                checked={role === "EDITOR"}
-                onChange={() => setRole("EDITOR")}
-                className="mt-0.5"
-              />
-              <div className="flex-1">
-                <div className="text-sm font-medium text-ink-900">{t("role_editor")}</div>
-                <div className="text-xs text-ink-600 mt-0.5">{t("dialog_role_editor_desc")}</div>
-              </div>
-            </label>
-            <label className="flex gap-2 p-3 rounded-lg border border-ink-200 hover:border-brand-300 cursor-pointer">
-              <input
-                type="radio"
-                checked={role === "ACCOUNTANT"}
-                onChange={() => setRole("ACCOUNTANT")}
-                className="mt-0.5"
-              />
-              <div className="flex-1">
-                <div className="text-sm font-medium text-ink-900">{t("role_accountant")}</div>
-                <div className="text-xs text-ink-600 mt-0.5">{t("dialog_role_accountant_desc")}</div>
-              </div>
-            </label>
-          </div>
-        </div>
+        <RolePicker role={role} setRole={setRole} />
 
         {err && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">{err}</div>
@@ -371,6 +399,228 @@ function InviteDialog({
             {sending ? t("dialog_sending") : t("dialog_send")}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function EditMemberDialog({
+  member,
+  accounts,
+  onClose,
+  onSaved,
+}: {
+  member: MemberGroup;
+  accounts: Array<{ syncId: string; data: ServerAccount }>;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const t = useTranslations("members_page");
+
+  // Server vrací u každého share `accountSyncId` (= klientský sync id),
+  // takže můžeme přímo namapovat na checklist účtů.
+  const initiallySelectedSyncIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of member.shares) {
+      if (s.accountSyncId) set.add(s.accountSyncId);
+    }
+    return set;
+  }, [member.shares]);
+
+  const [selectedAccountIds, setSelectedAccountIds] =
+    useState<Set<string>>(initiallySelectedSyncIds);
+  const [role, setRole] = useState<Role>(member.role);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const sortedAccounts = useMemo(
+    () => [...accounts].sort((a, b) => a.data.name.localeCompare(b.data.name)),
+    [accounts],
+  );
+
+  function toggleAccount(syncId: string) {
+    setSelectedAccountIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(syncId)) next.delete(syncId);
+      else next.add(syncId);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelectedAccountIds(new Set(sortedAccounts.map((a) => a.syncId)));
+  }
+
+  function clearSelection() {
+    setSelectedAccountIds(new Set());
+  }
+
+  const allSelected =
+    sortedAccounts.length > 0 && selectedAccountIds.size === sortedAccounts.length;
+
+  async function save() {
+    if (selectedAccountIds.size === 0) {
+      setErr(t("edit_select_at_least_one"));
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    try {
+      // 1) Změnit roli u všech existujících (ne-revoknutých) shares
+      const roleChanged = role !== member.role;
+      if (roleChanged) {
+        for (const s of member.shares) {
+          await withAuth((tk) => accountShares.updateRole(tk, s.id, role));
+        }
+      }
+
+      // 2) Najít účty k přidání (selected, ale není mezi current shares)
+      const currentSyncIds = new Set(initiallySelectedSyncIds);
+      const toAdd = [...selectedAccountIds].filter((sid) => !currentSyncIds.has(sid));
+      const toRemove = [...currentSyncIds].filter((sid) => !selectedAccountIds.has(sid));
+
+      // 3) Přidat shares pro nové účty
+      for (const accountSyncId of toAdd) {
+        await withAuth((tk) =>
+          accountShares.invite(tk, accountSyncId, member.email, role),
+        );
+      }
+
+      // 4) Revoknout shares pro odebrané účty
+      for (const sid of toRemove) {
+        const share = member.shares.find((s) => s.accountSyncId === sid);
+        if (share) {
+          await withAuth((tk) => accountShares.revoke(tk, share.id));
+        }
+      }
+
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl border border-ink-200 max-w-md w-full p-6 space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-ink-900">{t("edit_dialog_title")}</h2>
+          <p className="text-xs text-ink-600 mt-1">{member.email}</p>
+        </div>
+
+        <div>
+          <div className="flex items-baseline justify-between mb-1">
+            <div className="text-xs font-medium text-ink-700">{t("dialog_accounts")}</div>
+            {sortedAccounts.length > 0 && (
+              <button
+                type="button"
+                onClick={allSelected ? clearSelection : selectAll}
+                className="text-xs text-brand-600 hover:text-brand-700 font-medium"
+              >
+                {allSelected ? t("dialog_unselect_all_accounts") : t("dialog_select_all_accounts")}
+              </button>
+            )}
+          </div>
+          {sortedAccounts.length === 0 ? (
+            <p className="text-xs text-amber-700">{t("dialog_no_accounts")}</p>
+          ) : (
+            <div className="border border-ink-300 rounded-lg max-h-48 overflow-y-auto divide-y divide-ink-100">
+              {sortedAccounts.map((a) => (
+                <label
+                  key={a.syncId}
+                  className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-ink-50 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedAccountIds.has(a.syncId)}
+                    onChange={() => toggleAccount(a.syncId)}
+                    className="w-4 h-4"
+                  />
+                  <span className="flex-1 text-ink-900">{a.data.name}</span>
+                  <span className="text-xs text-ink-500">{a.data.currency}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <RolePicker role={role} setRole={setRole} />
+
+        {err && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">{err}</div>
+        )}
+
+        <div className="flex gap-3 pt-2">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="h-10 px-4 rounded-lg border border-ink-300 bg-white hover:bg-ink-50 text-sm font-medium text-ink-900"
+          >
+            {t("dialog_cancel")}
+          </button>
+          <button
+            onClick={save}
+            disabled={saving || selectedAccountIds.size === 0}
+            className="flex-1 h-10 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium"
+          >
+            {saving ? t("edit_saving") : t("edit_save")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RolePicker({
+  role,
+  setRole,
+}: {
+  role: Role;
+  setRole: (r: Role) => void;
+}) {
+  const t = useTranslations("members_page");
+  return (
+    <div>
+      <div className="text-xs font-medium text-ink-700 mb-2">{t("dialog_role")}</div>
+      <div className="space-y-2">
+        <label className="flex gap-2 p-3 rounded-lg border border-ink-200 hover:border-brand-300 cursor-pointer">
+          <input
+            type="radio"
+            checked={role === "VIEWER"}
+            onChange={() => setRole("VIEWER")}
+            className="mt-0.5"
+          />
+          <div className="flex-1">
+            <div className="text-sm font-medium text-ink-900">{t("role_viewer")}</div>
+            <div className="text-xs text-ink-600 mt-0.5">{t("dialog_role_viewer_desc")}</div>
+          </div>
+        </label>
+        <label className="flex gap-2 p-3 rounded-lg border border-ink-200 hover:border-brand-300 cursor-pointer">
+          <input
+            type="radio"
+            checked={role === "EDITOR"}
+            onChange={() => setRole("EDITOR")}
+            className="mt-0.5"
+          />
+          <div className="flex-1">
+            <div className="text-sm font-medium text-ink-900">{t("role_editor")}</div>
+            <div className="text-xs text-ink-600 mt-0.5">{t("dialog_role_editor_desc")}</div>
+          </div>
+        </label>
+        <label className="flex gap-2 p-3 rounded-lg border border-ink-200 hover:border-brand-300 cursor-pointer">
+          <input
+            type="radio"
+            checked={role === "ACCOUNTANT"}
+            onChange={() => setRole("ACCOUNTANT")}
+            className="mt-0.5"
+          />
+          <div className="flex-1">
+            <div className="text-sm font-medium text-ink-900">{t("role_accountant")}</div>
+            <div className="text-xs text-ink-600 mt-0.5">{t("dialog_role_accountant_desc")}</div>
+          </div>
+        </label>
       </div>
     </div>
   );

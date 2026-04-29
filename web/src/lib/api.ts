@@ -178,6 +178,7 @@ export interface SharedAccountInfoDto {
 export interface ShareWithAccountDto {
   id: string;
   accountId: string;
+  accountSyncId: string;
   accountName: string;
   accountCurrency: string;
   profileName: string;
@@ -206,6 +207,15 @@ export const accountShares = {
   revoke: (token: string, shareId: string) =>
     api<{ ok: boolean }>(`/api/v1/accounts/shares/${shareId}`, {
       method: "DELETE", token,
+    }),
+
+  updateRole: (
+    token: string,
+    shareId: string,
+    role: "VIEWER" | "EDITOR" | "ACCOUNTANT",
+  ) =>
+    api<AccountShareDto>(`/api/v1/accounts/shares/${shareId}`, {
+      method: "PATCH", token, body: { role },
     }),
 
   preview: (shareToken: string) =>

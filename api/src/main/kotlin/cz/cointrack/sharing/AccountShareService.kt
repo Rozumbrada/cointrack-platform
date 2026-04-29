@@ -73,6 +73,7 @@ class AccountShareService(
     data class ShareWithAccountDto(
         val id: String,
         val accountId: String,
+        val accountSyncId: String,
         val accountName: String,
         val accountCurrency: String,
         val profileName: String,
@@ -226,6 +227,43 @@ class AccountShareService(
             .map { row -> rowToDto(row) }
     }
 
+    /**
+     * Owner: změna role existujícího sdílení.
+     * @param shareId DB id share
+     * @param ownerUserId ID vlastníka (musí vlastnit účet share)
+     * @param newRole VIEWER | EDITOR | ACCOUNTANT
+     */
+    suspend fun updateRole(shareId: UUID, ownerUserId: UUID, newRole: String): ShareDto {
+        if (newRole !in setOf("VIEWER", "EDITOR", "ACCOUNTANT")) {
+            throw ApiException(HttpStatusCode.BadRequest, "invalid_role",
+                "Role musí být VIEWER, EDITOR nebo ACCOUNTANT.")
+        }
+        return db {
+            val share = AccountShares.selectAll().where { AccountShares.id eq shareId }.singleOrNull()
+                ?: throw ApiException(HttpStatusCode.NotFound, "share_not_found", "Sdílení nenalezeno.")
+            if (share[AccountShares.revokedAt] != null) {
+                throw ApiException(HttpStatusCode.Gone, "share_revoked", "Sdílení už bylo zrušeno.")
+            }
+
+            // Verify owner via account → profile
+            val accountId = share[AccountShares.accountId].value
+            val acc = Accounts.selectAll().where { Accounts.id eq accountId }.singleOrNull()
+                ?: throw ApiException(HttpStatusCode.NotFound, "account_not_found", "Účet nenalezen.")
+            val profileId = acc[Accounts.profileId].value
+            val profile = Profiles.selectAll().where { Profiles.id eq profileId }.singleOrNull()
+                ?: throw ApiException(HttpStatusCode.NotFound, "profile_not_found", "Profil nenalezen.")
+            if (profile[Profiles.ownerUserId].value != ownerUserId) {
+                throw ApiException(HttpStatusCode.Forbidden, "not_owner", "Nejsi vlastníkem.")
+            }
+
+            AccountShares.update({ AccountShares.id eq shareId }) {
+                it[role] = newRole
+            }
+            log.info("Account share role updated: id=$shareId newRole=$newRole")
+            getShare(shareId)!!
+        }
+    }
+
     /** Owner: revoke share. */
     suspend fun revoke(shareId: UUID, ownerUserId: UUID) = db {
         val share = AccountShares.selectAll().where { AccountShares.id eq shareId }.singleOrNull()
@@ -355,6 +393,7 @@ class AccountShareService(
                 ShareWithAccountDto(
                     id = share[AccountShares.id].value.toString(),
                     accountId = accountId.toString(),
+                    accountSyncId = acc[Accounts.syncId].toString(),
                     accountName = acc[Accounts.name],
                     accountCurrency = acc[Accounts.currency],
                     profileName = profile[Profiles.name],
