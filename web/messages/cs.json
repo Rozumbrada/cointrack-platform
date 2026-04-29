@@ -1152,7 +1152,9 @@
     "status_unpaid": "nezaplaceno",
     "dup_badge": "duplicita",
     "dup_badge_tooltip": "Tato faktura má stejné číslo jako jiná v profilu — můžeš ji otevřít a smazat.",
-    "dup_warning": "V tomto profilu je {count, plural, one {1 duplicitní číslo} few {{count} duplicitní čísla} other {{count} duplicitních čísel}} faktur. Otevři dotčené faktury (žluté označení) a smaž ty zbytečné.",
+    "dup_warning": "V tomto profilu je {count, plural, one {1 duplicitní číslo} few {{count} duplicitní čísla} other {{count} duplicitních čísel}} faktur.",
+    "dup_delete_button": "Smazat duplikáty",
+    "dup_delete_confirm": "Smazat {count, plural, one {1 duplicitní fakturu} few {{count} duplicitní faktury} other {{count} duplicitních faktur}}? Z každého duplicitního čísla zůstane jedna kopie (preferenčně ta s navázanou platbou nebo nejstarší).",
     "edit_action": "Upravit",
     "delete_action": "Smazat",
     "delete_one_confirm": "Smazat fakturu „{number}\"? Tato akce je vratná přes synchronizaci s mobilem."

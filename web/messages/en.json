@@ -1152,7 +1152,9 @@
     "status_unpaid": "unpaid",
     "dup_badge": "duplicate",
     "dup_badge_tooltip": "This invoice has the same number as another in this profile — open it and delete the redundant copy.",
-    "dup_warning": "{count, plural, one {1 duplicate invoice number} other {{count} duplicate invoice numbers}} in this profile. Open the highlighted invoices and delete the redundant ones.",
+    "dup_warning": "{count, plural, one {1 duplicate invoice number} other {{count} duplicate invoice numbers}} in this profile.",
+    "dup_delete_button": "Delete duplicates",
+    "dup_delete_confirm": "Delete {count, plural, one {1 duplicate invoice} other {{count} duplicate invoices}}? One copy of each duplicate number will be kept (preferring the one linked to a payment or oldest).",
     "edit_action": "Edit",
     "delete_action": "Delete",
     "delete_one_confirm": "Delete invoice \"{number}\"? This action can be reverted via mobile sync."

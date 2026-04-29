@@ -137,6 +137,65 @@ export default function InvoicesPage() {
     }
   }
 
+  /**
+   * Hromadné smazání duplicit: pro každé duplicitní číslo zachová JEDNU
+   * kopii a smaže ostatní (soft-delete).
+   *
+   * Která zůstane (priorita pro keep):
+   *   1. ta s `linkedTransactionId` (= napojená na platbu, nejcennější)
+   *   2. ta s `paid = true`
+   *   3. nejstarší podle issueDate (chronologicky první v sérii)
+   *   4. tie-breaker: nejmenší syncId (deterministické)
+   */
+  async function deleteDuplicates() {
+    // 1) seskupit podle čísla
+    const groups = new Map<string, typeof invoices>();
+    for (const r of invoices) {
+      const n = (r.data.invoiceNumber ?? "").trim();
+      if (!n) continue;
+      const arr = groups.get(n) ?? [];
+      arr.push(r);
+      groups.set(n, arr);
+    }
+
+    // 2) v každé skupině >1 vybrat jednoho keepera, ostatní označit pro delete
+    const toDelete: typeof invoices = [];
+    groups.forEach((group) => {
+      if (group.length <= 1) return;
+      const sorted = [...group].sort((a, b) => {
+        const al = a.data.linkedTransactionId ? 1 : 0;
+        const bl = b.data.linkedTransactionId ? 1 : 0;
+        if (al !== bl) return bl - al;
+        const ap = a.data.paid ? 1 : 0;
+        const bp = b.data.paid ? 1 : 0;
+        if (ap !== bp) return bp - ap;
+        const ad = a.data.issueDate ?? "";
+        const bd = b.data.issueDate ?? "";
+        if (ad !== bd) return ad.localeCompare(bd);
+        return a.syncId.localeCompare(b.syncId);
+      });
+      toDelete.push(...sorted.slice(1));
+    });
+
+    if (toDelete.length === 0) return;
+    if (!confirm(t("dup_delete_confirm", { count: toDelete.length }))) return;
+
+    try {
+      const now = new Date().toISOString();
+      const entities = toDelete.map((r) => ({
+        syncId: r.syncId,
+        updatedAt: now,
+        deletedAt: now,
+        clientVersion: 1,
+        data: r.data as unknown as Record<string, unknown>,
+      }));
+      await withAuth((tk) => sync.push(tk, { entities: { invoices: entities } }));
+      await reload();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -214,8 +273,15 @@ export default function InvoicesPage() {
       )}
 
       {dupNumbers.size > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-          {t("dup_warning", { count: dupNumbers.size })}
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800 flex items-center justify-between gap-3 flex-wrap">
+          <span className="flex-1 min-w-[16rem]">{t("dup_warning", { count: dupNumbers.size })}</span>
+          <button
+            type="button"
+            onClick={deleteDuplicates}
+            className="shrink-0 h-9 px-4 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium"
+          >
+            {t("dup_delete_button")}
+          </button>
         </div>
       )}
 
