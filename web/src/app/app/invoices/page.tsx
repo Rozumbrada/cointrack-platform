@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { sync, SyncEntity } from "@/lib/api";
-import { withAuth } from "@/lib/auth-store";
-import { getCurrentProfileSyncId } from "@/lib/profile-store";
+import { useSyncData } from "@/lib/sync-hook";
+import { ServerAccount } from "@/lib/sync-types";
 import {
   Period,
   PeriodSelector,
@@ -14,6 +13,7 @@ import { InvoiceEditor } from "@/components/app/InvoiceEditor";
 import { ExportButton } from "@/components/app/ExportButton";
 
 interface InvoiceData {
+  profileId?: string;
   invoiceNumber?: string;
   issueDate?: string;
   dueDate?: string;
@@ -29,18 +29,18 @@ interface InvoiceData {
   linkedAccountId?: string;
 }
 
-interface AccountListEntry {
-  syncId: string;
-  data: { name: string; type?: string };
-}
+type AccountListEntry = { syncId: string; data: ServerAccount };
 
 export default function InvoicesPage() {
   const t = useTranslations("invoices_page");
   const locale = useLocale();
-  const [invoices, setInvoices] = useState<SyncEntity[]>([]);
-  const [accounts, setAccounts] = useState<AccountListEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Filtrování podle aktivního profilu — useSyncData() automaticky řeší
+  // soft-delete + match na profileSyncId, a reaguje na přepnutí profilu
+  // (event "cointrack:profile-changed").
+  const { loading, error, profileSyncId, entitiesByProfile, reload } = useSyncData();
+  const invoices = entitiesByProfile<InvoiceData>("invoices");
+  const accounts = entitiesByProfile<ServerAccount>("accounts");
+
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"ALL" | "RECEIVED" | "ISSUED">("ALL");
   const [paidFilter, setPaidFilter] = useState<"ALL" | "PAID" | "UNPAID">("ALL");
@@ -51,36 +51,11 @@ export default function InvoicesPage() {
     to: "",
   });
   const [creating, setCreating] = useState(false);
-  const profileSyncId = getCurrentProfileSyncId();
-
-  async function load() {
-    try {
-      const res = await withAuth((t) => sync.pull(t));
-      setInvoices(res.entities["invoices"] ?? []);
-      const accs = (res.entities["accounts"] ?? []).filter((e) => !e.deletedAt);
-      setAccounts(
-        accs.map((e) => ({
-          syncId: e.syncId,
-          data: e.data as { name: string; type?: string },
-        })),
-      );
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    load();
-  }, []);
 
   const range = useMemo(() => periodRange(period, customRange), [period, customRange]);
 
   const filtered = useMemo(() => {
     return [...invoices]
-      .filter((e) => !e.deletedAt)
-      .map((e) => ({ syncId: e.syncId, data: e.data as unknown as InvoiceData }))
       .filter((r) => {
         if (filter === "RECEIVED") return r.data.isExpense;
         if (filter === "ISSUED") return !r.data.isExpense;
@@ -264,7 +239,7 @@ export default function InvoicesPage() {
           onClose={() => setCreating(false)}
           onSaved={async (syncId) => {
             setCreating(false);
-            await load();
+            await reload();
             window.location.href = `/app/invoices/${syncId}`;
           }}
         />

@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { sync, SyncEntity } from "@/lib/api";
+import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
-import { getCurrentProfileSyncId } from "@/lib/profile-store";
+import { useSyncData } from "@/lib/sync-hook";
+import { ServerAccount } from "@/lib/sync-types";
 import {
   Period,
   PeriodSelector,
@@ -28,18 +29,19 @@ interface ReceiptData {
   linkedAccountId?: string;
 }
 
-interface AccountListEntry {
-  syncId: string;
-  data: { name: string; type?: string };
-}
+type AccountListEntry = { syncId: string; data: ServerAccount };
 
 export default function ReceiptsPage() {
   const t = useTranslations("receipts_page");
   const locale = useLocale();
-  const [receipts, setReceipts] = useState<SyncEntity[]>([]);
-  const [accounts, setAccounts] = useState<AccountListEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Filtrování podle aktivního profilu — v hook entitiesByProfile() dělá:
+  //   1) skip soft-deleted (e.deletedAt + e.data.deletedAt)
+  //   2) match e.data.profileId === activeProfileSyncId
+  // Přepnutí profilu se promítne automaticky přes "cointrack:profile-changed" listener.
+  const { loading, error, profileSyncId, entitiesByProfile, reload } = useSyncData();
+  const receipts = entitiesByProfile<ReceiptData>("receipts");
+  const accounts = entitiesByProfile<ServerAccount>("accounts");
+
   const [query, setQuery] = useState("");
   const [linkFilter, setLinkFilter] = useState<"ALL" | "LINKED" | "UNLINKED">("ALL");
   const [accountFilter, setAccountFilter] = useState<string>("ALL");
@@ -49,38 +51,11 @@ export default function ReceiptsPage() {
     from: "",
     to: "",
   });
-  const profileSyncId = getCurrentProfileSyncId();
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await withAuth((t) => sync.pull(t));
-        setReceipts(res.entities["receipts"] ?? []);
-        const accs = (res.entities["accounts"] ?? []).filter((e) => !e.deletedAt);
-        setAccounts(
-          accs.map((e) => ({
-            syncId: e.syncId,
-            data: e.data as { name: string; type?: string },
-          })),
-        );
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
 
   const range = useMemo(() => periodRange(period, customRange), [period, customRange]);
 
   const filtered = useMemo(() => {
     return [...receipts]
-      .filter((e) => {
-        if (e.deletedAt) return false;
-        const d = e.data as Record<string, unknown>;
-        return !(d.deletedAt != null && d.deletedAt !== 0);
-      })
-      .map((e) => ({ syncId: e.syncId, data: e.data as unknown as ReceiptData }))
       .filter((r) => {
         if (linkFilter === "ALL") return true;
         const linked = !!r.data.transactionId;
@@ -133,8 +108,7 @@ export default function ReceiptsPage() {
           onClose={() => setCreating(false)}
           onSaved={async () => {
             setCreating(false);
-            const res = await withAuth((t) => sync.pull(t));
-            setReceipts(res.entities["receipts"] ?? []);
+            await reload();
           }}
         />
       )}
