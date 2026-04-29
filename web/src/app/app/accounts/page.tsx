@@ -1,43 +1,65 @@
 "use client";
 
-import { useMemo } from "react";
+import Link from "next/link";
+import { useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
+import { sync } from "@/lib/api";
+import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
-
-interface AccountData {
-  name: string;
-  type: "CASH" | "BANK" | "CREDIT_CARD" | "INVESTMENT" | "OTHER";
-  balance: number;
-  currency: string;
-  color?: number;
-  includeInTotal: boolean;
-  externalProvider?: string;
-  profileId?: number;
-  bankIban?: string;
-  bankAccountNumber?: string;
-  bankCode?: string;
-  pohodaShortcut?: string;
-}
+import {
+  ServerAccount,
+  ServerTransaction,
+  computeAccountBalance,
+} from "@/lib/sync-types";
+import { Pencil, Trash2 } from "lucide-react";
 
 export default function AccountsPage() {
   const t = useTranslations("accounts_page");
   const locale = useLocale();
-  const { loading, error, entitiesByProfile } = useSyncData();
-  const accounts = entitiesByProfile<AccountData>("accounts");
+  const { loading, error, entitiesByProfile, reload } = useSyncData();
+  const accountEntities = entitiesByProfile<ServerAccount>("accounts");
+  const txEntities = entitiesByProfile<ServerTransaction>("transactions");
+
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  /**
+   * Filter zombie účtů (Salt Edge import bez profile assignmentu — vznikly
+   * v dávno smazaných profilech, zůstaly v cloudu jako "duchové"). Logika
+   * sjednocena s Dashboardem.
+   */
+  const visibleAccounts = useMemo(() => {
+    return accountEntities.filter((acc) => {
+      const d = acc.data as unknown as Record<string, unknown>;
+      const provider = d.bankProvider ?? d.externalProvider;
+      if (provider === "saltedge") {
+        const assigned = d.assignedProfileIds as string[] | undefined;
+        if (!assigned || assigned.length === 0) return false;
+      }
+      return true;
+    });
+  }, [accountEntities]);
 
   const sorted = useMemo(
-    () => [...accounts].sort((a, b) => a.data.name.localeCompare(b.data.name)),
-    [accounts],
+    () => [...visibleAccounts].sort((a, b) => a.data.name.localeCompare(b.data.name)),
+    [visibleAccounts],
   );
+
+  /** Live balance — initialBalance + sum tx (sjednoceno s Dashboard). */
+  function balanceOf(acc: { syncId: string; data: ServerAccount }): number {
+    return computeAccountBalance(acc.data, txEntities, acc.syncId);
+  }
 
   const totals = useMemo(() => {
     const m: Record<string, number> = {};
-    for (const a of accounts) {
-      if (!a.data.includeInTotal) continue;
-      m[a.data.currency] = (m[a.data.currency] ?? 0) + a.data.balance;
+    for (const a of visibleAccounts) {
+      if (a.data.excludedFromTotal) continue;
+      const live = computeAccountBalance(a.data, txEntities, a.syncId);
+      m[a.data.currency] = (m[a.data.currency] ?? 0) + live;
     }
-    return m;
-  }, [accounts]);
+    return Object.fromEntries(
+      Object.entries(m).filter(([, v]) => Math.abs(v) > 0.005),
+    );
+  }, [visibleAccounts, txEntities]);
 
   function fmt(amount: number, currency: string): string {
     return new Intl.NumberFormat(locale, {
@@ -47,7 +69,7 @@ export default function AccountsPage() {
     }).format(amount);
   }
 
-  function labelType(type: AccountData["type"]): string {
+  function labelType(type: string | undefined): string {
     switch (type) {
       case "CASH": return t("type_cash");
       case "BANK": return t("type_bank");
@@ -57,16 +79,58 @@ export default function AccountsPage() {
     }
   }
 
+  /** Soft-delete účtu přes sync push. */
+  async function deleteAccount(syncId: string, name: string) {
+    if (!confirm(t("delete_confirm", { name }))) return;
+    setActionError(null);
+    const entity = accountEntities.find((a) => a.syncId === syncId);
+    if (!entity) return;
+    try {
+      const now = new Date().toISOString();
+      await withAuth((tk) =>
+        sync.push(tk, {
+          entities: {
+            accounts: [
+              {
+                syncId: entity.syncId,
+                updatedAt: now,
+                deletedAt: now,
+                clientVersion: 1,
+                data: entity.data as unknown as Record<string, unknown>,
+              },
+            ],
+          },
+        }),
+      );
+      await reload();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
-        <p className="text-sm text-ink-600 mt-1">{t("subtitle")}</p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
+          <p className="text-sm text-ink-600 mt-1">{t("subtitle_short")}</p>
+        </div>
+        <Link
+          href="/app/accounts/new"
+          className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium leading-[2.5rem]"
+        >
+          {t("new_account")}
+        </Link>
       </div>
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">
           {error}
+        </div>
+      )}
+      {actionError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">
+          {actionError}
         </div>
       )}
 
@@ -93,73 +157,97 @@ export default function AccountsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {sorted.map((a) => (
-            <div
-              key={a.syncId}
-              className="bg-white rounded-2xl border border-ink-200 p-5"
-            >
-              <div className="flex items-start justify-between gap-2 mb-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div
-                    className="w-10 h-10 rounded-lg grid place-items-center text-xl"
-                    style={{ backgroundColor: colorFromInt(a.data.color) }}
-                  >
-                    {iconForType(a.data.type)}
+          {sorted.map((a) => {
+            const balance = balanceOf(a);
+            const d = a.data;
+            return (
+              <div
+                key={a.syncId}
+                className="bg-white rounded-2xl border border-ink-200 p-5 flex flex-col"
+              >
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div
+                      className="w-10 h-10 rounded-lg grid place-items-center text-xl shrink-0"
+                      style={{ backgroundColor: colorFromInt(d.color) }}
+                    >
+                      {iconForType(d.type)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-ink-900 truncate">
+                        {d.name}
+                      </div>
+                      <div className="text-xs text-ink-500 flex items-center gap-2 flex-wrap">
+                        <span>{labelType(d.type)}</span>
+                        {(d.bankProvider || d.externalProvider) && (
+                          <span className="text-[10px] uppercase bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded">
+                            {d.bankProvider ?? d.externalProvider}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <div className="font-medium text-ink-900 truncate">
-                      {a.data.name}
-                    </div>
-                    <div className="text-xs text-ink-500">
-                      {labelType(a.data.type)}
-                      {a.data.externalProvider && (
-                        <span className="ml-2 text-[10px] uppercase bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded">
-                          {a.data.externalProvider}
-                        </span>
-                      )}
-                    </div>
+                  {/* Edit + delete vždy viditelné */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Link
+                      href={`/app/accounts/${a.syncId}/edit`}
+                      title={t("edit")}
+                      aria-label={t("edit")}
+                      className="p-2 rounded-lg text-ink-500 hover:text-brand-700 hover:bg-brand-50 transition-colors"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => deleteAccount(a.syncId, d.name)}
+                      title={t("delete")}
+                      aria-label={t("delete")}
+                      className="p-2 rounded-lg text-ink-500 hover:text-red-700 hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-              </div>
-              <div className="text-2xl font-semibold text-ink-900 tabular-nums">
-                {fmt(a.data.balance, a.data.currency)}
-              </div>
-              {!a.data.includeInTotal && (
-                <div className="text-[10px] uppercase text-ink-500 mt-2">
-                  {t("excluded_from_total")}
+                <div className="text-2xl font-semibold text-ink-900 tabular-nums">
+                  {fmt(balance, d.currency)}
                 </div>
-              )}
-              {(a.data.bankAccountNumber || a.data.bankCode || a.data.bankIban) && (
-                <div className="mt-3 pt-3 border-t border-ink-100 space-y-1 text-xs text-ink-600">
-                  {a.data.bankAccountNumber && a.data.bankCode && (
-                    <div>
-                      <span className="text-ink-500">{t("account_number")} </span>
-                      <span className="font-mono">{a.data.bankAccountNumber}/{a.data.bankCode}</span>
-                    </div>
-                  )}
-                  {a.data.bankIban && (
-                    <div>
-                      <span className="text-ink-500">{t("iban")} </span>
-                      <span className="font-mono">{a.data.bankIban}</span>
-                    </div>
-                  )}
-                  {a.data.pohodaShortcut && (
-                    <div>
-                      <span className="text-ink-500">{t("pohoda_shortcut")} </span>
-                      <span className="font-mono font-medium">{a.data.pohodaShortcut}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
+                {d.excludedFromTotal && (
+                  <div className="text-[10px] uppercase text-ink-500 mt-2">
+                    {t("excluded_from_total")}
+                  </div>
+                )}
+                {(d.bankAccountNumber || d.bankCode || d.bankIban) && (
+                  <div className="mt-3 pt-3 border-t border-ink-100 space-y-1 text-xs text-ink-600">
+                    {d.bankAccountNumber && d.bankCode && (
+                      <div>
+                        <span className="text-ink-500">{t("account_number")} </span>
+                        <span className="font-mono">{d.bankAccountNumber}/{d.bankCode}</span>
+                      </div>
+                    )}
+                    {d.bankIban && (
+                      <div>
+                        <span className="text-ink-500">{t("iban")} </span>
+                        <span className="font-mono">{d.bankIban}</span>
+                      </div>
+                    )}
+                    {d.pohodaShortcut && (
+                      <div>
+                        <span className="text-ink-500">{t("pohoda_shortcut")} </span>
+                        <span className="font-mono font-medium">{d.pohodaShortcut}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
 
-function iconForType(t: AccountData["type"]): string {
+function iconForType(t: string | undefined): string {
   switch (t) {
     case "CASH": return "💵";
     case "BANK": return "🏦";
