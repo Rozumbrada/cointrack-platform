@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { api, sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
+import { categoriesForFocus } from "@/lib/business-focus-categories";
 
 const COLORS = [
   0xff2196f3, 0xff4caf50, 0xfff44336, 0xffff9800,
@@ -218,16 +219,74 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
     }
   }
 
-  /** Seed kategorie pro vybrané BusinessFocus — backend musí mít endpoint, jinak fallback alert. */
+  /**
+   * Seed kategorie pro vybrané BusinessFocus.
+   *
+   * Stejný flow jako mobile (ProfileViewModel.seedFocusCategories):
+   *   1. načti existující kategorie napříč profilem
+   *   2. odfiltruj ty, jejichž název už existuje (case-sensitive match podle
+   *      `name`)
+   *   3. ostatní hromadně pushni jako nové kategorie přes /sync
+   *
+   * profileId nových kategorií = aktuálně editovaný profil (`syncId`),
+   * příp. `originalData?.organizationId` pro org sdílení — pro jednoduchost
+   * vždy editovaný profil. Pokud uživatel chce kategorie i v jiných
+   * profilech, může je tam ručně skopírovat.
+   */
   async function seedCategories() {
-    if (!businessFocus) return;
+    if (!businessFocus || !syncId) return;
     setSeedMessage(null);
     setSeedingCategories(true);
     try {
-      // TODO: zatím není backend endpoint, simulujeme jen UI feedback. Mobile to dělá
-      // lokálně přes vm.seedFocusCategories(focus). Web to po deploy backend endpointu
-      // může rovnou zavolat.
-      setSeedMessage(t("seed_unavailable"));
+      const focusCats = categoriesForFocus(businessFocus);
+      if (focusCats.length === 0) {
+        setSeedMessage(t("seed_no_categories"));
+        return;
+      }
+
+      // 1) pull existing — match podle name v rámci profilu (mobile match
+      //    je napříč profily, web ho zužuje na profil — kategorie jsou per
+      //    profil v cloudovém modelu).
+      const res = await withAuth((tk) => sync.pull(tk));
+      const existingNames = new Set(
+        (res.entities["categories"] ?? [])
+          .filter((e) => {
+            if (e.deletedAt) return false;
+            const d = e.data as Record<string, unknown>;
+            if (d.deletedAt != null && d.deletedAt !== 0) return false;
+            return d.profileId === syncId;
+          })
+          .map((e) => String((e.data as Record<string, unknown>).name ?? "").trim())
+          .filter((n) => n.length > 0),
+      );
+
+      // 2) filtruj ty, co ještě neexistují
+      const toInsert = focusCats.filter((fc) => !existingNames.has(fc.name));
+      if (toInsert.length === 0) {
+        setSeedMessage(t("seed_already_exists", { focus: t(`focus_${businessFocus}` as Parameters<typeof t>[0]) }));
+        return;
+      }
+
+      // 3) push v jednom requestu — server uloží všechny najednou
+      const now = new Date().toISOString();
+      const entities = toInsert.map((fc) => ({
+        syncId: crypto.randomUUID(),
+        updatedAt: now,
+        clientVersion: 1,
+        data: {
+          profileId: syncId,
+          name: fc.name,
+          // Server posílá lowercase; ukládáme stejně, aby bylo konzistentní.
+          type: fc.type.toLowerCase(),
+          icon: fc.icon,
+          color: fc.color,
+        } as Record<string, unknown>,
+      }));
+      await withAuth((tk) => sync.push(tk, { entities: { categories: entities } }));
+
+      setSeedMessage(t("seed_done", { count: toInsert.length }));
+    } catch (e) {
+      setSeedMessage(t("seed_failed", { error: e instanceof Error ? e.message : String(e) }));
     } finally {
       setSeedingCategories(false);
     }
@@ -475,7 +534,10 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
               <Field label={t("focus_label")}>
                 <select
                   value={businessFocus}
-                  onChange={(e) => setBusinessFocus(e.target.value as BusinessFocus | "")}
+                  onChange={(e) => {
+                    setBusinessFocus(e.target.value as BusinessFocus | "");
+                    setSeedMessage(null);
+                  }}
                   className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900"
                 >
                   <option value="">{t("focus_none")}</option>
@@ -486,20 +548,24 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
                   ))}
                 </select>
                 {businessFocus && (
-                  <div className="mt-2 space-y-1">
+                  <div className="mt-2 space-y-2">
                     {seedMessage && (
-                      <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
+                      <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
                         {seedMessage}
                       </div>
                     )}
-                    <button
-                      type="button"
-                      onClick={seedCategories}
-                      disabled={seedingCategories}
-                      className="text-xs text-brand-600 hover:text-brand-700 disabled:opacity-50"
-                    >
-                      {t("seed_btn")}
-                    </button>
+                    {isEdit ? (
+                      <button
+                        type="button"
+                        onClick={seedCategories}
+                        disabled={seedingCategories}
+                        className="h-9 px-3 rounded-lg bg-brand-50 hover:bg-brand-100 text-brand-700 text-xs font-medium disabled:opacity-50 border border-brand-200"
+                      >
+                        {seedingCategories ? t("seed_loading") : t("seed_btn")}
+                      </button>
+                    ) : (
+                      <p className="text-xs text-ink-500">{t("seed_save_first")}</p>
+                    )}
                   </div>
                 )}
               </Field>
