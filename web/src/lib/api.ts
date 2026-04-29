@@ -181,6 +181,7 @@ export interface ShareWithAccountDto {
   accountSyncId: string;
   accountName: string;
   accountCurrency: string;
+  profileSyncId: string;
   profileName: string;
   email: string;
   role: string;

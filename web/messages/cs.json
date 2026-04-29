@@ -1742,6 +1742,9 @@
   "members_page": {
     "title": "Členové",
     "subtitle": "Lidé, se kterými sdílíš své bankovní účty. Pozvánku můžeš zrušit kdykoliv — pozvaný okamžitě ztratí přístup.",
+    "for_profile": "Pro profil",
+    "not_org_profile_title": "Tento profil není firemní",
+    "not_org_profile_desc": "Sdílení účtů je dostupné jen pro firemní/organizační profily. Přepni se v levém horním menu na firemní profil, nebo vytvoř nový.",
     "loading": "Načítám…",
     "empty_title": "Zatím žádní členové",
     "empty_desc": "Sdílej své bankovní účty s kolegy nebo s účetní. Otevři účet → Sdílení účtu → zadej email.",

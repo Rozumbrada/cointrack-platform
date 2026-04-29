@@ -9,7 +9,8 @@ import {
   getAccessToken,
   getStoredUser,
 } from "@/lib/auth-store";
-import { auth, UserDto } from "@/lib/api";
+import { auth, sync, UserDto } from "@/lib/api";
+import { getCurrentProfileSyncId } from "@/lib/profile-store";
 import ProfileSwitcher from "@/components/app/ProfileSwitcher";
 import { QuickActionFab } from "@/components/app/QuickActionFab";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
@@ -22,10 +23,44 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [activeProfileType, setActiveProfileType] = useState<string | null>(null);
 
   // Zavřít drawer při změně cesty
   useEffect(() => {
     setDrawerOpen(false);
+  }, [pathname]);
+
+  // Sledovat typ aktivního profilu — sekce Členové se zobrazuje
+  // jen pro firemní/organizační profily (ne osobní/skupinové).
+  useEffect(() => {
+    let cancelled = false;
+    const loadProfileType = async () => {
+      const token = getAccessToken();
+      if (!token) return;
+      const syncId = getCurrentProfileSyncId();
+      if (!syncId) {
+        if (!cancelled) setActiveProfileType(null);
+        return;
+      }
+      try {
+        const res = await sync.pull(token);
+        const profile = (res.entities["profiles"] ?? []).find(
+          (e) => e.syncId === syncId && !e.deletedAt,
+        );
+        const type =
+          (profile?.data as Record<string, unknown> | undefined)?.type;
+        if (!cancelled) setActiveProfileType(typeof type === "string" ? type : null);
+      } catch {
+        // ignorujeme — sidebar i bez tohoto musí fungovat
+      }
+    };
+    loadProfileType();
+    const onChange = () => loadProfileType();
+    window.addEventListener("cointrack:profile-changed", onChange);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("cointrack:profile-changed", onChange);
+    };
   }, [pathname]);
 
   useEffect(() => {
@@ -75,13 +110,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const isProfileSelection = pathname?.startsWith("/app/profiles");
 
   const isOrganizationTier = user?.tier === "ORGANIZATION";
+  const isOrganizationalProfile =
+    activeProfileType === "BUSINESS" || activeProfileType === "ORGANIZATION";
+  // Sekce Členové dává smysl jen ve firemním profilu — osobní profil nemá co
+  // sdílet; navíc tier ORGANIZATION je nutný (cena za feature).
+  const showMembers = isOrganizationTier && isOrganizationalProfile;
 
   const nav: Array<{ href: string; label: string; section?: string }> = [
     { href: "/app/dashboard", label: ts("dashboard") },
     { href: "/app/accounts", label: ts("accounts") },
     { href: "/app/banks", label: ts("banks") },
-    // Členové — pouze pro Organization tier (sdílení účtů)
-    ...(isOrganizationTier
+    // Členové — jen pro firemní profil + Organization tier
+    ...(showMembers
       ? [{ href: "/app/members", label: ts("members") }]
       : []),
     { href: "/app/transactions", label: ts("transactions") },

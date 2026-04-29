@@ -13,6 +13,7 @@ import {
 import { withAuth, getAccessToken } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
 import { ServerAccount } from "@/lib/sync-types";
+import { getCurrentProfileSyncId } from "@/lib/profile-store";
 
 type Role = "VIEWER" | "EDITOR" | "ACCOUNTANT";
 
@@ -33,13 +34,45 @@ export default function MembersPage() {
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [editingMember, setEditingMember] = useState<MemberGroup | null>(null);
 
-  const { entitiesByProfile } = useSyncData();
+  const [activeProfileSyncId, setActiveProfileSyncId] = useState<string | null>(null);
+  const [activeProfileType, setActiveProfileType] = useState<string | null>(null);
+  const [activeProfileName, setActiveProfileName] = useState<string | null>(null);
+
+  const { entitiesByProfile, rawEntities } = useSyncData();
   const accounts = entitiesByProfile<ServerAccount>("accounts");
+
+  // Aktuální profil (jeho syncId + type) — sekce Členové dává smysl jen pro
+  // firemní/organizační profil; navíc seznam členů filtrujeme jen na ten profil.
+  useEffect(() => {
+    function refresh() {
+      const syncId = getCurrentProfileSyncId();
+      setActiveProfileSyncId(syncId);
+      const profile = rawEntities("profiles").find((e) => e.syncId === syncId);
+      const data = profile?.data as Record<string, unknown> | undefined;
+      const type = data?.type;
+      const name = data?.name;
+      setActiveProfileType(typeof type === "string" ? type : null);
+      setActiveProfileName(typeof name === "string" ? name : null);
+    }
+    refresh();
+    window.addEventListener("cointrack:profile-changed", refresh);
+    return () => window.removeEventListener("cointrack:profile-changed", refresh);
+  }, [rawEntities]);
+
+  const isOrganizationalProfile =
+    activeProfileType === "BUSINESS" || activeProfileType === "ORGANIZATION";
+
+  // Filtrace shares podle aktivního profilu — vlastník vidí jen členy,
+  // které pozval pro účty patřící zvolenému profilu.
+  const filteredShares = useMemo(() => {
+    if (!activeProfileSyncId) return shares;
+    return shares.filter((s) => s.profileSyncId === activeProfileSyncId);
+  }, [shares, activeProfileSyncId]);
 
   // Seskupit shares podle emailu — "člen" = jeden email s N účty
   const memberGroups: MemberGroup[] = useMemo(() => {
     const map = new Map<string, MemberGroup>();
-    for (const s of shares) {
+    for (const s of filteredShares) {
       const key = s.email.toLowerCase();
       const existing = map.get(key);
       if (existing) {
@@ -65,7 +98,7 @@ export default function MembersPage() {
       }
     }
     return [...map.values()].sort((a, b) => a.email.localeCompare(b.email));
-  }, [shares]);
+  }, [filteredShares]);
 
   async function load() {
     setLoading(true);
@@ -102,14 +135,21 @@ export default function MembersPage() {
     }
   }
 
+  const canManage = isOrganizationTier && isOrganizationalProfile;
+
   return (
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
           <p className="text-sm text-ink-600 mt-1">{t("subtitle")}</p>
+          {activeProfileName && (
+            <p className="text-xs text-ink-500 mt-1">
+              {t("for_profile")}: <span className="font-medium text-ink-700">{activeProfileName}</span>
+            </p>
+          )}
         </div>
-        {isOrganizationTier && (
+        {canManage && (
           <button
             onClick={() => setShowInviteDialog(true)}
             disabled={accounts.length === 0}
@@ -136,6 +176,13 @@ export default function MembersPage() {
           >
             {t("go_upgrade")}
           </Link>
+        </section>
+      )}
+
+      {isOrganizationTier && !isOrganizationalProfile && activeProfileType !== null && (
+        <section className="bg-blue-50 border border-blue-200 rounded-2xl p-6">
+          <h2 className="font-semibold text-blue-900 mb-2">{t("not_org_profile_title")}</h2>
+          <p className="text-sm text-blue-900">{t("not_org_profile_desc")}</p>
         </section>
       )}
 

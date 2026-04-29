@@ -1742,6 +1742,9 @@
   "members_page": {
     "title": "Members",
     "subtitle": "People you share your bank accounts with. You can revoke an invitation anytime — they lose access immediately.",
+    "for_profile": "For profile",
+    "not_org_profile_title": "This profile isn't a business profile",
+    "not_org_profile_desc": "Account sharing is available only for business/organization profiles. Switch to a business profile in the top-left selector, or create a new one.",
     "loading": "Loading…",
     "empty_title": "No members yet",
     "empty_desc": "Share your bank accounts with colleagues or your accountant. Open an account → Account sharing → enter email.",
