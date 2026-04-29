@@ -14,6 +14,21 @@ const COLORS = [
 
 const BUSINESS_FIELD_TYPES = new Set(["PERSONAL", "BUSINESS", "ORGANIZATION"]);
 
+/** BusinessFocus enum mirror z mobile (data/model/BusinessFocus.kt). */
+const BUSINESS_FOCUSES = [
+  "HEALTHCARE",
+  "RETAIL",
+  "GASTRONOMY",
+  "IT_TECH",
+  "CONSTRUCTION",
+  "CONSULTING",
+  "AGRICULTURE",
+  "EDUCATION",
+  "REAL_ESTATE",
+  "TRANSPORT",
+] as const;
+type BusinessFocus = (typeof BUSINESS_FOCUSES)[number];
+
 interface ProfileFormProps {
   mode: "create" | "edit";
   syncId?: string;
@@ -26,11 +41,37 @@ interface ProfileData {
   ico?: string;
   dic?: string;
   isVatPayer?: boolean;
+  businessFocus?: string | null;
   companyName?: string;
+  companyStreet?: string;
+  companyCity?: string;
+  companyZip?: string;
+  companyPhone?: string;
+  companyEmail?: string;
   defaultCurrency?: string;
   organizationId?: string;
   cointrackUserId?: string;
   [key: string]: unknown;
+}
+
+/** ARES API response — minimální výřez, který používáme. */
+interface AresResponse {
+  obchodniJmeno?: string;
+  dic?: string;
+  sidlo?: {
+    nazevObce?: string;
+    psc?: number;
+    uliceSCislem?: string;
+    textovaAdresa?: string;
+  };
+}
+
+/** iDoklad status z backendu. */
+interface IDokladStatus {
+  configured: boolean;
+  clientId?: string;
+  lastSyncAt?: string;
+  tokenExpiresAt?: string;
 }
 
 export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
@@ -54,8 +95,34 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
   const [ico, setIco] = useState("");
   const [dic, setDic] = useState("");
   const [isVatPayer, setIsVatPayer] = useState(false);
+  const [businessFocus, setBusinessFocus] = useState<BusinessFocus | "">("");
   const [companyName, setCompanyName] = useState("");
+  const [companyStreet, setCompanyStreet] = useState("");
+  const [companyCity, setCompanyCity] = useState("");
+  const [companyZip, setCompanyZip] = useState("");
+  const [companyPhone, setCompanyPhone] = useState("");
+  const [companyEmail, setCompanyEmail] = useState("");
   const [defaultCurrency, setDefaultCurrency] = useState("CZK");
+
+  // iDoklad credentials state — per-profil, ukládá se přes /api/v1/idoklad/credentials.
+  // Hodnoty se v UI nezobrazují (jen status + maskovaný clientId ze serveru).
+  // User je zadá → klikne Uložit → backend uloží AES-GCM šifrovaně. Sekce se zobrazí
+  // jen v edit režimu (pro nový profil ještě neexistuje syncId v cloudu).
+  const [idokladStatus, setIdokladStatus] = useState<IDokladStatus | null>(null);
+  const [idokladClientId, setIdokladClientId] = useState("");
+  const [idokladClientSecret, setIdokladClientSecret] = useState("");
+  const [idokladSecretVisible, setIdokladSecretVisible] = useState(false);
+  const [idokladEditing, setIdokladEditing] = useState(false);
+  const [idokladSaving, setIdokladSaving] = useState(false);
+  const [idokladError, setIdokladError] = useState<string | null>(null);
+
+  // ARES lookup state
+  const [aresLoading, setAresLoading] = useState(false);
+  const [aresError, setAresError] = useState<string | null>(null);
+
+  // Seed categories state (mirror z mobile: tlačítko po výběru BusinessFocus)
+  const [seedingCategories, setSeedingCategories] = useState(false);
+  const [seedMessage, setSeedMessage] = useState<string | null>(null);
 
   const [originalData, setOriginalData] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(isEdit);
@@ -81,7 +148,16 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
         setIco(d.ico ?? "");
         setDic(d.dic ?? "");
         setIsVatPayer(!!d.isVatPayer);
+        const bf = d.businessFocus ?? "";
+        setBusinessFocus(
+          BUSINESS_FOCUSES.includes(bf as BusinessFocus) ? (bf as BusinessFocus) : "",
+        );
         setCompanyName(d.companyName ?? "");
+        setCompanyStreet(d.companyStreet ?? "");
+        setCompanyCity(d.companyCity ?? "");
+        setCompanyZip(d.companyZip ?? "");
+        setCompanyPhone(d.companyPhone ?? "");
+        setCompanyEmail(d.companyEmail ?? "");
         setDefaultCurrency(d.defaultCurrency ?? "CZK");
         setLoading(false);
       } catch (e) {
@@ -90,6 +166,126 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
       }
     })();
   }, [isEdit, syncId, t]);
+
+  // Načteme iDoklad status — jen pro edit režim, kde už syncId existuje na backendu.
+  useEffect(() => {
+    if (!isEdit || !syncId) return;
+    (async () => {
+      try {
+        const s = await withAuth((tk) =>
+          api<IDokladStatus>(`/api/v1/idoklad/profiles/${syncId}/status`, { token: tk }),
+        );
+        setIdokladStatus(s);
+        // Pokud není nakonfigurován, automaticky odhalíme editační formulář
+        if (!s.configured) setIdokladEditing(true);
+      } catch {
+        // ignore — pokud je 404 / cokoli, prostě se nezobrazí status
+        setIdokladStatus({ configured: false });
+        setIdokladEditing(true);
+      }
+    })();
+  }, [isEdit, syncId]);
+
+  /** ARES lookup — public ČR registr ekonomických subjektů. */
+  async function lookupAres() {
+    const cleanIco = ico.trim();
+    if (cleanIco.length < 6) return;
+    setAresError(null);
+    setAresLoading(true);
+    try {
+      const res = await fetch(
+        `https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty/${encodeURIComponent(cleanIco)}`,
+      );
+      if (!res.ok) {
+        if (res.status === 404) setAresError(t("ares_not_found"));
+        else setAresError(t("ares_failed", { code: String(res.status) }));
+        return;
+      }
+      const data = (await res.json()) as AresResponse;
+      if (data.obchodniJmeno) setCompanyName(data.obchodniJmeno);
+      if (data.dic) setDic(data.dic);
+      const sidlo = data.sidlo;
+      if (sidlo) {
+        const street = sidlo.uliceSCislem ?? sidlo.textovaAdresa;
+        if (street) setCompanyStreet(street);
+        if (sidlo.nazevObce) setCompanyCity(sidlo.nazevObce);
+        if (sidlo.psc != null) setCompanyZip(String(sidlo.psc));
+      }
+    } catch (e) {
+      setAresError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAresLoading(false);
+    }
+  }
+
+  /** Seed kategorie pro vybrané BusinessFocus — backend musí mít endpoint, jinak fallback alert. */
+  async function seedCategories() {
+    if (!businessFocus) return;
+    setSeedMessage(null);
+    setSeedingCategories(true);
+    try {
+      // TODO: zatím není backend endpoint, simulujeme jen UI feedback. Mobile to dělá
+      // lokálně přes vm.seedFocusCategories(focus). Web to po deploy backend endpointu
+      // může rovnou zavolat.
+      setSeedMessage(t("seed_unavailable"));
+    } finally {
+      setSeedingCategories(false);
+    }
+  }
+
+  /** Uložit iDoklad credentials přes /api/v1/idoklad/credentials. */
+  async function saveIDokladCredentials() {
+    if (!syncId) return;
+    if (!idokladClientId.trim() || !idokladClientSecret.trim()) {
+      setIdokladError(t("idoklad_fill_credentials"));
+      return;
+    }
+    setIdokladError(null);
+    setIdokladSaving(true);
+    try {
+      await withAuth((tk) =>
+        api<{ ok: boolean }>(`/api/v1/idoklad/credentials`, {
+          method: "PUT",
+          token: tk,
+          body: {
+            profileId: syncId,
+            clientId: idokladClientId.trim(),
+            clientSecret: idokladClientSecret.trim(),
+          },
+        }),
+      );
+      // Reset inputs + reload status
+      setIdokladClientId("");
+      setIdokladClientSecret("");
+      setIdokladEditing(false);
+      const s = await withAuth((tk) =>
+        api<IDokladStatus>(`/api/v1/idoklad/profiles/${syncId}/status`, { token: tk }),
+      );
+      setIdokladStatus(s);
+    } catch (e) {
+      setIdokladError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIdokladSaving(false);
+    }
+  }
+
+  /** Smazat iDoklad credentials z backendu. */
+  async function clearIDokladCredentials() {
+    if (!syncId) return;
+    if (!confirm(t("idoklad_disconnect_confirm"))) return;
+    try {
+      await withAuth((tk) =>
+        api(`/api/v1/idoklad/profiles/${syncId}/credentials`, {
+          method: "DELETE",
+          token: tk,
+        }),
+      );
+      setIdokladStatus({ configured: false });
+      setIdokladEditing(true);
+    } catch (e) {
+      setIdokladError(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -135,7 +331,13 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
         ico: ico || undefined,
         dic: dic || undefined,
         isVatPayer,
+        businessFocus: type === "BUSINESS" && businessFocus ? businessFocus : null,
         companyName: companyName || undefined,
+        companyStreet: companyStreet || undefined,
+        companyCity: companyCity || undefined,
+        companyZip: companyZip || undefined,
+        companyPhone: companyPhone || undefined,
+        companyEmail: companyEmail || undefined,
         defaultCurrency,
         organizationId,
       };
@@ -169,6 +371,10 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
   if (loading) {
     return <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>;
   }
+
+  const showBusinessSection = BUSINESS_FIELD_TYPES.has(type);
+  const showFocusSection = type === "BUSINESS";
+  const showIDokladSection = isEdit && BUSINESS_FIELD_TYPES.has(type);
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -259,50 +465,270 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
           </select>
         </Field>
 
-        {BUSINESS_FIELD_TYPES.has(type) && (
-          <div className="border-t border-ink-200 pt-5">
-            <h3 className="text-sm font-medium text-ink-900 mb-3">
+        {showBusinessSection && (
+          <div className="border-t border-ink-200 pt-5 space-y-4">
+            <h3 className="text-sm font-medium text-ink-900">
               {type === "PERSONAL" ? t("company_section_optional") : t("company_section")}
             </h3>
-            <div className="space-y-4">
-              <Field label={t("company_name_label")}>
+
+            {showFocusSection && (
+              <Field label={t("focus_label")}>
+                <select
+                  value={businessFocus}
+                  onChange={(e) => setBusinessFocus(e.target.value as BusinessFocus | "")}
+                  className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900"
+                >
+                  <option value="">{t("focus_none")}</option>
+                  {BUSINESS_FOCUSES.map((f) => (
+                    <option key={f} value={f}>
+                      {t(`focus_${f}` as Parameters<typeof t>[0])}
+                    </option>
+                  ))}
+                </select>
+                {businessFocus && (
+                  <div className="mt-2 space-y-1">
+                    {seedMessage && (
+                      <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
+                        {seedMessage}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={seedCategories}
+                      disabled={seedingCategories}
+                      className="text-xs text-brand-600 hover:text-brand-700 disabled:opacity-50"
+                    >
+                      {t("seed_btn")}
+                    </button>
+                  </div>
+                )}
+              </Field>
+            )}
+
+            <Field label={t("company_name_label")}>
+              <input
+                type="text"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                placeholder={t("company_name_placeholder")}
+                className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900"
+              />
+            </Field>
+
+            <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
+              <Field label={t("ico_label")}>
                 <input
                   type="text"
-                  value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
-                  placeholder={t("company_name_placeholder")}
+                  value={ico}
+                  onChange={(e) => setIco(e.target.value)}
+                  placeholder="12345678"
+                  className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900 tabular-nums"
+                />
+              </Field>
+              <button
+                type="button"
+                onClick={lookupAres}
+                disabled={ico.trim().length < 6 || aresLoading}
+                className="h-11 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium whitespace-nowrap"
+              >
+                {aresLoading ? t("ares_loading") : t("ares_lookup_btn")}
+              </button>
+            </div>
+            {aresError && (
+              <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-2 py-1">
+                {aresError}
+              </div>
+            )}
+
+            <Field label={t("dic_label")}>
+              <input
+                type="text"
+                value={dic}
+                onChange={(e) => setDic(e.target.value)}
+                placeholder="CZ12345678"
+                className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900"
+              />
+            </Field>
+
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isVatPayer}
+                onChange={(e) => setIsVatPayer(e.target.checked)}
+                className="mt-0.5"
+              />
+              <div>
+                <span className="text-sm text-ink-900 block">{t("vat_payer")}</span>
+                <span className="text-xs text-ink-500">{t("vat_payer_desc")}</span>
+              </div>
+            </label>
+
+            <Field label={t("company_street_label")}>
+              <input
+                type="text"
+                value={companyStreet}
+                onChange={(e) => setCompanyStreet(e.target.value)}
+                className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900"
+              />
+            </Field>
+
+            <div className="grid grid-cols-[7rem_1fr] gap-2">
+              <Field label={t("company_zip_label")}>
+                <input
+                  type="text"
+                  value={companyZip}
+                  onChange={(e) => setCompanyZip(e.target.value)}
+                  inputMode="numeric"
+                  className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900 tabular-nums"
+                />
+              </Field>
+              <Field label={t("company_city_label")}>
+                <input
+                  type="text"
+                  value={companyCity}
+                  onChange={(e) => setCompanyCity(e.target.value)}
                   className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900"
                 />
               </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label={t("ico_label")}>
-                  <input
-                    type="text"
-                    value={ico}
-                    onChange={(e) => setIco(e.target.value)}
-                    placeholder="12345678"
-                    className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900 tabular-nums"
-                  />
-                </Field>
-                <Field label={t("dic_label")}>
-                  <input
-                    type="text"
-                    value={dic}
-                    onChange={(e) => setDic(e.target.value)}
-                    placeholder="CZ12345678"
-                    className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900"
-                  />
-                </Field>
-              </div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isVatPayer}
-                  onChange={(e) => setIsVatPayer(e.target.checked)}
-                />
-                <span className="text-sm text-ink-900">{t("vat_payer")}</span>
-              </label>
             </div>
+
+            <Field label={t("company_phone_label")}>
+              <input
+                type="tel"
+                value={companyPhone}
+                onChange={(e) => setCompanyPhone(e.target.value)}
+                className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900"
+              />
+            </Field>
+
+            <Field label={t("company_email_label")}>
+              <input
+                type="email"
+                value={companyEmail}
+                onChange={(e) => setCompanyEmail(e.target.value)}
+                className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900"
+              />
+            </Field>
+          </div>
+        )}
+
+        {showIDokladSection && (
+          <div className="border-t border-ink-200 pt-5 space-y-3">
+            <div>
+              <h3 className="text-sm font-medium text-ink-900">{t("idoklad_section_title")}</h3>
+              <p className="text-xs text-ink-600 mt-1">{t("idoklad_section_desc")}</p>
+            </div>
+
+            {idokladError && (
+              <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-2 py-1.5">
+                {idokladError}
+              </div>
+            )}
+
+            {idokladStatus?.configured && !idokladEditing ? (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-sm space-y-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="text-emerald-900">
+                    <div className="font-medium">{t("idoklad_connected")}</div>
+                    {idokladStatus.clientId && (
+                      <div className="text-xs text-emerald-800 font-mono">
+                        {t("idoklad_client_id_label")} {idokladStatus.clientId}
+                      </div>
+                    )}
+                    {idokladStatus.lastSyncAt && (
+                      <div className="text-xs text-emerald-800">
+                        {t("idoklad_last_sync", {
+                          date: new Date(idokladStatus.lastSyncAt).toLocaleString(),
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIdokladEditing(true)}
+                      className="h-8 px-3 rounded text-xs border border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+                    >
+                      {t("idoklad_change")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearIDokladCredentials}
+                      className="h-8 px-3 rounded text-xs text-red-700 hover:bg-red-50"
+                    >
+                      {t("idoklad_disconnect")}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <Field label={t("idoklad_client_id_field")}>
+                  <input
+                    type="text"
+                    value={idokladClientId}
+                    onChange={(e) => setIdokladClientId(e.target.value)}
+                    placeholder="abc123…"
+                    className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 text-ink-900 font-mono text-sm"
+                  />
+                </Field>
+                <Field label={t("idoklad_client_secret_field")}>
+                  <div className="relative">
+                    <input
+                      type={idokladSecretVisible ? "text" : "password"}
+                      value={idokladClientSecret}
+                      onChange={(e) => setIdokladClientSecret(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full h-11 rounded-lg border border-ink-300 bg-white px-3 pr-12 text-ink-900 font-mono text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setIdokladSecretVisible((v) => !v)}
+                      className="absolute inset-y-0 right-2 px-2 text-xs text-ink-500 hover:text-ink-700"
+                      tabIndex={-1}
+                    >
+                      {idokladSecretVisible ? t("idoklad_hide") : t("idoklad_show")}
+                    </button>
+                  </div>
+                </Field>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={saveIDokladCredentials}
+                    disabled={idokladSaving}
+                    className="h-9 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-medium"
+                  >
+                    {idokladSaving ? t("idoklad_saving") : t("idoklad_save")}
+                  </button>
+                  {idokladStatus?.configured && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIdokladEditing(false);
+                        setIdokladClientId("");
+                        setIdokladClientSecret("");
+                        setIdokladError(null);
+                      }}
+                      className="h-9 px-4 rounded-lg border border-ink-300 text-ink-700 text-sm hover:bg-ink-50"
+                    >
+                      {t("idoklad_cancel")}
+                    </button>
+                  )}
+                </div>
+                <p className="text-xs text-ink-500">
+                  {t("idoklad_help_pre")}{" "}
+                  <a
+                    href="https://app.idoklad.cz"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-brand-600 hover:underline"
+                  >
+                    {t("idoklad_help_link")}
+                  </a>{" "}
+                  {t("idoklad_help_post")}
+                </p>
+              </div>
+            )}
           </div>
         )}
 

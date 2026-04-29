@@ -7,6 +7,7 @@ import Link from "next/link";
 import { bank, BankConnectionDto, BankAccountExtDto, ApiError, sync, api } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { getCurrentProfileSyncId } from "@/lib/profile-store";
+import { FioConnectionCard } from "@/components/app/FioConnectionCard";
 
 interface ProfileLite {
   syncId: string;
@@ -128,8 +129,9 @@ export default function BanksPage() {
         </div>
       )}
 
-      {/* Fio Bank přes API token — samostatný flow, ne Salt Edge */}
-      <FioCard />
+      {/* Fio Bank přes API token — samostatný flow, ne Salt Edge.
+          Inline editor (token + status + sync) — dříve link na /app/fio. */}
+      <FioConnectionCard />
 
       {loading ? (
         <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>
@@ -364,78 +366,6 @@ function labelStatus(s: string, t: (k: string) => string): string {
 }
 
 
-/* ───── Fio Bank card ─────────────────────────────────────────────── */
-
-interface FioStatusDto {
-  configured: boolean;
-  lastSyncAt?: string;
-  lastMovementId?: number;
-  accountIban?: string;
-}
-
-function FioCard() {
-  const t = useTranslations("banks_page");
-  const [status, setStatus] = useState<FioStatusDto | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const profileSyncId = getCurrentProfileSyncId();
-    if (!profileSyncId) {
-      setLoading(false);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        const s = await withAuth((tk) =>
-          api<FioStatusDto>(`/api/v1/fio/profiles/${profileSyncId}/status`, {
-            token: tk,
-          }),
-        );
-        if (!cancelled) setStatus(s);
-      } catch {
-        // ignore — Fio status je nice-to-have, ne kritický
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (loading) return null;
-
-  return (
-    <div className="bg-white rounded-2xl border border-ink-200 overflow-hidden">
-      <div className="flex items-center gap-4 p-5">
-        <div className="w-10 h-10 rounded-lg bg-amber-100 grid place-items-center text-amber-700 text-xl">
-          🟢
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="font-medium text-ink-900">{t("fio_card_title")}</div>
-          <div className="text-xs text-ink-600 mt-0.5">
-            {status?.configured ? (
-              <span className="text-emerald-700">
-                ✓ {t("fio_connected")}
-                {status.accountIban && (
-                  <span className="ml-2 font-mono text-ink-500">
-                    {status.accountIban}
-                  </span>
-                )}
-              </span>
-            ) : (
-              <span className="text-ink-500">{t("fio_not_connected")}</span>
-            )}
-          </div>
-        </div>
-        <Link
-          href="/app/fio"
-          className="h-9 px-3 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium grid place-items-center"
-        >
-          {status?.configured ? t("fio_manage") : t("fio_setup")}
-        </Link>
-      </div>
-    </div>
-  );
-}
+/* Fio Bank card byla přesunuta do <FioConnectionCard /> komponenty
+   (web/src/components/app/FioConnectionCard.tsx) — sjednoceno s mobile
+   patternem, kde Fio token spravuje BankSyncScreen. */
