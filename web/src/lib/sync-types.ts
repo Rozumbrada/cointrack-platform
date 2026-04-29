@@ -114,17 +114,25 @@ export function toUiTransaction(syncId: string, t: ServerTransaction): UiTransac
   };
 }
 
-/** Spočítá živý zůstatek účtu na základě initialBalance + součet transakcí na účtu. */
+/**
+ * Vrátí živý zůstatek účtu.
+ *
+ * **Důležitá historie**: `ServerAccount.initialBalance` je deklarovaná jako
+ * "počáteční zůstatek", ale Android klient ji ve skutečnosti vždy push-uje
+ * jako `account.balance` (= live zůstatek po každé tx). Server tedy uchovává
+ * `initial_balance ≈ klientův live balance v okamžiku posledního push účtu`.
+ *
+ * Sčítat k ní `sum(tx)` znamená dvojí započítání transakcí (jsou už zahrnuté
+ * v initialBalance). Proto vracíme jen tu hodnotu — je konzistentní s tím,
+ * co vidí mobil, a transakce v ní jsou už promítnuté.
+ *
+ * Parametry `transactions`/`accountSyncId` zůstávají v signatuře pro budoucí
+ * čisté řešení (kotva + sum transakcí), aby volající strany nebylo třeba měnit.
+ */
 export function computeAccountBalance(
   account: ServerAccount,
-  transactions: Array<{ data: ServerTransaction }>,
-  accountSyncId: string,
+  _transactions: Array<{ data: ServerTransaction }>,
+  _accountSyncId: string,
 ): number {
-  const initial = parseFloat(account.initialBalance) || 0;
-  let sum = 0;
-  for (const tx of transactions) {
-    if (tx.data.accountId !== accountSyncId) continue;
-    sum += parseFloat(tx.data.amount) || 0;
-  }
-  return initial + sum;
+  return parseFloat(account.initialBalance) || 0;
 }
