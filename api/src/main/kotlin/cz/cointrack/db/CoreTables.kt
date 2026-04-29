@@ -340,6 +340,25 @@ object FioAccounts : SyncableTable("fio_accounts") {
     // token NE-synced
 }
 
+/**
+ * V27: per-Fio-connection credentials. Backend-only storage (NEsynced přes
+ * /sync), 1:1 mapping s mobilní [FioAccounts] přes [id] (= mobilní syncId).
+ *
+ * Token je AES-GCM šifrovaný (stejný klíč jako idoklad_client_secret_enc,
+ * env IDOKLAD_ENC_KEY).
+ */
+object FioCredentials : org.jetbrains.exposed.dao.id.UUIDTable("fio_credentials") {
+    val profileId       = reference("profile_id", Profiles)
+    val name            = text("name")
+    val tokenEnc        = text("token_enc")
+    val accountIban     = text("account_iban").nullable()
+    val lastSyncAt      = timestamp("last_sync_at").nullable()
+    val lastMovementId  = long("last_movement_id").nullable()
+    val createdAt       = timestamp("created_at")
+    val updatedAt       = timestamp("updated_at")
+    val deletedAt       = timestamp("deleted_at").nullable()
+}
+
 // ─── Files metadata ────────────────────────────────────────────────
 object Files : UUIDTable("files") {
     val ownerUserId  = reference("owner_user_id", Users)

@@ -1328,9 +1328,21 @@
     "cancel": "Zrušit",
     "invalid_token": "Token vypadá příliš krátký. Zkontroluj, že jsi ho zkopíroval celý.",
     "sync_result": "Hotovo: {added} nových transakcí přidáno, {skipped} přeskočeno (už byly).",
+    "sync_result_named": "„{name}\": {added} nových transakcí přidáno, {skipped} přeskočeno.",
     "after_sync_pre": "Po synchronizaci najdeš transakce v sekci ",
     "after_sync_link": "Transakce",
-    "after_sync_post": ". Salt Edge účet pro Fio se vytvoří automaticky podle IBAN."
+    "after_sync_post": ". Salt Edge účet pro Fio se vytvoří automaticky podle IBAN.",
+    "multi_per_profile_hint": "můžeš mít více Fio účtů, každý s vlastním tokenem",
+    "add_connection_btn": "+ Přidat Fio účet",
+    "no_connections_yet": "Žádné Fio připojení. Přidej tlačítkem nahoře — token zadáš v dalším kroku.",
+    "connected_short": "připojeno",
+    "never_synced": "Ještě nikdy nesynchronizováno",
+    "connection_name_label": "Pojmenování (pro tebe)",
+    "connection_name_placeholder": "např. Hlavní účet, Firma, Spoření",
+    "token_keep_existing_placeholder": "Nech prázdné pokud token neměníš",
+    "token_keep_hint": "Pokud necháš prázdné, zachová se aktuální token. Změnit jméno můžeš samostatně.",
+    "nothing_to_change": "Vyplň aspoň jméno nebo nový token.",
+    "delete_connection_confirm": "Smazat Fio připojení „{name}\"? Token bude smazán ze serveru, transakce zůstanou."
   },
   "idoklad": {
     "title": "iDoklad",

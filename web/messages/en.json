@@ -1328,9 +1328,21 @@
     "cancel": "Cancel",
     "invalid_token": "Token looks too short. Make sure you copied the full string.",
     "sync_result": "Done: {added} new transactions added, {skipped} skipped (already existed).",
+    "sync_result_named": "\"{name}\": {added} new transactions added, {skipped} skipped.",
     "after_sync_pre": "After sync, find your transactions in ",
     "after_sync_link": "Transactions",
-    "after_sync_post": ". Account is auto-created based on the IBAN."
+    "after_sync_post": ". Account is auto-created based on the IBAN.",
+    "multi_per_profile_hint": "you can have multiple Fio accounts, each with its own token",
+    "add_connection_btn": "+ Add Fio account",
+    "no_connections_yet": "No Fio connections yet. Add one with the button above — you'll enter the token next.",
+    "connected_short": "connected",
+    "never_synced": "Never synced yet",
+    "connection_name_label": "Label (for you)",
+    "connection_name_placeholder": "e.g. Main account, Business, Savings",
+    "token_keep_existing_placeholder": "Leave empty to keep current token",
+    "token_keep_hint": "If empty, the current token is kept. Renaming alone is supported.",
+    "nothing_to_change": "Fill in at least name or a new token.",
+    "delete_connection_confirm": "Delete Fio connection \"{name}\"? Token will be removed from server, transactions stay."
   },
   "idoklad": {
     "title": "iDoklad",

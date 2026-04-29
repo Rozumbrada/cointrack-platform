@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 /**
  * Legacy /app/fio routa — celé Fio UI bylo přesunuto inline do /app/banks
- * ("Bankovní spojení") jako <FioConnectionCard />. Tahle stránka existuje
+ * ("Bankovní spojení") jako <FioConnectionsList />. Tahle stránka existuje
  * už jen pro backward-compat redirect — staré bookmarky / odkazy z e-mailů
  * tak skončí na správném místě.
  */

@@ -7,7 +7,7 @@ import Link from "next/link";
 import { bank, BankConnectionDto, BankAccountExtDto, ApiError, sync, api } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { getCurrentProfileSyncId } from "@/lib/profile-store";
-import { FioConnectionCard } from "@/components/app/FioConnectionCard";
+import { FioConnectionsList } from "@/components/app/FioConnectionsList";
 
 interface ProfileLite {
   syncId: string;
@@ -129,9 +129,9 @@ export default function BanksPage() {
         </div>
       )}
 
-      {/* Fio Bank přes API token — samostatný flow, ne Salt Edge.
-          Inline editor (token + status + sync) — dříve link na /app/fio. */}
-      <FioConnectionCard />
+      {/* Fio Bank přes API token — multi-credential per profil.
+          List všech připojení s add/edit/delete/sync per. V27 backend. */}
+      <FioConnectionsList />
 
       {loading ? (
         <div className="py-20 text-center text-ink-500 text-sm">{t("loading")}</div>
@@ -366,6 +366,6 @@ function labelStatus(s: string, t: (k: string) => string): string {
 }
 
 
-/* Fio Bank card byla přesunuta do <FioConnectionCard /> komponenty
-   (web/src/components/app/FioConnectionCard.tsx) — sjednoceno s mobile
-   patternem, kde Fio token spravuje BankSyncScreen. */
+/* Fio Bank card → multi-credential v <FioConnectionsList /> komponentě
+   (web/src/components/app/FioConnectionsList.tsx). V27 backend podporuje
+   víc Fio API tokenů per profil — list, add, edit, delete, sync per. */
