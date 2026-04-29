@@ -41,19 +41,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   // Sledovat typ aktivního profilu — sekce Členové se zobrazuje
   // jen pro firemní/organizační profily (ne osobní/skupinové).
+  // Závislost na `user` je důležitá: po přihlášení (= auth.me dorazí
+  // a setUser proběhne) se efekt spustí znovu a typ se hned naplní.
   useEffect(() => {
     let cancelled = false;
 
-    // 1) Synchronní reload z cache — pokrývá scénář kdy user přepne profil
-    //    (event "cointrack:profile-changed") a cache už ten profil zná.
     const reloadFromCache = () => {
       const syncId = getCurrentProfileSyncId();
       const cached = getCachedProfileType(syncId);
       if (!cancelled) setActiveProfileType(cached);
     };
 
-    // 2) Async fetch ze serveru — refresh cache + state pro případ že profil
-    //    nebyl v cache (čerstvý login) nebo se změnil typ.
     const loadProfileType = async () => {
       const token = getAccessToken();
       if (!token) return;
@@ -64,7 +62,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       }
       try {
         const res = await sync.pull(token);
-        // Cache typů všech viditelných profilů
         for (const e of res.entities["profiles"] ?? []) {
           if (e.deletedAt) continue;
           const type = (e.data as Record<string, unknown>).type;
@@ -77,7 +74,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           (profile?.data as Record<string, unknown> | undefined)?.type;
         if (!cancelled) setActiveProfileType(typeof type === "string" ? type : null);
       } catch {
-        // ignorujeme — sidebar i bez tohoto musí fungovat
+        // ignore — sidebar i bez tohoto musí fungovat
       }
     };
 
@@ -96,7 +93,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       window.removeEventListener("cointrack:profile-changed", onProfileChange);
       window.removeEventListener("cointrack:profile-type-changed", onTypeChange);
     };
-  }, [pathname]);
+  }, [pathname, user?.id]);
 
   useEffect(() => {
     const token = getAccessToken();
