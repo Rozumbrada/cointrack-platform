@@ -1196,6 +1196,8 @@
     "subtitle_pre": "Sync incoming and outgoing invoices from iDoklad.cz. Invoices appear in the",
     "subtitle_link": "Invoices",
     "subtitle_post": " section.",
+    "for_profile": "For profile",
+    "per_profile_hint": "credentials are tied to this profile only",
     "no_profile": "Pick a profile in the top-left corner first.",
     "loading": "Loading…",
     "connected": "✓ iDoklad connected",

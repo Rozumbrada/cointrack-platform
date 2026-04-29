@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { api } from "@/lib/api";
+import { api, sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { getCurrentProfileSyncId } from "@/lib/profile-store";
 
@@ -25,9 +25,25 @@ export default function IDokladPage() {
   const t = useTranslations("idoklad");
   const locale = useLocale();
   const profileSyncId = getCurrentProfileSyncId();
+  const [profileName, setProfileName] = useState<string | null>(null);
   const [status, setStatus] = useState<IDokladStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Načteme jméno aktivního profilu — credentials jsou per-profil, ať to user vidí
+  useEffect(() => {
+    if (!profileSyncId) return;
+    (async () => {
+      try {
+        const res = await withAuth((tk) => sync.pull(tk));
+        const entity = (res.entities["profiles"] ?? []).find((e) => e.syncId === profileSyncId);
+        const name = (entity?.data as Record<string, unknown> | undefined)?.name;
+        if (typeof name === "string") setProfileName(name);
+      } catch {
+        // ignorujeme — fallback bez názvu
+      }
+    })();
+  }, [profileSyncId]);
 
   // Form
   const [clientId, setClientId] = useState("");
@@ -149,6 +165,12 @@ export default function IDokladPage() {
           <a href="/app/invoices" className="text-brand-600 hover:underline">{t("subtitle_link")}</a>
           {t("subtitle_post")}
         </p>
+        {profileName && (
+          <p className="text-xs text-ink-500 mt-2">
+            {t("for_profile")}: <span className="font-medium text-ink-700">{profileName}</span>
+            <span className="ml-2 text-ink-400">— {t("per_profile_hint")}</span>
+          </p>
+        )}
       </div>
 
       {error && (

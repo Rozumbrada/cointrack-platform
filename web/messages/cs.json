@@ -1196,6 +1196,8 @@
     "subtitle_pre": "Synchronizace přijatých a vystavených faktur z iDoklad.cz. Faktury se objeví v sekci",
     "subtitle_link": "Faktury",
     "subtitle_post": ".",
+    "for_profile": "Pro profil",
+    "per_profile_hint": "credentials jsou vázané jen na tento profil",
     "no_profile": "Vyber nejdřív profil v levém horním rohu.",
     "loading": "Načítám…",
     "connected": "✓ iDoklad připojen",
