@@ -2,6 +2,7 @@ package cz.cointrack.sync
 
 import cz.cointrack.db.*
 import cz.cointrack.plugins.ApiException
+import cz.cointrack.sharing.AccountShareService
 import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.json.*
 import org.jetbrains.exposed.dao.id.EntityID
