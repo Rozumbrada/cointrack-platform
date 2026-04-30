@@ -379,10 +379,23 @@ class FioService(private val client: FioClient = FioClient()) {
             }
             client.fetchLast(token)
         } catch (e: FioException) {
+            // Log Fio chybu detailně — `e.message` jinak browser nevidí, protože
+            // CORS hlavičky chybí na error responses (TODO: opravit globálně).
+            log.warn(
+                "Fio API rejection při syncu credential={}, profile={}: {}",
+                credentialId, profileDbId, e.message, e,
+            )
             throw ApiException(
                 HttpStatusCode.BadGateway, "fio_api_failed",
                 "Fio API odmítl požadavek: ${e.message}",
             )
+        } catch (e: Exception) {
+            // Cokoliv jiného — taky logni, ať vidíme v produkci co se stalo.
+            log.error(
+                "Fio sync neočekávaná chyba pro credential={}, profile={}: {}",
+                credentialId, profileDbId, e.message, e,
+            )
+            throw e
         }
 
         val info = statement.accountStatement.info
