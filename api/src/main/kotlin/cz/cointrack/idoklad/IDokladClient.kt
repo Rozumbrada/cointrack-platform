@@ -48,7 +48,17 @@ class IDokladClient {
         expectSuccess = false
     }
 
-    private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+    private val json = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        // coerceInputValues: pokud iDoklad vrátí "Items": null místo "Items": [],
+        // místo padání použij default hodnotu z data class (= emptyList()).
+        // Stejně pro IsPaid: false default při null odpovědi.
+        coerceInputValues = true
+        // explicitNulls = false: nevyžaduje aby všechny nullable fieldy byly v JSONu
+        // explicitně přítomné (i jako null) — chybějící klíč → null.
+        explicitNulls = false
+    }
 
     @Serializable
     data class TokenResponse(
@@ -109,12 +119,26 @@ class IDokladClient {
             parameter("page", page)
             parameter("pagesize", pageSize)
         }
+        val body = resp.bodyAsText()
         if (!resp.status.isSuccess()) {
-            val body = resp.bodyAsText()
             log.warn("iDoklad GET {} failed: {} {}", path, resp.status, body.take(200))
             throw IDokladException("$path request failed: ${resp.status}", resp.status)
         }
-        return json.decodeFromString(IDokladInvoicePage.serializer(), resp.bodyAsText())
+        return try {
+            json.decodeFromString(IDokladInvoicePage.serializer(), body)
+        } catch (e: Exception) {
+            // iDoklad mění schema — když nový field je non-nullable, deserializace
+            // padne. Logujeme skutečnou chybu + sample odpovědi, ať to jde rychle
+            // diagnostikovat (a ne "Unhandled exception" bez kontextu).
+            log.error(
+                "iDoklad GET {} response deserialization failed: {} | response sample: {}",
+                path, e.message, body.take(500),
+            )
+            throw IDokladException(
+                "iDoklad odpověď nelze zpracovat (možná nový field v API): ${e.message?.take(200)}",
+                resp.status,
+            )
+        }
     }
 
     @Serializable

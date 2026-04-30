@@ -152,12 +152,27 @@ class IDokladService(private val client: IDokladClient = IDokladClient()) {
             }
         }
 
-        // Stáhni všechny stránky issued + received
-        val issued = fetchAllPages { page ->
-            client.listIssuedInvoices(token.access_token, page = page)
+        // Stáhni všechny stránky issued + received. iDoklad API občas vrací
+        // 4xx/5xx nebo deserializace selže (neznámý schema field) — chytáme,
+        // logujeme a vyhodíme srozumitelnou ApiException, ať klient vidí
+        // konkrétní problém místo "Internal Server Error".
+        val issued = try {
+            fetchAllPages { page -> client.listIssuedInvoices(token.access_token, page = page) }
+        } catch (e: IDokladException) {
+            log.warn("iDoklad listIssuedInvoices selhal: {}", e.message)
+            throw ApiException(
+                HttpStatusCode.BadGateway, "idoklad_fetch_failed",
+                "iDoklad: ${e.message?.take(200) ?: "neznámá chyba"}",
+            )
         }
-        val received = fetchAllPages { page ->
-            client.listReceivedInvoices(token.access_token, page = page)
+        val received = try {
+            fetchAllPages { page -> client.listReceivedInvoices(token.access_token, page = page) }
+        } catch (e: IDokladException) {
+            log.warn("iDoklad listReceivedInvoices selhal: {}", e.message)
+            throw ApiException(
+                HttpStatusCode.BadGateway, "idoklad_fetch_failed",
+                "iDoklad: ${e.message?.take(200) ?: "neznámá chyba"}",
+            )
         }
 
         // Upsert
