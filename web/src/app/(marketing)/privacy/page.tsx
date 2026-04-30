@@ -46,11 +46,10 @@ export default async function PrivacyPage() {
           <p>{t("p_third_intro")}</p>
           <ul>
             <li><strong>{t("third_wedos_b")}</strong>{t("third_wedos")}</li>
-            <li><strong>{t("third_hetzner_b")}</strong>{t("third_hetzner")}</li>
             <li><strong>{t("third_vercel_b")}</strong>{t("third_vercel")}</li>
-            <li><strong>{t("third_stripe_b")}</strong>{t("third_stripe")}</li>
-            <li><strong>{t("third_resend_b")}</strong>{t("third_resend")}</li>
             <li><strong>{t("third_psd2_b")}</strong>{t("third_psd2")}</li>
+            <li><strong>{t("third_fio_b")}</strong>{t("third_fio")}</li>
+            <li><strong>{t("third_idoklad_b")}</strong>{t("third_idoklad")}</li>
             <li><strong>{t("third_google_b")}</strong>{t("third_google")}</li>
           </ul>
           <p>{t("p_third_dpa")}</p>
