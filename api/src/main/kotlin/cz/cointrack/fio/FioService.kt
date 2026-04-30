@@ -335,10 +335,9 @@ class FioService(private val client: FioClient = FioClient()) {
         var lastIban: String? = null
         var lastMovId: Long? = null
         for (id in ids) {
-            val r = runCatching { syncConnection(userId, id) }.getOrElse { e ->
-                log.warn("Fio sync connection $id selhal: ${e.message}")
-                return@for
-            }
+            val r = runCatching { syncConnection(userId, id) }
+                .onFailure { e -> log.warn("Fio sync connection $id selhal: ${e.message}") }
+                .getOrNull() ?: continue
             totalAdded += r.added
             totalSkipped += r.skipped
             if (r.accountIban != null) lastIban = r.accountIban
