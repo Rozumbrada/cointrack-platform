@@ -188,7 +188,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/app/investments", label: ts("investments"), section: ts("section_assets") },
     { href: "/app/exchange-rates", label: ts("exchange_rates"), section: ts("section_tools") },
     { href: "/app/import", label: ts("import_csv") },
-    { href: "/app/organizations", label: ts("organizations"), section: ts("section_social") },
+    // /app/organizations odebráno z menu (sdílení / pozvánky řešíme v ProfileForm
+    // u ORGANIZATION typu profilu). Stránka existuje dál — přístupná přes
+    // přímý odkaz, což stačí pro power-uživatele.
     { href: "/app/upgrade", label: ts("upgrade"), section: ts("section_account") },
     { href: "/app/settings", label: ts("settings") },
   ];
