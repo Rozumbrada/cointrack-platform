@@ -12,6 +12,12 @@ import {
   setDefaultAccountSyncId,
 } from "@/lib/profile-store";
 import { tierDisplayName } from "@/lib/tier";
+import {
+  isAutoSyncEnabled,
+  setAutoSyncEnabled,
+  getAutoSyncIntervalMinutes,
+  setAutoSyncIntervalMinutes,
+} from "@/lib/auto-sync-settings";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -32,6 +38,23 @@ export default function SettingsPage() {
       setDefaultAccount(getDefaultAccountSyncId(profileSyncId) ?? "");
     }
   }, [profileSyncId]);
+
+  // Auto-sync state — read once z localStorage, write through na change.
+  const [autoSyncEnabled, setAutoSyncEnabledState] = useState(true);
+  const [autoSyncInterval, setAutoSyncIntervalState] = useState(30);
+  useEffect(() => {
+    setAutoSyncEnabledState(isAutoSyncEnabled());
+    setAutoSyncIntervalState(getAutoSyncIntervalMinutes());
+  }, []);
+  function onToggleAutoSync(v: boolean) {
+    setAutoSyncEnabledState(v);
+    setAutoSyncEnabled(v);
+  }
+  function onChangeAutoSyncInterval(v: number) {
+    if (!Number.isFinite(v) || v <= 0) return;
+    setAutoSyncIntervalState(v);
+    setAutoSyncIntervalMinutes(v);
+  }
 
   function onChangeDefaultAccount(v: string) {
     if (!profileSyncId) return;
@@ -140,6 +163,43 @@ export default function SettingsPage() {
             value={user?.emailVerified ? t("yes_verified") : t("not_verified")}
           />
         </dl>
+      </section>
+
+      <section className="bg-white rounded-2xl border border-ink-200 p-6 space-y-3">
+        <div>
+          <h2 className="font-semibold text-ink-900 mb-2">{t("auto_sync_section")}</h2>
+          <p className="text-sm text-ink-600">{t("auto_sync_desc")}</p>
+        </div>
+        <label className="flex items-start gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={autoSyncEnabled}
+            onChange={(e) => onToggleAutoSync(e.target.checked)}
+            className="mt-1"
+          />
+          <div>
+            <span className="text-sm text-ink-900 block">{t("auto_sync_enabled_label")}</span>
+            <span className="text-xs text-ink-500">{t("auto_sync_enabled_hint")}</span>
+          </div>
+        </label>
+        {autoSyncEnabled && (
+          <div className="pl-6">
+            <label className="block text-xs text-ink-700 mb-1">
+              {t("auto_sync_interval_label")}
+            </label>
+            <select
+              value={autoSyncInterval}
+              onChange={(e) => onChangeAutoSyncInterval(parseInt(e.target.value, 10))}
+              className="h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900"
+            >
+              {[15, 30, 60, 120, 240].map((m) => (
+                <option key={m} value={m}>
+                  {t("auto_sync_interval_minutes", { count: m })}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </section>
 
       <section className="bg-white rounded-2xl border border-ink-200 p-6">

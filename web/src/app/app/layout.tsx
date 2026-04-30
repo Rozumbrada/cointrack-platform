@@ -19,6 +19,9 @@ import { tierDisplayName } from "@/lib/tier";
 import ProfileSwitcher from "@/components/app/ProfileSwitcher";
 import { QuickActionFab } from "@/components/app/QuickActionFab";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
+import { SyncButton } from "@/components/app/SyncButton";
+import { SyncStatusToast } from "@/components/app/SyncStatusToast";
+import { maybeRunAutoSync, AutoSyncResult } from "@/lib/auto-sync";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -38,6 +41,43 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       return cached ? cached.toUpperCase() : null;
     },
   );
+
+  // Auto-sync — Fio + iDoklad backend pull při startu / profile change.
+  // Throttling per profil v auto-sync-settings (default 30 min).
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<AutoSyncResult | null>(null);
+  const [syncProfileSyncId, setSyncProfileSyncId] = useState<string | null>(
+    () => getCurrentProfileSyncId(),
+  );
+
+  // Track aktuální profileSyncId (musí se updatovat při profile-changed).
+  useEffect(() => {
+    const update = () => setSyncProfileSyncId(getCurrentProfileSyncId());
+    window.addEventListener("cointrack:profile-changed", update);
+    return () => window.removeEventListener("cointrack:profile-changed", update);
+  }, []);
+
+  // Při startu / profile change → maybeRunAutoSync (throttled).
+  // Fire-and-forget — žádný await v efektu, výsledek dorazí asynchronně.
+  useEffect(() => {
+    if (!syncProfileSyncId) return;
+    let cancelled = false;
+    setSyncing(true);
+    maybeRunAutoSync(syncProfileSyncId)
+      .then((result) => {
+        if (cancelled) return;
+        if (result) setSyncResult(result);
+      })
+      .catch(() => {
+        // runAllSyncs nikdy nehází, ale pro jistotu fallback
+      })
+      .finally(() => {
+        if (!cancelled) setSyncing(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [syncProfileSyncId]);
 
   // Zavřít drawer při změně cesty
   useEffect(() => {
@@ -247,6 +287,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           >
             {ts("manage_profiles")}
           </Link>
+          <SyncButton
+            profileSyncId={syncProfileSyncId}
+            syncing={syncing}
+            onStart={() => setSyncing(true)}
+            onComplete={(r) => {
+              setSyncing(false);
+              setSyncResult(r);
+            }}
+            variant="sidebar"
+          />
         </div>
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
           {nav.map((item) => {
@@ -306,6 +356,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             Cointrack
           </Link>
           <div className="flex items-center gap-2 shrink-0">
+            <SyncButton
+              profileSyncId={syncProfileSyncId}
+              syncing={syncing}
+              onStart={() => setSyncing(true)}
+              onComplete={(r) => {
+                setSyncing(false);
+                setSyncResult(r);
+              }}
+              variant="topbar"
+            />
             <LocaleSwitcher />
             <button
               onClick={() => setDrawerOpen(true)}
@@ -402,6 +462,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       )}
 
       <QuickActionFab />
+      <SyncStatusToast result={syncResult} onDismiss={() => setSyncResult(null)} />
     </div>
   );
 }

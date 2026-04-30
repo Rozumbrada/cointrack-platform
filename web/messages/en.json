@@ -2026,6 +2026,12 @@
     "verified_email": "Verified email",
     "yes_verified": "✓ yes",
     "not_verified": "no",
+    "auto_sync_section": "Automatic sync",
+    "auto_sync_desc": "When you open the web app, the server automatically pulls Fio API + iDoklad for the active profile — new transactions and invoices show up without having to click \"Sync\". Throttling prevents pointless repeats on frequent opens.",
+    "auto_sync_enabled_label": "Run auto-sync on startup",
+    "auto_sync_enabled_hint": "Triggers Fio + iDoklad backend sync when you open the app or switch profile.",
+    "auto_sync_interval_label": "Minimum interval between syncs:",
+    "auto_sync_interval_minutes": "{count, plural, one {1 minute} other {{count} minutes}}",
     "default_account_section": "Receipts",
     "default_account_desc": "Default account for scanned and uploaded receipts/invoices (except cash — those always go to the Cash account). The setting is stored locally in your browser and applies only to the currently selected profile.",
     "default_account_none": "— no default (first account in list) —",
@@ -2066,5 +2072,18 @@
   },
   "locale_switcher": {
     "label": "Language"
+  },
+  "auto_sync": {
+    "manual_sync_btn": "Sync everything",
+    "manual_sync_title": "Sync Fio + iDoklad now",
+    "syncing": "Syncing…",
+    "toast_new_data": "Synced",
+    "toast_all_up_to_date": "All up to date",
+    "toast_with_errors": "Sync finished with errors",
+    "new_tx": "{count, plural, one {1 new transaction} other {{count} new transactions}}",
+    "no_new_tx": "no new",
+    "new_invoices": "{count, plural, one {1 new invoice} other {{count} new invoices}}",
+    "no_new_invoices": "no new invoices",
+    "dismiss": "Dismiss"
   }
 }

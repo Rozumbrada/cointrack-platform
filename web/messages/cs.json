@@ -2026,6 +2026,12 @@
     "verified_email": "Ověřený email",
     "yes_verified": "✓ ano",
     "not_verified": "ne",
+    "auto_sync_section": "Automatická synchronizace",
+    "auto_sync_desc": "Při otevření webu server automaticky zavolá Fio API a iDoklad pro aktivní profil — nové transakce a faktury se objeví bez nutnosti klikat „Synchronizovat\". Throttling brání zbytečnému opakování při častém otvírání.",
+    "auto_sync_enabled_label": "Zapnout automatickou synchronizaci při startu",
+    "auto_sync_enabled_hint": "Spustí Fio + iDoklad sync na backendu při otevření webu nebo přepnutí profilu.",
+    "auto_sync_interval_label": "Minimální interval mezi syncs:",
+    "auto_sync_interval_minutes": "{count, plural, one {1 minuta} few {{count} minuty} other {{count} minut}}",
     "default_account_section": "Doklady",
     "default_account_desc": "Výchozí účet pro naskenované a nahrané účtenky/faktury (kromě hotovostních — ty jdou vždy na účet Hotovost). Nastavení je uloženo lokálně v prohlížeči a platí jen pro aktuálně vybraný profil.",
     "default_account_none": "— bez defaultu (první účet v seznamu) —",
@@ -2066,5 +2072,18 @@
   },
   "locale_switcher": {
     "label": "Jazyk"
+  },
+  "auto_sync": {
+    "manual_sync_btn": "Synchronizovat vše",
+    "manual_sync_title": "Synchronizovat Fio + iDoklad teď",
+    "syncing": "Synchronizuji…",
+    "toast_new_data": "Synchronizováno",
+    "toast_all_up_to_date": "Vše aktuální",
+    "toast_with_errors": "Synchronizace s chybami",
+    "new_tx": "{count, plural, one {1 nová transakce} few {{count} nové transakce} other {{count} nových transakcí}}",
+    "no_new_tx": "žádné nové",
+    "new_invoices": "{count, plural, one {1 nová faktura} few {{count} nové faktury} other {{count} nových faktur}}",
+    "no_new_invoices": "žádné nové faktury",
+    "dismiss": "Zavřít"
   }
 }
