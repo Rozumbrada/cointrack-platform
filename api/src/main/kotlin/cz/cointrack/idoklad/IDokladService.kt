@@ -195,10 +195,15 @@ class IDokladService(private val client: IDokladClient = IDokladClient()) {
         var page = 1
         while (true) {
             val resp = fetch(page)
-            out.addAll(resp.Data)
-            if (page >= resp.TotalPages) break
+            val items = resp.Data.Items
+            if (items.isEmpty()) break
+            out.addAll(items)
+            // Pagination meta je v různých iDoklad endpointech různě pojmenovaná
+            // — TotalPagesCount není garantované. Místo toho iterujeme dokud
+            // dostáváme nějaké Items. Safety stop: 50 stránek (= 1000 faktur
+            // při default pageSize 20).
             page++
-            if (page > 50) break  // safety
+            if (page > 50) break
         }
         return out
     }

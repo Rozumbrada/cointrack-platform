@@ -141,12 +141,30 @@ class IDokladClient {
         }
     }
 
+    /**
+     * Response wrapper iDoklad v3 list endpointů.
+     *
+     * Zjištěno empiricky 30. dubna 2026 (předtím jsme čekali plain array).
+     * iDoklad API vrací: `{"Data": {"Items": [...], ...metadata}}` — `Data`
+     * je vnořený objekt obsahující jak data tak pagination metadata.
+     */
     @Serializable
     data class IDokladInvoicePage(
-        val Data: List<IDokladInvoice>,
-        val TotalItems: Int = 0,
-        val TotalPages: Int = 1,
-        val Page: Int = 1,
+        val Data: IDokladInvoiceData = IDokladInvoiceData(),
+    )
+
+    /**
+     * Vnitřní wrapper. iDoklad používá různé názvy paginace v různých endpointech;
+     * čteme všechny tolerantně (default 0 / 1 pro chybějící). `fetchAllPages`
+     * stejně iteruje dokud `Items.isEmpty()` — pagination meta jen pro telemetrii.
+     */
+    @Serializable
+    data class IDokladInvoiceData(
+        val Items: List<IDokladInvoice> = emptyList(),
+        val TotalItemsCount: Int = 0,
+        val TotalPagesCount: Int = 0,
+        val PageNumber: Int = 0,
+        val PageSize: Int = 0,
     )
 
     /**
