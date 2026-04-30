@@ -353,6 +353,17 @@ class FioService(private val client: FioClient = FioClient()) {
 
     // ─── Internal helpers ──────────────────────────────────────────────────
 
+    /**
+     * Vyhodí Fio API token z error message, který Fio vrací zpět jako součást
+     * URL v JSON response (`"path":"/ib_api/rest/.../{token}/.../"`).
+     * Bez maskování by se token protlačil do logu i do error response klientovi.
+     */
+    private fun sanitizeFioError(msg: String?): String {
+        if (msg == null) return "<no message>"
+        // Fio API path má formát .../<token>/... kde token je 64-char alfanumeric.
+        return msg.replace(Regex("/[A-Za-z0-9]{40,}/"), "/<TOKEN>/")
+    }
+
     private fun decryptToken(encToken: String): String =
         runCatching { IDokladCrypto.decrypt(encToken) }
             .getOrElse {
@@ -373,24 +384,35 @@ class FioService(private val client: FioClient = FioClient()) {
         token: String,
         lastIdInDb: Long?,
     ): SyncResult {
+        // Reset cursor je nejen optional — Fio API občas 500-uje na set-last-id
+        // (token bez "Stahování výpisů" permission, dočasná Fio chyba, atd.).
+        // Necháme to selhat tiše: fetchLast pak vezme cokoliv Fio nabídne (= last
+        // 90 dní pokud není cursor nastaven, nebo od posledního cursoru).
+        if (lastIdInDb == null) {
+            runCatching { client.setLastId(token, 0L) }
+                .onFailure { e ->
+                    log.warn(
+                        "Fio set-last-id(0) selhalo pro credential={}, pokračuji bez resetu: {}",
+                        credentialId, sanitizeFioError(e.message),
+                    )
+                }
+        }
+
         val statement = try {
-            if (lastIdInDb == null) {
-                client.setLastId(token, 0L)
-            }
             client.fetchLast(token)
         } catch (e: FioException) {
-            // Log Fio chybu detailně — `e.message` jinak browser nevidí, protože
-            // CORS hlavičky chybí na error responses (TODO: opravit globálně).
+            // Sanitizujeme: Fio vrací token jako součást URL v error response,
+            // což by se jinak protlačilo do logu jako plain text.
+            val safeMsg = sanitizeFioError(e.message)
             log.warn(
                 "Fio API rejection při syncu credential={}, profile={}: {}",
-                credentialId, profileDbId, e.message, e,
+                credentialId, profileDbId, safeMsg,
             )
             throw ApiException(
                 HttpStatusCode.BadGateway, "fio_api_failed",
-                "Fio API odmítl požadavek: ${e.message}",
+                "Fio API odmítl požadavek: $safeMsg",
             )
         } catch (e: Exception) {
-            // Cokoliv jiného — taky logni, ať vidíme v produkci co se stalo.
             log.error(
                 "Fio sync neočekávaná chyba pro credential={}, profile={}: {}",
                 credentialId, profileDbId, e.message, e,
