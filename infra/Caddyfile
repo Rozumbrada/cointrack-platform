@@ -44,6 +44,38 @@ api.cointrack.cz {
 
 # ─── MinIO (public file access přes presigned URLs) ─────────────────
 files.cointrack.cz {
+    # CORS pro PUT (upload účtenek/faktur z webu) i GET (fotky v UI).
+    # Bez těchto hlaviček browser blokuje cross-origin PUT z cointrack.cz
+    # → user vidí "Failed to fetch" v DocumentDialog.scan flow.
+    #
+    # Allowed origins: cointrack.cz (production web) + localhost:3000 (dev).
+    # Pokud bys měl víc origins, vyextrahuj do @cors named matcher.
+    @corsOrigin header Origin "https://cointrack.cz"
+    @corsOriginLocal header Origin "http://localhost:3000"
+
+    header @corsOrigin {
+        Access-Control-Allow-Origin "https://cointrack.cz"
+        Access-Control-Allow-Methods "GET, PUT, POST, OPTIONS"
+        Access-Control-Allow-Headers "Content-Type, Authorization, x-amz-content-sha256, x-amz-date, x-amz-meta-*, x-amz-acl"
+        Access-Control-Expose-Headers "ETag"
+        Access-Control-Max-Age "3600"
+        Vary "Origin"
+    }
+    header @corsOriginLocal {
+        Access-Control-Allow-Origin "http://localhost:3000"
+        Access-Control-Allow-Methods "GET, PUT, POST, OPTIONS"
+        Access-Control-Allow-Headers "Content-Type, Authorization, x-amz-content-sha256, x-amz-date, x-amz-meta-*, x-amz-acl"
+        Access-Control-Expose-Headers "ETag"
+        Access-Control-Max-Age "3600"
+        Vary "Origin"
+    }
+
+    # Preflight OPTIONS — okamžitá odpověď (CORS hlavičky doplňují @corsOrigin výš).
+    @options method OPTIONS
+    handle @options {
+        respond 204
+    }
+
     reverse_proxy minio:9000 {
         header_up Host {host}
         header_up X-Real-IP {remote_host}
@@ -55,12 +87,6 @@ files.cointrack.cz {
         Strict-Transport-Security "max-age=31536000"
         X-Content-Type-Options "nosniff"
         -Server
-    }
-
-    # CORS pro Next.js web (fotky v UI)
-    @options method OPTIONS
-    handle @options {
-        respond 204
     }
 
     encode gzip
