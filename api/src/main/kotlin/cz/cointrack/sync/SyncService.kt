@@ -388,11 +388,11 @@ class SyncService {
                 val owned = if (ownedProfileIds.isEmpty()) emptyList() else
                     Receipts.selectAll()
                         .where { (Receipts.profileId inList ownedProfileIds) and (Receipts.updatedAt greater effectiveSince) }
-                        .map { receiptToEntity(it, profileIdToSync, categoryIdToSync, transactionIdToSync) }
+                        .map { receiptToEntity(it, profileIdToSync, categoryIdToSync, transactionIdToSync, accountIdToSync) }
                 val accountant = if (accountantProfileIds.isEmpty()) emptyList() else
                     Receipts.selectAll()
                         .where { (Receipts.profileId inList accountantProfileIds) and (Receipts.updatedAt greater effectiveSinceForShared) }
-                        .map { receiptToEntity(it, profileIdToSync, categoryIdToSync, transactionIdToSync) }
+                        .map { receiptToEntity(it, profileIdToSync, categoryIdToSync, transactionIdToSync, accountIdToSync) }
                 val sharedTxIds = transactionIdToSync.keys.toList()
                 val shared = if (sharedTxIds.isEmpty()) emptyList() else
                     Receipts.selectAll()
@@ -401,7 +401,7 @@ class SyncService {
                                 (Receipts.profileId notInList userProfileIds) and
                                 (Receipts.updatedAt greater effectiveSinceForShared)
                         }
-                        .map { receiptToEntity(it, profileIdToSync, categoryIdToSync, transactionIdToSync) }
+                        .map { receiptToEntity(it, profileIdToSync, categoryIdToSync, transactionIdToSync, accountIdToSync) }
                 owned + accountant + shared
             }
 
@@ -934,22 +934,24 @@ class SyncService {
         val profileDbId = resolveProfileDbId(e.data.str("profileId"), userId) ?: return UpsertResult.Forbidden
         val categoryDbId = resolveCategoryDbId(e.data.strOrNull("categoryId"))
         val transactionDbId = resolveTransactionDbId(e.data.strOrNull("transactionId"))
+        // V29: linkedAccountId pro Pohoda export — ručně přiřazený účet (CARD platby).
+        val linkedAccountDbId = resolveAccountDbId(e.data.strOrNull("linkedAccountId"))
         val existing = Receipts.selectAll().where { Receipts.syncId eq syncId }.singleOrNull()
 
         if (existing != null) {
             if (existing[Receipts.updatedAt] >= updatedAt) {
-                return UpsertResult.Conflict(receiptToEntity(existing, emptyMap(), emptyMap(), emptyMap()))
+                return UpsertResult.Conflict(receiptToEntity(existing, emptyMap(), emptyMap(), emptyMap(), emptyMap()))
             }
             Receipts.update({ Receipts.syncId eq syncId }) {
                 applyReceiptFields(it, e.data, e.clientVersion, updatedAt, deletedAt,
-                    profileDbId, categoryDbId, transactionDbId, isInsert = false)
+                    profileDbId, categoryDbId, transactionDbId, linkedAccountDbId, isInsert = false)
             }
         } else {
             Receipts.insert {
                 it[Receipts.syncId] = syncId
                 it[Receipts.createdAt] = updatedAt
                 applyReceiptFields(it, e.data, e.clientVersion, updatedAt, deletedAt,
-                    profileDbId, categoryDbId, transactionDbId, isInsert = true)
+                    profileDbId, categoryDbId, transactionDbId, linkedAccountDbId, isInsert = true)
             }
         }
         return UpsertResult.Accepted
@@ -957,11 +959,12 @@ class SyncService {
 
     private fun applyReceiptFields(
         s: UpdateBuilder<*>, d: JsonObject, cv: Long, updatedAt: Instant, deletedAt: Instant?,
-        profileDbId: UUID, categoryDbId: UUID?, transactionDbId: UUID?, isInsert: Boolean
+        profileDbId: UUID, categoryDbId: UUID?, transactionDbId: UUID?, linkedAccountDbId: UUID?, isInsert: Boolean
     ) {
         if (isInsert) s[Receipts.profileId] = EntityID(profileDbId, Profiles)
         s[Receipts.categoryId] = categoryDbId?.let { EntityID(it, Categories) }
         s[Receipts.transactionId] = transactionDbId?.let { EntityID(it, Transactions) }
+        s[Receipts.linkedAccountId] = linkedAccountDbId?.let { EntityID(it, Accounts) }
         s[Receipts.merchantName] = d.strOrNull("merchantName")
         s[Receipts.merchantIco] = d.strOrNull("merchantIco")
         s[Receipts.merchantDic] = d.strOrNull("merchantDic")
@@ -1281,6 +1284,7 @@ class SyncService {
         profileIdToSync: Map<UUID, UUID>,
         categoryIdToSync: Map<UUID, UUID>,
         transactionIdToSync: Map<UUID, UUID>,
+        accountIdToSync: Map<UUID, UUID>,
     ) = SyncEntity(
         syncId = r[Receipts.syncId].toString(),
         updatedAt = r[Receipts.updatedAt].toString(),
@@ -1293,6 +1297,9 @@ class SyncService {
             }
             r[Receipts.transactionId]?.let {
                 put("transactionId", (transactionIdToSync[it.value] ?: it.value).toString())
+            }
+            r[Receipts.linkedAccountId]?.let {
+                put("linkedAccountId", (accountIdToSync[it.value] ?: it.value).toString())
             }
             r[Receipts.merchantName]?.let { put("merchantName", it) }
             r[Receipts.merchantIco]?.let { put("merchantIco", it) }

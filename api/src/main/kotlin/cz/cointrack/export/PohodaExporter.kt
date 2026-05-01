@@ -178,12 +178,17 @@ object PohodaExporter {
         val photoNote = receiptPhotoUrl(r)
         val baseText = "Karetní platba - $merchant"
         val text = (if (photoNote != null) "$baseText | Foto: $photoNote" else baseText).take(240)
-        // Bankovní účet — buď z propojené tx přes Receipts.transactionId, nebo prázdné.
-        // Pro <bnk:account> (typ:refType) potřebujeme Pohoda Zkratku (typ:ids), ne číslo.
-        val pohodaIds = r[Receipts.transactionId]?.let { txId ->
-            Transactions.selectAll().where { Transactions.id eq txId }.singleOrNull()
-                ?.let { tx -> tx[Transactions.accountId]?.let { pohodaIdsForAccount(it.value) } }
-        }
+        // V29: Bankovní účet — priorita lookup:
+        //   1) Receipts.linkedAccountId (manuální přiřazení web/mobil)
+        //   2) Receipts.transactionId → Transactions.accountId (auto-match)
+        //   3) profile default BANK account (legacy fallback — bez `<bnk:account>`
+        //      Pohoda dokument importovala do Pokladny místo Banky)
+        val pohodaIds = r[Receipts.linkedAccountId]?.let { pohodaIdsForAccount(it.value) }
+            ?: r[Receipts.transactionId]?.let { txId ->
+                Transactions.selectAll().where { Transactions.id eq txId }.singleOrNull()
+                    ?.let { tx -> tx[Transactions.accountId]?.let { pohodaIdsForAccount(it.value) } }
+            }
+            ?: defaultBankAccountIds(r[Receipts.profileId].value)
         sb.appendLine("""  <dat:dataPackItem id="$seq" version="2.0">""")
         sb.appendLine("""    <bnk:bank version="2.0">""")
         sb.appendLine("""      <bnk:bankHeader>""")
@@ -584,6 +589,24 @@ object PohodaExporter {
             return BankRef(explicit, explicitCode)
         }
         return parseIban(acc[Accounts.bankIban].orEmpty())
+    }
+
+    /**
+     * V29: fallback pro CARD účtenky bez explicit linked account — najde první
+     * BANK-typ účet v profilu (pomocí `Accounts.type`). Vrátí jeho Pohoda Zkratku.
+     * Když profil nemá ani jeden bank account, vrátí null → `<bnk:account>` se vynechá.
+     */
+    private fun defaultBankAccountIds(profileDbId: java.util.UUID): String? {
+        val firstBank = Accounts.selectAll()
+            .where {
+                (Accounts.profileId eq EntityID(profileDbId, Profiles)) and
+                    (Accounts.type eq "BANK") and
+                    (Accounts.deletedAt.isNull())
+            }
+            .orderBy(Accounts.createdAt)
+            .limit(1)
+            .singleOrNull() ?: return null
+        return pohodaIdsForAccount(firstBank[Accounts.id].value)
     }
 
     /**

@@ -117,6 +117,12 @@ object Receipts : SyncableTable("receipts") {
     val profileId       = reference("profile_id", Profiles)
     val categoryId      = reference("category_id", Categories).nullable()
     val transactionId   = reference("transaction_id", Transactions).nullable()
+    /**
+     * V29: ručně přiřazený účet pro účtenku — slouží Pohoda XML exportu
+     * pro CARD účtenky bez linkované transakce. Bez tohoto fieldu Pohoda
+     * importovala bankovní doklady bez `<bnk:account>` do Pokladny.
+     */
+    val linkedAccountId = reference("linked_account_id", Accounts).nullable()
 
     val merchantName    = varchar("merchant_name", 256).nullable()
     val merchantIco     = varchar("merchant_ico", 16).nullable()
