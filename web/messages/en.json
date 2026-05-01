@@ -1979,6 +1979,7 @@
     "dialog_cancel": "Cancel",
     "dialog_no_accounts": "You have no bank accounts. Create one in the Bank accounts section.",
     "dialog_invalid_email": "Invalid email.",
+    "dialog_settings": "Settings",
     "dialog_visibility": "What they see",
     "dialog_visibility_income": "Income",
     "dialog_visibility_expenses": "Expenses",

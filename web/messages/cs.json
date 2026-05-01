@@ -1979,6 +1979,7 @@
     "dialog_cancel": "Zrušit",
     "dialog_no_accounts": "Nemáš žádný bankovní účet. Vytvoř ho v sekci Bankovní účty.",
     "dialog_invalid_email": "Neplatný email.",
+    "dialog_settings": "Nastavení",
     "dialog_visibility": "Co uvidí",
     "dialog_visibility_income": "Příjmy",
     "dialog_visibility_expenses": "Výdaje",

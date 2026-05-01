@@ -34,8 +34,9 @@ interface MemberGroup {
   visibilityCategories: string[] | null;
 }
 
-/** Per-account visibility filter (income + expenses + categories whitelist). */
-interface PerAccountVisibility {
+/** Per-account nastavení: role + visibility filter (income + expenses + categories whitelist). */
+interface PerAccountSettings {
+  role: Role;
   income: boolean;
   expenses: boolean;
   categories: string[] | null;
@@ -268,32 +269,58 @@ export default function MembersPage() {
                     )}
                   </td>
                   <td className="px-6 py-3 text-ink-700">
-                    {g.role === "ACCOUNTANT" ? (
-                      <span>
-                        <span className="font-medium">{t("whole_profile")}:</span>{" "}
-                        {g.shares[0]?.profileName}
-                      </span>
-                    ) : (
-                      <div className="space-y-0.5">
-                        {g.shares.map((s) => (
-                          <div key={s.id}>
-                            <span>{s.accountName}</span>
-                            <span className="text-xs text-ink-400 ml-1.5">
-                              ({s.accountCurrency} · {s.profileName})
+                    <div className="space-y-0.5">
+                      {g.shares.map((s) => (
+                        <div key={s.id}>
+                          {s.role === "ACCOUNTANT" ? (
+                            <span>
+                              <span className="font-medium">{t("whole_profile")}:</span>{" "}
+                              {s.profileName}
                             </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                          ) : (
+                            <>
+                              <span>{s.accountName}</span>
+                              <span className="text-xs text-ink-400 ml-1.5">
+                                ({s.accountCurrency} · {s.profileName})
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </td>
                   <td className="px-6 py-3">
-                    <span className="text-xs uppercase tracking-wide bg-ink-100 text-ink-700 px-1.5 py-0.5 rounded">
-                      {g.role === "EDITOR"
-                        ? t("role_editor")
-                        : g.role === "ACCOUNTANT"
-                          ? t("role_accountant")
-                          : t("role_viewer")}
-                    </span>
+                    {(() => {
+                      const roles = new Set(g.shares.map((s) => s.role));
+                      if (roles.size === 1) {
+                        const r = [...roles][0];
+                        return (
+                          <span className="text-xs uppercase tracking-wide bg-ink-100 text-ink-700 px-1.5 py-0.5 rounded">
+                            {r === "EDITOR"
+                              ? t("role_editor")
+                              : r === "ACCOUNTANT"
+                                ? t("role_accountant")
+                                : t("role_viewer")}
+                          </span>
+                        );
+                      }
+                      // Mixed roles → list per share
+                      return (
+                        <div className="space-y-0.5">
+                          {g.shares.map((s) => (
+                            <div key={s.id}>
+                              <span className="text-xs uppercase tracking-wide bg-ink-100 text-ink-700 px-1.5 py-0.5 rounded">
+                                {s.role === "EDITOR"
+                                  ? t("role_editor")
+                                  : s.role === "ACCOUNTANT"
+                                    ? t("role_accountant")
+                                    : t("role_viewer")}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className="px-6 py-3">
                     {g.status === "active" && (
@@ -355,9 +382,9 @@ export default function MembersPage() {
   );
 }
 
-/** Default per-account visibility — vše vidí (income + expenses, kategorie bez filtru). */
-function defaultVisibility(): PerAccountVisibility {
-  return { income: true, expenses: true, categories: null };
+/** Default per-account nastavení: VIEWER role + vše vidí (income + expenses, kategorie bez filtru). */
+function defaultSettings(): PerAccountSettings {
+  return { role: "VIEWER", income: true, expenses: true, categories: null };
 }
 
 function InviteDialog({
@@ -373,17 +400,16 @@ function InviteDialog({
 }) {
   const t = useTranslations("members_page");
   const [email, setEmail] = useState("");
-  // Vis per-account: vybraný účet má svůj záznam, default je "vše vidět".
+  // Per-account: vybraný účet má svůj záznam (role + visibility), default = VIEWER vše vidí.
   // Mapa se synchronizuje s checkboxy — když user odznačí, mažem ji z mapy.
-  const [accountVis, setAccountVis] = useState<Map<string, PerAccountVisibility>>(
+  const [accountSettings, setAccountSettings] = useState<Map<string, PerAccountSettings>>(
     () => {
-      const m = new Map<string, PerAccountVisibility>();
-      if (accounts.length > 0) m.set(accounts[0].syncId, defaultVisibility());
+      const m = new Map<string, PerAccountSettings>();
+      if (accounts.length > 0) m.set(accounts[0].syncId, defaultSettings());
       return m;
     },
   );
   const [expandedAccountId, setExpandedAccountId] = useState<string | null>(null);
-  const [role, setRole] = useState<Role>("VIEWER");
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -392,40 +418,40 @@ function InviteDialog({
     [accounts],
   );
 
-  const selectedAccountIds = useMemo(() => new Set(accountVis.keys()), [accountVis]);
+  const selectedAccountIds = useMemo(() => new Set(accountSettings.keys()), [accountSettings]);
 
   function toggleAccount(syncId: string) {
-    setAccountVis((prev) => {
+    setAccountSettings((prev) => {
       const next = new Map(prev);
       if (next.has(syncId)) {
         next.delete(syncId);
         if (expandedAccountId === syncId) setExpandedAccountId(null);
       } else {
-        next.set(syncId, defaultVisibility());
+        next.set(syncId, defaultSettings());
       }
       return next;
     });
   }
 
-  function updateAccountVis(syncId: string, patch: Partial<PerAccountVisibility>) {
-    setAccountVis((prev) => {
+  function updateAccountSettings(syncId: string, patch: Partial<PerAccountSettings>) {
+    setAccountSettings((prev) => {
       const next = new Map(prev);
-      const current = next.get(syncId) ?? defaultVisibility();
+      const current = next.get(syncId) ?? defaultSettings();
       next.set(syncId, { ...current, ...patch });
       return next;
     });
   }
 
   function selectAll() {
-    const m = new Map<string, PerAccountVisibility>();
+    const m = new Map<string, PerAccountSettings>();
     for (const a of sortedAccounts) {
-      m.set(a.syncId, accountVis.get(a.syncId) ?? defaultVisibility());
+      m.set(a.syncId, accountSettings.get(a.syncId) ?? defaultSettings());
     }
-    setAccountVis(m);
+    setAccountSettings(m);
   }
 
   function clearSelection() {
-    setAccountVis(new Map());
+    setAccountSettings(new Map());
     setExpandedAccountId(null);
   }
 
@@ -443,17 +469,17 @@ function InviteDialog({
     try {
       const normalizedEmail = email.trim().toLowerCase();
       for (const accountSyncId of selectedAccountIds) {
-        const vis = accountVis.get(accountSyncId) ?? defaultVisibility();
+        const s = accountSettings.get(accountSyncId) ?? defaultSettings();
         // ACCOUNTANT vidí všechno, filtry neaplikujeme.
-        const visibilityArg = role === "ACCOUNTANT"
+        const visibilityArg = s.role === "ACCOUNTANT"
           ? undefined
           : {
-              visibilityIncome: vis.income,
-              visibilityExpenses: vis.expenses,
-              visibilityCategories: vis.categories,
+              visibilityIncome: s.income,
+              visibilityExpenses: s.expenses,
+              visibilityCategories: s.categories,
             };
         await withAuth((tk) =>
-          accountShares.invite(tk, accountSyncId, normalizedEmail, role, visibilityArg),
+          accountShares.invite(tk, accountSyncId, normalizedEmail, s.role, visibilityArg),
         );
       }
       onCreated();
@@ -501,7 +527,7 @@ function InviteDialog({
               {sortedAccounts.map((a) => {
                 const isSel = selectedAccountIds.has(a.syncId);
                 const isExpanded = expandedAccountId === a.syncId;
-                const vis = accountVis.get(a.syncId) ?? defaultVisibility();
+                const settings = accountSettings.get(a.syncId) ?? defaultSettings();
                 return (
                   <div key={a.syncId} className={isSel ? "bg-brand-50/40" : ""}>
                     <div className="flex items-center gap-2 px-3 py-2 text-sm">
@@ -518,7 +544,16 @@ function InviteDialog({
                         {a.data.name}
                       </span>
                       <span className="text-xs text-ink-500">{a.data.currency}</span>
-                      {isSel && role !== "ACCOUNTANT" && (
+                      {isSel && (
+                        <span className="text-xs uppercase tracking-wide bg-ink-100 text-ink-700 px-1.5 py-0.5 rounded">
+                          {settings.role === "EDITOR"
+                            ? t("role_editor")
+                            : settings.role === "ACCOUNTANT"
+                              ? t("role_accountant")
+                              : t("role_viewer")}
+                        </span>
+                      )}
+                      {isSel && (
                         <button
                           type="button"
                           onClick={() =>
@@ -526,22 +561,27 @@ function InviteDialog({
                           }
                           className="text-xs text-brand-600 hover:text-brand-700 font-medium px-2 py-1 rounded hover:bg-brand-100"
                         >
-                          {isExpanded ? "▾" : "▸"} {t("dialog_visibility")}
+                          {isExpanded ? "▾" : "▸"} {t("dialog_settings")}
                         </button>
                       )}
                     </div>
-                    {isSel && isExpanded && role !== "ACCOUNTANT" && (
-                      <div className="px-4 pb-3 pt-1 bg-white border-t border-ink-100">
+                    {isSel && isExpanded && (
+                      <div className="px-4 pb-3 pt-2 bg-white border-t border-ink-100 space-y-3">
+                        <RolePicker
+                          role={settings.role}
+                          setRole={(r) => updateAccountSettings(a.syncId, { role: r })}
+                          compact
+                        />
                         <VisibilityPicker
-                          role={role}
+                          role={settings.role}
                           categories={categories}
-                          income={vis.income}
-                          setIncome={(v) => updateAccountVis(a.syncId, { income: v })}
-                          expenses={vis.expenses}
-                          setExpenses={(v) => updateAccountVis(a.syncId, { expenses: v })}
-                          categoriesFilter={vis.categories}
+                          income={settings.income}
+                          setIncome={(v) => updateAccountSettings(a.syncId, { income: v })}
+                          expenses={settings.expenses}
+                          setExpenses={(v) => updateAccountSettings(a.syncId, { expenses: v })}
+                          categoriesFilter={settings.categories}
                           setCategoriesFilter={(v) =>
-                            updateAccountVis(a.syncId, { categories: v })
+                            updateAccountSettings(a.syncId, { categories: v })
                           }
                         />
                       </div>
@@ -552,14 +592,6 @@ function InviteDialog({
             </div>
           )}
         </div>
-
-        <RolePicker role={role} setRole={setRole} />
-
-        {role === "ACCOUNTANT" && (
-          <div className="rounded-lg bg-ink-50 border border-ink-200 px-3 py-2 text-xs text-ink-700">
-            {t("dialog_visibility_acct_warning")}
-          </div>
-        )}
 
         {err && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">{err}</div>
@@ -601,14 +633,14 @@ function EditMemberDialog({
 }) {
   const t = useTranslations("members_page");
 
-  // Per-share visibility z aktuálních dat (každý share má vlastní filter,
-  // server to už dlouho podporuje, jen UI to dosud zobrazovalo zploštěně).
-  const [accountVis, setAccountVis] = useState<Map<string, PerAccountVisibility>>(
+  // Per-share nastavení z aktuálních dat (každý share má vlastní role + visibility).
+  const [accountSettings, setAccountSettings] = useState<Map<string, PerAccountSettings>>(
     () => {
-      const m = new Map<string, PerAccountVisibility>();
+      const m = new Map<string, PerAccountSettings>();
       for (const s of member.shares) {
         if (!s.accountSyncId) continue;
         m.set(s.accountSyncId, {
+          role: (s.role as Role) ?? "VIEWER",
           income: s.visibilityIncome,
           expenses: s.visibilityExpenses,
           categories: s.visibilityCategories ?? null,
@@ -618,7 +650,6 @@ function EditMemberDialog({
     },
   );
   const [expandedAccountId, setExpandedAccountId] = useState<string | null>(null);
-  const [role, setRole] = useState<Role>(member.role);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -631,7 +662,7 @@ function EditMemberDialog({
     return set;
   }, [member.shares]);
 
-  const selectedAccountIds = useMemo(() => new Set(accountVis.keys()), [accountVis]);
+  const selectedAccountIds = useMemo(() => new Set(accountSettings.keys()), [accountSettings]);
 
   const sortedAccounts = useMemo(
     () => [...accounts].sort((a, b) => a.data.name.localeCompare(b.data.name)),
@@ -639,39 +670,39 @@ function EditMemberDialog({
   );
 
   function toggleAccount(syncId: string) {
-    setAccountVis((prev) => {
+    setAccountSettings((prev) => {
       const next = new Map(prev);
       if (next.has(syncId)) {
         next.delete(syncId);
         if (expandedAccountId === syncId) setExpandedAccountId(null);
       } else {
-        next.set(syncId, defaultVisibility());
+        next.set(syncId, defaultSettings());
       }
       return next;
     });
   }
 
-  function updateAccountVis(syncId: string, patch: Partial<PerAccountVisibility>) {
-    setAccountVis((prev) => {
+  function updateAccountSettings(syncId: string, patch: Partial<PerAccountSettings>) {
+    setAccountSettings((prev) => {
       const next = new Map(prev);
-      const current = next.get(syncId) ?? defaultVisibility();
+      const current = next.get(syncId) ?? defaultSettings();
       next.set(syncId, { ...current, ...patch });
       return next;
     });
   }
 
   function selectAll() {
-    setAccountVis((prev) => {
-      const next = new Map<string, PerAccountVisibility>();
+    setAccountSettings((prev) => {
+      const next = new Map<string, PerAccountSettings>();
       for (const a of sortedAccounts) {
-        next.set(a.syncId, prev.get(a.syncId) ?? defaultVisibility());
+        next.set(a.syncId, prev.get(a.syncId) ?? defaultSettings());
       }
       return next;
     });
   }
 
   function clearSelection() {
-    setAccountVis(new Map());
+    setAccountSettings(new Map());
     setExpandedAccountId(null);
   }
 
@@ -686,18 +717,17 @@ function EditMemberDialog({
     setSaving(true);
     setErr(null);
     try {
-      const roleChanged = role !== member.role;
-
-      // 1) Update existujících shares — role + per-share visibility podle accountVis.
+      // 1) Update existujících shares — per-share role + visibility podle accountSettings.
       //    Pokud se účet odebral, share půjde revoknout v kroku 3.
       for (const s of member.shares) {
         if (!s.accountSyncId) continue;
-        const newVis = accountVis.get(s.accountSyncId);
-        if (!newVis) continue; // pojede revoke později
-        const incomeChanged = newVis.income !== s.visibilityIncome;
-        const expensesChanged = newVis.expenses !== s.visibilityExpenses;
+        const newS = accountSettings.get(s.accountSyncId);
+        if (!newS) continue; // pojede revoke později
+        const roleChanged = newS.role !== s.role;
+        const incomeChanged = newS.income !== s.visibilityIncome;
+        const expensesChanged = newS.expenses !== s.visibilityExpenses;
         const categoriesChanged =
-          JSON.stringify(newVis.categories ?? null) !==
+          JSON.stringify(newS.categories ?? null) !==
           JSON.stringify(s.visibilityCategories ?? null);
 
         if (roleChanged || incomeChanged || expensesChanged || categoriesChanged) {
@@ -708,14 +738,14 @@ function EditMemberDialog({
             visibilityCategories?: string[] | null;
             resetVisibilityCategories?: boolean;
           } = {};
-          if (roleChanged) update.role = role;
-          if (incomeChanged) update.visibilityIncome = newVis.income;
-          if (expensesChanged) update.visibilityExpenses = newVis.expenses;
+          if (roleChanged) update.role = newS.role;
+          if (incomeChanged) update.visibilityIncome = newS.income;
+          if (expensesChanged) update.visibilityExpenses = newS.expenses;
           if (categoriesChanged) {
-            if (newVis.categories === null) {
+            if (newS.categories === null) {
               update.resetVisibilityCategories = true;
             } else {
-              update.visibilityCategories = newVis.categories;
+              update.visibilityCategories = newS.categories;
             }
           }
           await withAuth((tk) => accountShares.updateShare(tk, s.id, update));
@@ -727,18 +757,18 @@ function EditMemberDialog({
       const toAdd = [...selectedAccountIds].filter((sid) => !currentSyncIds.has(sid));
       const toRemove = [...currentSyncIds].filter((sid) => !selectedAccountIds.has(sid));
 
-      // 3) Přidat shares pro nové účty (s per-account visibility z mapy)
+      // 3) Přidat shares pro nové účty (s per-account role + visibility z mapy)
       for (const accountSyncId of toAdd) {
-        const v = accountVis.get(accountSyncId) ?? defaultVisibility();
-        const visibilityArg = role === "ACCOUNTANT"
+        const s = accountSettings.get(accountSyncId) ?? defaultSettings();
+        const visibilityArg = s.role === "ACCOUNTANT"
           ? undefined
           : {
-              visibilityIncome: v.income,
-              visibilityExpenses: v.expenses,
-              visibilityCategories: v.categories,
+              visibilityIncome: s.income,
+              visibilityExpenses: s.expenses,
+              visibilityCategories: s.categories,
             };
         await withAuth((tk) =>
-          accountShares.invite(tk, accountSyncId, member.email, role, visibilityArg),
+          accountShares.invite(tk, accountSyncId, member.email, s.role, visibilityArg),
         );
       }
 
@@ -786,7 +816,7 @@ function EditMemberDialog({
               {sortedAccounts.map((a) => {
                 const isSel = selectedAccountIds.has(a.syncId);
                 const isExpanded = expandedAccountId === a.syncId;
-                const vis = accountVis.get(a.syncId) ?? defaultVisibility();
+                const settings = accountSettings.get(a.syncId) ?? defaultSettings();
                 return (
                   <div key={a.syncId} className={isSel ? "bg-brand-50/40" : ""}>
                     <div className="flex items-center gap-2 px-3 py-2 text-sm">
@@ -803,7 +833,16 @@ function EditMemberDialog({
                         {a.data.name}
                       </span>
                       <span className="text-xs text-ink-500">{a.data.currency}</span>
-                      {isSel && role !== "ACCOUNTANT" && (
+                      {isSel && (
+                        <span className="text-xs uppercase tracking-wide bg-ink-100 text-ink-700 px-1.5 py-0.5 rounded">
+                          {settings.role === "EDITOR"
+                            ? t("role_editor")
+                            : settings.role === "ACCOUNTANT"
+                              ? t("role_accountant")
+                              : t("role_viewer")}
+                        </span>
+                      )}
+                      {isSel && (
                         <button
                           type="button"
                           onClick={() =>
@@ -811,22 +850,27 @@ function EditMemberDialog({
                           }
                           className="text-xs text-brand-600 hover:text-brand-700 font-medium px-2 py-1 rounded hover:bg-brand-100"
                         >
-                          {isExpanded ? "▾" : "▸"} {t("dialog_visibility")}
+                          {isExpanded ? "▾" : "▸"} {t("dialog_settings")}
                         </button>
                       )}
                     </div>
-                    {isSel && isExpanded && role !== "ACCOUNTANT" && (
-                      <div className="px-4 pb-3 pt-1 bg-white border-t border-ink-100">
+                    {isSel && isExpanded && (
+                      <div className="px-4 pb-3 pt-2 bg-white border-t border-ink-100 space-y-3">
+                        <RolePicker
+                          role={settings.role}
+                          setRole={(r) => updateAccountSettings(a.syncId, { role: r })}
+                          compact
+                        />
                         <VisibilityPicker
-                          role={role}
+                          role={settings.role}
                           categories={categories}
-                          income={vis.income}
-                          setIncome={(v) => updateAccountVis(a.syncId, { income: v })}
-                          expenses={vis.expenses}
-                          setExpenses={(v) => updateAccountVis(a.syncId, { expenses: v })}
-                          categoriesFilter={vis.categories}
+                          income={settings.income}
+                          setIncome={(v) => updateAccountSettings(a.syncId, { income: v })}
+                          expenses={settings.expenses}
+                          setExpenses={(v) => updateAccountSettings(a.syncId, { expenses: v })}
+                          categoriesFilter={settings.categories}
                           setCategoriesFilter={(v) =>
-                            updateAccountVis(a.syncId, { categories: v })
+                            updateAccountSettings(a.syncId, { categories: v })
                           }
                         />
                       </div>
@@ -837,14 +881,6 @@ function EditMemberDialog({
             </div>
           )}
         </div>
-
-        <RolePicker role={role} setRole={setRole} />
-
-        {role === "ACCOUNTANT" && (
-          <div className="rounded-lg bg-ink-50 border border-ink-200 px-3 py-2 text-xs text-ink-700">
-            {t("dialog_visibility_acct_warning")}
-          </div>
-        )}
 
         {err && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">{err}</div>
@@ -1016,11 +1052,47 @@ function VisibilityPicker({
 function RolePicker({
   role,
   setRole,
+  compact = false,
 }: {
   role: Role;
   setRole: (r: Role) => void;
+  compact?: boolean;
 }) {
   const t = useTranslations("members_page");
+  if (compact) {
+    // Kompaktní 3-button group pro per-account zobrazení
+    return (
+      <div>
+        <div className="text-xs font-medium text-ink-700 mb-1">{t("dialog_role")}</div>
+        <div className="grid grid-cols-3 gap-1">
+          {(["VIEWER", "EDITOR", "ACCOUNTANT"] as Role[]).map((r) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => setRole(r)}
+              className={
+                "h-8 rounded-md text-xs font-medium transition " +
+                (role === r
+                  ? "bg-brand-600 text-white"
+                  : "bg-ink-100 text-ink-700 hover:bg-ink-200")
+              }
+            >
+              {r === "EDITOR"
+                ? t("role_editor")
+                : r === "ACCOUNTANT"
+                  ? t("role_accountant")
+                  : t("role_viewer")}
+            </button>
+          ))}
+        </div>
+        {role === "ACCOUNTANT" && (
+          <div className="mt-1 text-xs text-ink-600">
+            {t("dialog_role_accountant_desc")}
+          </div>
+        )}
+      </div>
+    );
+  }
   return (
     <div>
       <div className="text-xs font-medium text-ink-700 mb-2">{t("dialog_role")}</div>
