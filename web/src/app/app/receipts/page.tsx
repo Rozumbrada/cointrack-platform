@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
 import { ServerAccount } from "@/lib/sync-types";
+import { getPersistedSearch, setPersistedSearch } from "@/lib/persisted-search";
 import {
   Period,
   PeriodSelector,
@@ -43,11 +43,10 @@ export default function ReceiptsPage() {
   const receipts = entitiesByProfile<ReceiptData>("receipts");
   const accounts = entitiesByProfile<ServerAccount>("accounts");
 
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  // Search persistovaný v URL ?q= aby zůstal po návratu z detailu účtenky.
-  const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
+  // Search persistovaný v sessionStorage — přežívá navigaci na detail účtenky a zpět.
+  const [query, setQuery] = useState(() => getPersistedSearch("receipts"));
+  useEffect(() => { setPersistedSearch("receipts", query); }, [query]);
+
   const [linkFilter, setLinkFilter] = useState<"ALL" | "LINKED" | "UNLINKED">("ALL");
   const [accountFilter, setAccountFilter] = useState<string>("ALL");
   const [creating, setCreating] = useState(false);
@@ -56,15 +55,6 @@ export default function ReceiptsPage() {
     from: "",
     to: "",
   });
-
-  // URL ↔ query sync — replace, ne push, abychom history nepřetížili.
-  useEffect(() => {
-    const params = new URLSearchParams(Array.from(searchParams.entries()));
-    if (query.trim()) params.set("q", query.trim());
-    else params.delete("q");
-    router.replace(params.toString() ? `${pathname}?${params}` : pathname, { scroll: false });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
 
   // Lookup mapy pro fulltext search napříč všemi poli (název účtu, kategorie).
   const accountNameMap = useMemo(() => {

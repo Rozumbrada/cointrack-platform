@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { Pencil, Trash2 } from "lucide-react";
 import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
 import { ServerAccount } from "@/lib/sync-types";
+import { getPersistedSearch, setPersistedSearch } from "@/lib/persisted-search";
 import {
   Period,
   PeriodSelector,
@@ -46,11 +46,10 @@ export default function InvoicesPage() {
   const invoices = entitiesByProfile<InvoiceData>("invoices");
   const accounts = entitiesByProfile<ServerAccount>("accounts");
 
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  // Search v URL ?q= aby zůstal po návratu z detailu faktury.
-  const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
+  // Search v sessionStorage — přežívá navigaci na detail faktury a zpět.
+  const [query, setQuery] = useState(() => getPersistedSearch("invoices"));
+  useEffect(() => { setPersistedSearch("invoices", query); }, [query]);
+
   const [filter, setFilter] = useState<"ALL" | "RECEIVED" | "ISSUED">("ALL");
   const [paidFilter, setPaidFilter] = useState<"ALL" | "PAID" | "UNPAID">("ALL");
   const [accountFilter, setAccountFilter] = useState<string>("ALL");
@@ -60,14 +59,6 @@ export default function InvoicesPage() {
     to: "",
   });
   const [creating, setCreating] = useState(false);
-
-  useEffect(() => {
-    const params = new URLSearchParams(Array.from(searchParams.entries()));
-    if (query.trim()) params.set("q", query.trim());
-    else params.delete("q");
-    router.replace(params.toString() ? `${pathname}?${params}` : pathname, { scroll: false });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
 
   // Lookup mapy pro fulltext search (název účtu).
   const accountNameMap = useMemo(() => {

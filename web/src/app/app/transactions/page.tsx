@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
+import { getPersistedSearch, setPersistedSearch } from "@/lib/persisted-search";
 import {
   ServerAccount,
   ServerCategory,
@@ -26,27 +26,14 @@ export default function TransactionsPage() {
   const t = useTranslations("transactions_page");
   const locale = useLocale();
   const { loading, error, entitiesByProfile, diagnose, profileSyncId, reload } = useSyncData();
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
 
   const [filter, setFilter] = useState<"ALL" | "INCOME" | "EXPENSE">("ALL");
   /** "ALL" = vše, "CASH" = bez vazby na účet, jinak account syncId */
   const [accountFilter, setAccountFilter] = useState<string>("ALL");
-  // Search query persistovaný v URL — když uživatel přejde do detailu tx
-  // a vrátí se zpět, ?q=… zůstane v URL a tedy i ve stavu.
-  const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
-
-  // Při změně query updatuj URL (replace, ne push — neplníme history zbytečnými
-  // mezistavy při psaní). Debouncing nepotřebujeme, je to lokální navigace.
-  useEffect(() => {
-    const params = new URLSearchParams(Array.from(searchParams.entries()));
-    if (query.trim()) params.set("q", query.trim());
-    else params.delete("q");
-    const newUrl = params.toString() ? `${pathname}?${params}` : pathname;
-    router.replace(newUrl, { scroll: false });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
+  // Search persistovaný v sessionStorage — přežívá navigaci v rámci tabu
+  // (klik na řádek → detail tx → zpět zachová text v search inputu).
+  const [query, setQuery] = useState(() => getPersistedSearch("transactions"));
+  useEffect(() => { setPersistedSearch("transactions", query); }, [query]);
   const [period, setPeriod] = useState<Period>("30d");
   const [customRange, setCustomRange] = useState<{ from: string; to: string }>({
     from: "",
