@@ -246,8 +246,10 @@ export default function AccountForm({ mode, syncId }: AccountFormProps) {
           </div>
         </label>
 
-        {/* Bank fields — jen pro typ BANK / CREDIT_CARD */}
-        {(type === "BANK" || type === "CREDIT_CARD") && (
+        {/* Bank + Pohoda fields — pro všechny non-CASH účty (CASH = pokladna,
+            tam Pohoda Zkratku nepotřebuje). Pohoda Zkratka je KLÍČ pro
+            export — bez ní karetní účtenky importují do Pokladny. */}
+        {type !== "CASH" && (
           <>
             <div className="border-t border-ink-200 pt-5">
               <h3 className="text-sm font-semibold text-ink-900 mb-3">{t("bank_section")}</h3>

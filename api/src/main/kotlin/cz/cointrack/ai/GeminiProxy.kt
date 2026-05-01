@@ -150,16 +150,31 @@ class GeminiProxyService(private val config: GeminiConfig) {
     /** Jeden POST na Gemini API, bez retry logiky. */
     private suspend fun singleCall(model: String, requestBody: String): Pair<HttpStatusCode, String> {
         val url = "${config.baseUrl}/models/$model:generateContent?key=${config.apiKey}"
-        val resp: HttpResponse = client.post(url) {
-            contentType(ContentType.Application.Json)
-            headers { append(HttpHeaders.Accept, "application/json") }
-            setBody(requestBody)
+        return try {
+            val resp: HttpResponse = client.post(url) {
+                contentType(ContentType.Application.Json)
+                headers { append(HttpHeaders.Accept, "application/json") }
+                setBody(requestBody)
+            }
+            resp.status to resp.bodyAsText()
+        } catch (e: io.ktor.client.plugins.HttpRequestTimeoutException) {
+            log.warn("Gemini singleCall timeout (model={}): {}", model, e.message)
+            HttpStatusCode.GatewayTimeout to
+                """{"error":"upstream_timeout","message":"Gemini API neodpověděl do 60s. Zkus to znovu, nebo zkrať/komprimuj fotku."}"""
+        } catch (e: java.net.ConnectException) {
+            log.warn("Gemini singleCall connect error (model={}): {}", model, e.message)
+            HttpStatusCode.BadGateway to
+                """{"error":"upstream_unreachable","message":"Nepodařilo se spojit s Gemini API: ${e.message ?: "neznámá chyba"}"}"""
+        } catch (e: Exception) {
+            log.error("Gemini singleCall failed (model={}): {}", model, e.message, e)
+            HttpStatusCode.BadGateway to
+                """{"error":"upstream_error","message":"Chyba při volání Gemini: ${(e.message ?: "neznámá chyba").replace("\"", "'").take(200)}"}"""
         }
-        return resp.status to resp.bodyAsText()
     }
 }
 
 fun Route.geminiRoutes(service: GeminiProxyService) {
+    val log = LoggerFactory.getLogger("cz.cointrack.ai.GeminiRoute")
     authenticate("jwt") {
         route("/ai") {
             post("/gemini/{model}") {
@@ -169,9 +184,23 @@ fun Route.geminiRoutes(service: GeminiProxyService) {
                         HttpStatusCode.BadRequest,
                         mapOf("error" to "missing_model"),
                     )
-                val body = call.receiveText()
-                val (status, response) = service.forwardGenerate(model, body)
-                call.respondText(response, ContentType.Application.Json, status)
+                try {
+                    val body = call.receiveText()
+                    log.info("Gemini proxy request user={} model={} bodySize={}", userId, model, body.length)
+                    val (status, response) = service.forwardGenerate(model, body)
+                    if (!status.isSuccess()) {
+                        log.warn("Gemini proxy result user={} model={} → {}: {}",
+                            userId, model, status.value, response.take(300))
+                    }
+                    call.respondText(response, ContentType.Application.Json, status)
+                } catch (e: Exception) {
+                    log.error("Gemini route handler failed user={} model={}: {}", userId, model, e.message, e)
+                    call.respondText(
+                        """{"error":"proxy_error","message":"${(e.message ?: "Neznámá chyba").replace("\"", "'").take(200)}"}""",
+                        ContentType.Application.Json,
+                        HttpStatusCode.BadGateway,
+                    )
+                }
             }
         }
     }

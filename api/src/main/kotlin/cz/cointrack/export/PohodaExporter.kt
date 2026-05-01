@@ -173,38 +173,63 @@ object PohodaExporter {
     }
 
     private fun appendBank(sb: StringBuilder, r: ResultRow, items: List<ResultRow>, seq: Int, isVatPayer: Boolean) {
-        // Pohoda bank.xsd — analog s voucher, jen jiný namespace + voucherType
+        // Pohoda bank.xsd — port z mobile BankXmlExporter.kt (porovnáno 1:1).
+        // Klíčová pravidla:
+        //   - <bnk:account> používá typ:refType (= jen <typ:ids> = Pohoda Zkratka, max 19 znaků)
+        //   - <bnk:bankDetail> je POVINNÝ pro správné rozpoznání jako bank doc (bez něj
+        //     to může spadnout do Pokladny)
+        //   - <bnk:roundingDocument> v bank.xsd povoluje jen "none"
         val merchant = r[Receipts.merchantName].orEmpty().ifBlank { "Karetní platba" }
         val photoNote = receiptPhotoUrl(r)
         val baseText = "Karetní platba - $merchant"
-        val text = (if (photoNote != null) "$baseText | Foto: $photoNote" else baseText).take(240)
+        val text = (if (photoNote != null) "$baseText | Foto: $photoNote" else baseText).take(96) // bnk:text má string96
         // V29: Bankovní účet — priorita lookup:
         //   1) Receipts.linkedAccountId (manuální přiřazení web/mobil)
         //   2) Receipts.transactionId → Transactions.accountId (auto-match)
-        //   3) profile default BANK account (legacy fallback — bez `<bnk:account>`
-        //      Pohoda dokument importovala do Pokladny místo Banky)
+        //   3) profile default BANK account (legacy fallback)
         val pohodaIds = r[Receipts.linkedAccountId]?.let { pohodaIdsForAccount(it.value) }
             ?: r[Receipts.transactionId]?.let { txId ->
                 Transactions.selectAll().where { Transactions.id eq txId }.singleOrNull()
                     ?.let { tx -> tx[Transactions.accountId]?.let { pohodaIdsForAccount(it.value) } }
             }
             ?: defaultBankAccountIds(r[Receipts.profileId].value)
+
         sb.appendLine("""  <dat:dataPackItem id="$seq" version="2.0">""")
         sb.appendLine("""    <bnk:bank version="2.0">""")
+
+        // ── bankHeader ──────────────────────────────────────────────────
         sb.appendLine("""      <bnk:bankHeader>""")
         sb.appendLine("""        <bnk:bankType>expense</bnk:bankType>""")
         sb.appendLine("""        <bnk:datePayment>${r[Receipts.date]}</bnk:datePayment>""")
         sb.appendLine("""        <bnk:dateStatement>${r[Receipts.date]}</bnk:dateStatement>""")
         sb.appendLine("""        <bnk:text>${text.xml()}</bnk:text>""")
         appendPartner(sb, r, "bnk")
-        // <bnk:account> v bank.xsd je typ:refType — povoluje JEN <typ:ids>.
+        // <bnk:account> — Pohoda Zkratka (typ:ids). Bez ní Pohoda dokument
+        // řadí do Pokladny místo Banky.
         pohodaIds?.let { ids ->
             sb.appendLine("""        <bnk:account>""")
             sb.appendLine("""          <typ:ids>${ids.xml()}</typ:ids>""")
             sb.appendLine("""        </bnk:account>""")
         }
         sb.appendLine("""      </bnk:bankHeader>""")
+
+        // ── bankDetail ──────────────────────────────────────────────────
+        // V PU stačí jeden řádek s total částkou (quantity/unit/rateVAT jsou
+        // jen pro JU/DE). Pro Pohoda PU bere unitPrice = celkovou částku.
+        val total = r[Receipts.totalWithVat]
+        val desc = r[Receipts.merchantName].orEmpty().ifBlank { "Nakup" }.take(90)
+        sb.appendLine("""      <bnk:bankDetail>""")
+        sb.appendLine("""        <bnk:bankItem>""")
+        sb.appendLine("""          <bnk:text>${desc.xml()}</bnk:text>""")
+        sb.appendLine("""          <bnk:homeCurrency>""")
+        sb.appendLine("""            <bnk:unitPrice>${total.fmt(2)}</bnk:unitPrice>""")
+        sb.appendLine("""          </bnk:homeCurrency>""")
+        sb.appendLine("""        </bnk:bankItem>""")
+        sb.appendLine("""      </bnk:bankDetail>""")
+
+        // ── bankSummary ─────────────────────────────────────────────────
         appendVoucherSummaryBank(sb, r, items, isVatPayer)
+
         sb.appendLine("""    </bnk:bank>""")
         sb.appendLine("""  </dat:dataPackItem>""")
     }
@@ -326,7 +351,8 @@ object PohodaExporter {
             ItemTotal(it[ReceiptItems.totalPrice], it[ReceiptItems.vatRate] ?: BigDecimal.ZERO)
         }, isVatPayer)
         sb.appendLine("""      <bnk:bankSummary>""")
-        sb.appendLine("""        <bnk:roundingDocument>math2one</bnk:roundingDocument>""")
+        // bank.xsd povoluje jen "none" (banka se nezaokrouhluje) — ne "math2one".
+        sb.appendLine("""        <bnk:roundingDocument>none</bnk:roundingDocument>""")
         sb.appendLine("""        <bnk:homeCurrency>""")
         appendTotalsLines(sb, totals, "bnk")
         sb.appendLine("""        </bnk:homeCurrency>""")
