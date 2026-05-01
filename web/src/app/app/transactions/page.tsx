@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
@@ -25,10 +26,27 @@ export default function TransactionsPage() {
   const t = useTranslations("transactions_page");
   const locale = useLocale();
   const { loading, error, entitiesByProfile, diagnose, profileSyncId, reload } = useSyncData();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const [filter, setFilter] = useState<"ALL" | "INCOME" | "EXPENSE">("ALL");
   /** "ALL" = vše, "CASH" = bez vazby na účet, jinak account syncId */
   const [accountFilter, setAccountFilter] = useState<string>("ALL");
-  const [query, setQuery] = useState("");
+  // Search query persistovaný v URL — když uživatel přejde do detailu tx
+  // a vrátí se zpět, ?q=… zůstane v URL a tedy i ve stavu.
+  const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
+
+  // Při změně query updatuj URL (replace, ne push — neplníme history zbytečnými
+  // mezistavy při psaní). Debouncing nepotřebujeme, je to lokální navigace.
+  useEffect(() => {
+    const params = new URLSearchParams(Array.from(searchParams.entries()));
+    if (query.trim()) params.set("q", query.trim());
+    else params.delete("q");
+    const newUrl = params.toString() ? `${pathname}?${params}` : pathname;
+    router.replace(newUrl, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
   const [period, setPeriod] = useState<Period>("30d");
   const [customRange, setCustomRange] = useState<{ from: string; to: string }>({
     from: "",
@@ -85,6 +103,11 @@ export default function TransactionsPage() {
     const ql = query.trim().toLowerCase();
     const qAmount = ql ? parseFloat(ql.replace(/[\s ]/g, "").replace(",", ".")) : NaN;
     const hasAmountQuery = Number.isFinite(qAmount);
+    // Pokud je query čistě číselný (např. variabilní symbol "6042026"), pak na
+    // numerických ID polích (VS, bankTxId) chce uživatel **přesnou shodu**, ne
+    // substring. Jinak by '6042026' v hledání zachytilo i tx s VS '6032026',
+    // které mají popisku obsahující '6042026' (datum 6.4.2026 apod.).
+    const isNumericQuery = /^\d+$/.test(ql);
 
     return [...uiTxs]
       .filter((r) => (filter === "ALL" ? true : r.type === filter))
@@ -100,31 +123,39 @@ export default function TransactionsPage() {
       })
       .filter((r) => {
         if (!ql) return true;
-        // Fulltext search napříč všemi poli, která jsou v detailu transakce.
-        // Match je case-insensitive substring; pro amount tolerance ±0.01 Kč.
-        if (r.description?.toLowerCase().includes(ql)) return true;
-        if (r.merchant?.toLowerCase().includes(ql)) return true;
-
+        // Match napříč poli z detailu transakce.
+        //   - Numerický dotaz (samé číslice): exact match na VS / bankTxId,
+        //     amount, date substring; description/merchant/atd. **NE** substring,
+        //     aby '6042026' nematchnul tx s popiskou "Faktura 6.4.2026 — 6032026".
+        //   - Textový (alespoň 1 nečíselný znak): substring napříč všemi.
         const raw = rawTxMap.get(r.syncId);
-        if (raw) {
-          if (raw.bankVs?.toLowerCase().includes(ql)) return true;
-          if (raw.bankCounterparty?.toLowerCase().includes(ql)) return true;
-          if (raw.bankCounterpartyName?.toLowerCase().includes(ql)) return true;
-          if (raw.bankTxId?.toLowerCase().includes(ql)) return true;
+
+        if (isNumericQuery) {
+          // Strict numeric — jen pole, kde se očekává konkrétní číselné ID.
+          if (raw?.bankVs === ql) return true;
+          if (raw?.bankTxId === ql) return true;
+          // Amount tolerance ±0.01 Kč
+          if (hasAmountQuery && Math.abs(r.amount - qAmount) < 0.01) return true;
+          // Datum substring (např. '2026' najde všechny z 2026)
+          if (r.date.includes(ql)) return true;
+          return false;
         }
 
-        // Account name ("Hlavní účet", "Fio")
+        // Textový dotaz — substring přes všechna textová pole
+        if (r.description?.toLowerCase().includes(ql)) return true;
+        if (r.merchant?.toLowerCase().includes(ql)) return true;
+        if (raw?.bankVs?.toLowerCase().includes(ql)) return true;
+        if (raw?.bankCounterparty?.toLowerCase().includes(ql)) return true;
+        if (raw?.bankCounterpartyName?.toLowerCase().includes(ql)) return true;
+        if (raw?.bankTxId?.toLowerCase().includes(ql)) return true;
+
         const accName = r.accountSyncId ? accountNameMap.get(r.accountSyncId) : undefined;
         if (accName?.toLowerCase().includes(ql)) return true;
 
-        // Category name ("Potraviny", "Mzda")
         const catName = r.categorySyncId ? catMap.get(r.categorySyncId)?.name : undefined;
         if (catName?.toLowerCase().includes(ql)) return true;
 
-        // Datum (YYYY-MM-DD substring, "2026-04" matchne celý duben)
         if (r.date.toLowerCase().includes(ql)) return true;
-
-        // Částka — uživatel napsal "1500" nebo "1500,50" → match na hodnotu (±1 hal)
         if (hasAmountQuery && Math.abs(r.amount - qAmount) < 0.01) return true;
 
         return false;

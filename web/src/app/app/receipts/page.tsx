@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
@@ -42,7 +43,11 @@ export default function ReceiptsPage() {
   const receipts = entitiesByProfile<ReceiptData>("receipts");
   const accounts = entitiesByProfile<ServerAccount>("accounts");
 
-  const [query, setQuery] = useState("");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // Search persistovaný v URL ?q= aby zůstal po návratu z detailu účtenky.
+  const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
   const [linkFilter, setLinkFilter] = useState<"ALL" | "LINKED" | "UNLINKED">("ALL");
   const [accountFilter, setAccountFilter] = useState<string>("ALL");
   const [creating, setCreating] = useState(false);
@@ -52,9 +57,30 @@ export default function ReceiptsPage() {
     to: "",
   });
 
+  // URL ↔ query sync — replace, ne push, abychom history nepřetížili.
+  useEffect(() => {
+    const params = new URLSearchParams(Array.from(searchParams.entries()));
+    if (query.trim()) params.set("q", query.trim());
+    else params.delete("q");
+    router.replace(params.toString() ? `${pathname}?${params}` : pathname, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
+  // Lookup mapy pro fulltext search napříč všemi poli (název účtu, kategorie).
+  const accountNameMap = useMemo(() => {
+    const m = new Map<string, string>();
+    accounts.forEach((a) => m.set(a.syncId, a.data.name));
+    return m;
+  }, [accounts]);
+
   const range = useMemo(() => periodRange(period, customRange), [period, customRange]);
 
   const filtered = useMemo(() => {
+    const ql = query.trim().toLowerCase();
+    const qAmount = ql ? parseFloat(ql.replace(/[\s ]/g, "").replace(",", ".")) : NaN;
+    const hasAmountQuery = Number.isFinite(qAmount);
+    const isNumericQuery = /^\d+$/.test(ql);
+
     return [...receipts]
       .filter((r) => {
         if (linkFilter === "ALL") return true;
@@ -71,11 +97,34 @@ export default function ReceiptsPage() {
       .filter((r) =>
         accountFilter === "ALL" ? true : r.data.linkedAccountId === accountFilter,
       )
-      .filter((r) =>
-        query ? r.data.merchantName?.toLowerCase().includes(query.toLowerCase()) : true,
-      )
+      .filter((r) => {
+        if (!ql) return true;
+        const d = r.data;
+
+        // Numerický dotaz (samá čísla) — exact match na ID pole + amount/datum.
+        // Description/poznámka se substring matchne, jen pokud query NENÍ číselné.
+        if (isNumericQuery) {
+          if (hasAmountQuery && Math.abs(parseFloat(String(d.totalWithVat ?? "0")) - qAmount) < 0.01) return true;
+          if (d.date?.includes(ql)) return true;
+          return false;
+        }
+
+        // Textový dotaz — substring přes všechna textová pole
+        if (d.merchantName?.toLowerCase().includes(ql)) return true;
+        if (d.note?.toLowerCase().includes(ql)) return true;
+        if (d.paymentMethod?.toLowerCase().includes(ql)) return true;
+        if (d.currency?.toLowerCase().includes(ql)) return true;
+
+        const accName = d.linkedAccountId ? accountNameMap.get(d.linkedAccountId) : undefined;
+        if (accName?.toLowerCase().includes(ql)) return true;
+
+        if (d.date?.includes(ql)) return true;
+        if (hasAmountQuery && Math.abs(parseFloat(String(d.totalWithVat ?? "0")) - qAmount) < 0.01) return true;
+
+        return false;
+      })
       .sort((a, b) => (b.data.date ?? "").localeCompare(a.data.date ?? ""));
-  }, [receipts, query, linkFilter, range, accountFilter]);
+  }, [receipts, query, linkFilter, range, accountFilter, accountNameMap]);
 
   return (
     <div className="space-y-6">

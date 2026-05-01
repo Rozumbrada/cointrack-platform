@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { Pencil, Trash2 } from "lucide-react";
 import { sync } from "@/lib/api";
@@ -45,7 +46,11 @@ export default function InvoicesPage() {
   const invoices = entitiesByProfile<InvoiceData>("invoices");
   const accounts = entitiesByProfile<ServerAccount>("accounts");
 
-  const [query, setQuery] = useState("");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // Search v URL ?q= aby zůstal po návratu z detailu faktury.
+  const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
   const [filter, setFilter] = useState<"ALL" | "RECEIVED" | "ISSUED">("ALL");
   const [paidFilter, setPaidFilter] = useState<"ALL" | "PAID" | "UNPAID">("ALL");
   const [accountFilter, setAccountFilter] = useState<string>("ALL");
@@ -55,6 +60,21 @@ export default function InvoicesPage() {
     to: "",
   });
   const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(Array.from(searchParams.entries()));
+    if (query.trim()) params.set("q", query.trim());
+    else params.delete("q");
+    router.replace(params.toString() ? `${pathname}?${params}` : pathname, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
+  // Lookup mapy pro fulltext search (název účtu).
+  const accountNameMap = useMemo(() => {
+    const m = new Map<string, string>();
+    accounts.forEach((a) => m.set(a.syncId, a.data.name));
+    return m;
+  }, [accounts]);
 
   const range = useMemo(() => periodRange(period, customRange), [period, customRange]);
 
@@ -76,6 +96,14 @@ export default function InvoicesPage() {
   }, [invoices]);
 
   const filtered = useMemo(() => {
+    const ql = query.trim().toLowerCase();
+    const qAmount = ql ? parseFloat(ql.replace(/[\s ]/g, "").replace(",", ".")) : NaN;
+    const hasAmountQuery = Number.isFinite(qAmount);
+    // Numerický dotaz (např. VS '6042026') = exact match na invoiceNumber +
+    // variableSymbol; jinak by '6042026' nahodile matchnulo i fakturu '6032026'
+    // s popiskou obsahující datum 6.4.2026.
+    const isNumericQuery = /^\d+$/.test(ql);
+
     return [...invoices]
       .filter((r) => {
         if (filter === "RECEIVED") return r.data.isExpense;
@@ -98,16 +126,36 @@ export default function InvoicesPage() {
         accountFilter === "ALL" ? true : r.data.linkedAccountId === accountFilter,
       )
       .filter((r) => {
-        if (!query) return true;
-        const q = query.toLowerCase();
-        return (
-          r.data.invoiceNumber?.toLowerCase().includes(q) ||
-          r.data.supplierName?.toLowerCase().includes(q) ||
-          r.data.customerName?.toLowerCase().includes(q)
-        );
+        if (!ql) return true;
+        const d = r.data;
+
+        if (isNumericQuery) {
+          if (d.invoiceNumber === ql) return true;
+          if (d.variableSymbol === ql) return true;
+          if (hasAmountQuery && Math.abs(parseFloat(String(d.totalWithVat ?? "0")) - qAmount) < 0.01) return true;
+          if (d.issueDate?.includes(ql)) return true;
+          if (d.dueDate?.includes(ql)) return true;
+          return false;
+        }
+
+        // Textový dotaz — substring přes všechna pole
+        if (d.invoiceNumber?.toLowerCase().includes(ql)) return true;
+        if (d.variableSymbol?.toLowerCase().includes(ql)) return true;
+        if (d.supplierName?.toLowerCase().includes(ql)) return true;
+        if (d.customerName?.toLowerCase().includes(ql)) return true;
+        if (d.currency?.toLowerCase().includes(ql)) return true;
+
+        const accName = d.linkedAccountId ? accountNameMap.get(d.linkedAccountId) : undefined;
+        if (accName?.toLowerCase().includes(ql)) return true;
+
+        if (d.issueDate?.includes(ql)) return true;
+        if (d.dueDate?.includes(ql)) return true;
+        if (hasAmountQuery && Math.abs(parseFloat(String(d.totalWithVat ?? "0")) - qAmount) < 0.01) return true;
+
+        return false;
       })
       .sort((a, b) => (b.data.issueDate ?? "").localeCompare(a.data.issueDate ?? ""));
-  }, [invoices, query, filter, paidFilter, range, accountFilter]);
+  }, [invoices, query, filter, paidFilter, range, accountFilter, accountNameMap]);
 
   /** Soft-delete jedné faktury — push sync s deletedAt = now. */
   async function deleteOne(syncId: string) {
