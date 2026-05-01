@@ -34,6 +34,8 @@ interface InvoiceData {
   linkedAccountId?: string;
   /** "CASH" / "BANK_TRANSFER" / "CARD" / "OTHER". Pro filtr "Pouze hotovost". */
   paymentMethod?: string;
+  /** ISO timestamp posledního Pohoda XML exportu. Null = nikdy. */
+  exportedAt?: string | null;
 }
 
 type AccountListEntry = { syncId: string; data: ServerAccount };
@@ -487,7 +489,7 @@ export default function InvoicesPage() {
                     />
                   </td>
                   <td className="px-6 py-3 font-medium text-ink-900 tabular-nums">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span>{r.data.invoiceNumber || "—"}</span>
                       {r.data.invoiceNumber &&
                         dupNumbers.has(r.data.invoiceNumber.trim()) && (
@@ -498,6 +500,14 @@ export default function InvoicesPage() {
                             {t("dup_badge")}
                           </span>
                         )}
+                      {r.data.exportedAt && (
+                        <span
+                          className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-medium whitespace-nowrap"
+                          title={t("exported_tooltip", { date: r.data.exportedAt.slice(0, 10) })}
+                        >
+                          {t("exported_badge")}
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-6 py-3 text-ink-700 max-w-xs truncate">

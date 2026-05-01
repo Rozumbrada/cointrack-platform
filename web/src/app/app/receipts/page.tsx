@@ -29,6 +29,8 @@ interface ReceiptData {
   note?: string;              // ne 'notes'!
   photoKeys?: unknown;        // array, server posílá JSON
   linkedAccountId?: string;
+  /** ISO timestamp posledního Pohoda XML exportu. Null = nikdy. */
+  exportedAt?: string | null;
 }
 
 type AccountListEntry = { syncId: string; data: ServerAccount };
@@ -49,6 +51,7 @@ export default function ReceiptsPage() {
   useEffect(() => { setPersistedSearch("receipts", query); }, [query]);
 
   const [linkFilter, setLinkFilter] = useState<"ALL" | "LINKED" | "UNLINKED">("ALL");
+  const [paymentFilter, setPaymentFilter] = useState<"ALL" | "CASH" | "CARD" | "TRANSFER">("ALL");
   const [accountFilter, setAccountFilter] = useState<string>("ALL");
   const [creating, setCreating] = useState(false);
   // Multi-select pro hromadné akce (export, delete). Sleduje syncIds.
@@ -87,6 +90,10 @@ export default function ReceiptsPage() {
         if (linkFilter === "ALL") return true;
         const linked = !!r.data.transactionId;
         return linkFilter === "LINKED" ? linked : !linked;
+      })
+      .filter((r) => {
+        if (paymentFilter === "ALL") return true;
+        return normalizePayment(r.data.paymentMethod) === paymentFilter;
       })
       .filter((r) => {
         const d = r.data.date;
@@ -138,7 +145,7 @@ export default function ReceiptsPage() {
         return false;
       })
       .sort((a, b) => (b.data.date ?? "").localeCompare(a.data.date ?? ""));
-  }, [receipts, query, linkFilter, range, accountFilter, accountNameMap, accountTypeMap]);
+  }, [receipts, query, linkFilter, paymentFilter, range, accountFilter, accountNameMap, accountTypeMap]);
 
   // ─── Selection helpers ──────────────────────────────────────────────────
 
@@ -259,6 +266,25 @@ export default function ReceiptsPage() {
             </button>
           ))}
         </div>
+        <div className="flex rounded-lg border border-ink-300 bg-white overflow-hidden text-sm">
+          {(["ALL", "CASH", "CARD", "TRANSFER"] as const).map((f) => (
+            <button
+              key={f}
+              onClick={() => setPaymentFilter(f)}
+              className={`px-3 py-2 ${
+                paymentFilter === f ? "bg-brand-50 text-brand-700" : "text-ink-700 hover:bg-ink-50"
+              }`}
+            >
+              {f === "ALL"
+                ? t("filter_payment_all")
+                : f === "CASH"
+                ? t("payment_cash")
+                : f === "CARD"
+                ? t("payment_card")
+                : t("payment_transfer")}
+            </button>
+          ))}
+        </div>
         <select
           value={accountFilter}
           onChange={(e) => setAccountFilter(e.target.value)}
@@ -356,7 +382,17 @@ export default function ReceiptsPage() {
                       />
                     </td>
                     <td className="px-6 py-3 font-medium text-ink-900">
-                      {r.data.merchantName || t("no_name")}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span>{r.data.merchantName || t("no_name")}</span>
+                        {r.data.exportedAt && (
+                          <span
+                            className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-medium whitespace-nowrap"
+                            title={t("exported_tooltip", { date: r.data.exportedAt.slice(0, 10) })}
+                          >
+                            {t("exported_badge")}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-3 text-ink-600 whitespace-nowrap">
                       {r.data.date || "—"}
@@ -389,10 +425,26 @@ function fmtAmt(amount: string | number | undefined, currency: string, locale: s
   }).format(Number.isFinite(n) ? n : 0);
 }
 
+/**
+ * Normalizace platebního typu — mobilní/backend hodnoty mají různé varianty
+ * (CASH/cash, CARD/card/creditcard, BANK_TRANSFER/TRANSFER/bank/draft, UNKNOWN).
+ * Tahle funkce vrací vždy uppercase canonical hodnotu pro UI labels + filtr.
+ */
+function normalizePayment(p: string | undefined | null): "CASH" | "CARD" | "TRANSFER" | "OTHER" | "UNKNOWN" {
+  const v = (p ?? "").toUpperCase().trim();
+  if (v === "CASH" || v === "HOTOVE" || v === "HOTOVOST") return "CASH";
+  if (v === "CARD" || v === "CREDITCARD" || v === "CREDIT_CARD") return "CARD";
+  if (v === "BANK_TRANSFER" || v === "TRANSFER" || v === "BANK" || v === "DRAFT") return "TRANSFER";
+  if (v === "OTHER") return "OTHER";
+  return "UNKNOWN";
+}
+
 function labelPayment(p: string | undefined | null, t: (k: string) => string): string {
-  switch (p) {
+  switch (normalizePayment(p)) {
     case "CASH": return t("payment_cash");
     case "CARD": return t("payment_card");
+    case "TRANSFER": return t("payment_transfer");
+    case "OTHER": return t("payment_other");
     default: return "—";
   }
 }

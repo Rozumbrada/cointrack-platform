@@ -1160,6 +1160,7 @@ class SyncService {
             r[Receipts.paymentMethod]?.let { put("paymentMethod", it) }
             r[Receipts.note]?.let { put("note", it) }
             put("photoKeys", Json.parseToJsonElement(r[Receipts.photoKeys]))
+            r[Receipts.exportedAt]?.let { put("exportedAt", it.toString()) }
         },
     )
 
@@ -1222,6 +1223,7 @@ class SyncService {
             r[Invoices.note]?.let { put("note", it) }
             put("fileKeys", Json.parseToJsonElement(r[Invoices.fileKeys]))
             r[Invoices.idokladId]?.let { put("idokladId", it) }
+            r[Invoices.exportedAt]?.let { put("exportedAt", it.toString()) }
         },
     )
 

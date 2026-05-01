@@ -132,6 +132,7 @@ object Receipts : SyncableTable("receipts") {
     val paymentMethod   = varchar("payment_method", 16).nullable()
     val note            = text("note").nullable()
     val photoKeys       = text("photo_keys").default("[]")  // JSONB jako text, aplikace parsuje
+    val exportedAt      = timestamp("exported_at").nullable()  // V28
 }
 
 object ReceiptItems : SyncableTable("receipt_items") {
@@ -177,6 +178,7 @@ object Invoices : SyncableTable("invoices") {
     val note               = text("note").nullable()
     val fileKeys           = text("file_keys").default("[]")
     val idokladId          = varchar("idoklad_id", 64).nullable()
+    val exportedAt         = timestamp("exported_at").nullable()  // V28
 }
 
 object InvoiceItems : SyncableTable("invoice_items") {

@@ -1,6 +1,8 @@
 package cz.cointrack.export
 
+import cz.cointrack.db.Invoices
 import cz.cointrack.db.Profiles
+import cz.cointrack.db.Receipts
 import cz.cointrack.db.db
 import cz.cointrack.plugins.ApiException
 import io.ktor.http.ContentType
@@ -14,7 +16,11 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.route
+import org.jetbrains.exposed.dao.id.EntityID
+import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.selectAll
+import org.jetbrains.exposed.sql.update
+import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 
@@ -49,6 +55,8 @@ fun Route.exportRoutes() {
                         "Žádné účtenky pro export v zadaném období.",
                     )
                 }
+                // V28: po úspěšném vygenerování označ exportované účtenky.
+                markReceiptsExported(profileDbId, from, to, ids)
                 val filename = filenameFor("uctenky", from, to, ids)
                 call.response.header(
                     HttpHeaders.ContentDisposition,
@@ -67,6 +75,7 @@ fun Route.exportRoutes() {
                         "Žádné faktury pro export v zadaném období.",
                     )
                 }
+                markInvoicesExported(profileDbId, from, to, ids)
                 val filename = filenameFor("faktury", from, to, ids)
                 call.response.header(
                     HttpHeaders.ContentDisposition,
@@ -134,4 +143,56 @@ private suspend fun parseExportParams(call: io.ktor.server.application.Applicati
     }
 
     return ExportParams(profileDbId, from, to, ids)
+}
+
+// ─── Mark exported helpers ──────────────────────────────────────────────
+//
+// Po úspěšném vygenerování XML (= router.respondText) označíme dotčené řádky
+// exported_at = now(). Filtruje se stejně jako PohodaExporter.exportXxx —
+// pokud byl ids list, jen ty; jinak from/to date filter.
+
+private suspend fun markReceiptsExported(
+    profileDbId: UUID,
+    from: LocalDate?,
+    to: LocalDate?,
+    ids: List<UUID>?,
+) = db {
+    val now = Instant.now()
+    if (!ids.isNullOrEmpty()) {
+        Receipts.update({
+            (Receipts.profileId eq EntityID(profileDbId, Profiles)) and
+                (Receipts.syncId inList ids) and
+                Receipts.deletedAt.isNull()
+        }) { it[exportedAt] = now }
+    } else {
+        Receipts.update({
+            (Receipts.profileId eq EntityID(profileDbId, Profiles)) and
+                Receipts.deletedAt.isNull() and
+                (if (from != null) Receipts.date greaterEq from else org.jetbrains.exposed.sql.Op.TRUE) and
+                (if (to != null) Receipts.date lessEq to else org.jetbrains.exposed.sql.Op.TRUE)
+        }) { it[exportedAt] = now }
+    }
+}
+
+private suspend fun markInvoicesExported(
+    profileDbId: UUID,
+    from: LocalDate?,
+    to: LocalDate?,
+    ids: List<UUID>?,
+) = db {
+    val now = Instant.now()
+    if (!ids.isNullOrEmpty()) {
+        Invoices.update({
+            (Invoices.profileId eq EntityID(profileDbId, Profiles)) and
+                (Invoices.syncId inList ids) and
+                Invoices.deletedAt.isNull()
+        }) { it[exportedAt] = now }
+    } else {
+        Invoices.update({
+            (Invoices.profileId eq EntityID(profileDbId, Profiles)) and
+                Invoices.deletedAt.isNull() and
+                (if (from != null) Invoices.issueDate greaterEq from else org.jetbrains.exposed.sql.Op.TRUE) and
+                (if (to != null) Invoices.issueDate lessEq to else org.jetbrains.exposed.sql.Op.TRUE)
+        }) { it[exportedAt] = now }
+    }
 }
