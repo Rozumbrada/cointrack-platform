@@ -32,6 +32,8 @@ interface InvoiceData {
   variableSymbol?: string;           // ne 'variabilniSymbol'
   fileKeys?: unknown;
   linkedAccountId?: string;
+  /** "CASH" / "BANK_TRANSFER" / "CARD" / "OTHER". Pro filtr "Pouze hotovost". */
+  paymentMethod?: string;
 }
 
 type AccountListEntry = { syncId: string; data: ServerAccount };
@@ -64,6 +66,13 @@ export default function InvoicesPage() {
   const accountNameMap = useMemo(() => {
     const m = new Map<string, string>();
     accounts.forEach((a) => m.set(a.syncId, a.data.name));
+    return m;
+  }, [accounts]);
+
+  // Map: account syncId → account.type — pro detekci CASH účtu při filtru.
+  const accountTypeMap = useMemo(() => {
+    const m = new Map<string, string>();
+    accounts.forEach((a) => m.set(a.syncId, (a.data.type ?? "").toUpperCase()));
     return m;
   }, [accounts]);
 
@@ -113,9 +122,19 @@ export default function InvoicesPage() {
         if (range.to && d > range.to) return false;
         return true;
       })
-      .filter((r) =>
-        accountFilter === "ALL" ? true : r.data.linkedAccountId === accountFilter,
-      )
+      .filter((r) => {
+        if (accountFilter === "ALL") return true;
+        const linked = r.data.linkedAccountId;
+        const isCashPayment = (r.data.paymentMethod ?? "").toUpperCase() === "CASH";
+        if (accountFilter === "CASH") {
+          if (isCashPayment) return true;
+          if (linked && accountTypeMap.get(linked) === "CASH") return true;
+          return false;
+        }
+        if (linked === accountFilter) return true;
+        if (!linked && isCashPayment && accountTypeMap.get(accountFilter) === "CASH") return true;
+        return false;
+      })
       .filter((r) => {
         if (!ql) return true;
         const d = r.data;
@@ -146,7 +165,7 @@ export default function InvoicesPage() {
         return false;
       })
       .sort((a, b) => (b.data.issueDate ?? "").localeCompare(a.data.issueDate ?? ""));
-  }, [invoices, query, filter, paidFilter, range, accountFilter, accountNameMap]);
+  }, [invoices, query, filter, paidFilter, range, accountFilter, accountNameMap, accountTypeMap]);
 
   /** Soft-delete jedné faktury — push sync s deletedAt = now. */
   async function deleteOne(syncId: string) {
@@ -299,6 +318,8 @@ export default function InvoicesPage() {
           className="h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
         >
           <option value="ALL">{t("filter_account_all")}</option>
+          <option value="CASH">{t("filter_cash_only")}</option>
+          <option disabled>──────────</option>
           {accounts.map((a) => (
             <option key={a.syncId} value={a.syncId}>{a.data.name}</option>
           ))}

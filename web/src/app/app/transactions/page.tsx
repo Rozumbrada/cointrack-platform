@@ -67,6 +67,13 @@ export default function TransactionsPage() {
     return m;
   }, [accounts]);
 
+  // Map: account syncId → account.type (pro detekci CASH účtu při filtru)
+  const accountTypeMap = useMemo(() => {
+    const m = new Map<string, string>();
+    accounts.forEach((a) => m.set(a.syncId, (a.data.type ?? "").toUpperCase()));
+    return m;
+  }, [accounts]);
+
   // Map: tx syncId → raw ServerTransaction (pro search v bankVs/protistrana/atd.,
   // které UiTransaction nemá).
   const rawTxMap = useMemo(() => {
@@ -100,8 +107,17 @@ export default function TransactionsPage() {
       .filter((r) => (filter === "ALL" ? true : r.type === filter))
       .filter((r) => {
         if (accountFilter === "ALL") return true;
-        if (accountFilter === "CASH") return !r.accountSyncId;
-        return r.accountSyncId === accountFilter;
+        // "CASH" match je široký: tx bez accountId (legacy hotovost)
+        // PLUS tx napojené na účet typu CASH (mobile auto-linkuje na "Hotovost").
+        if (accountFilter === "CASH") {
+          if (!r.accountSyncId) return true;
+          return accountTypeMap.get(r.accountSyncId) === "CASH";
+        }
+        // Specifický účet — exact match. Navíc: pokud je vybraný účet
+        // typu CASH, dovol i tx bez accountId (legacy / nelinkované cash).
+        if (r.accountSyncId === accountFilter) return true;
+        if (!r.accountSyncId && accountTypeMap.get(accountFilter) === "CASH") return true;
+        return false;
       })
       .filter((r) => {
         if (range.from && r.date < range.from) return false;
@@ -148,7 +164,7 @@ export default function TransactionsPage() {
         return false;
       })
       .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
-  }, [uiTxs, filter, accountFilter, query, range, rawTxMap, accountNameMap, catMap]);
+  }, [uiTxs, filter, accountFilter, query, range, rawTxMap, accountNameMap, accountTypeMap, catMap]);
 
   const allSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.syncId));
 

@@ -63,6 +63,13 @@ export default function ReceiptsPage() {
     return m;
   }, [accounts]);
 
+  // Map: account syncId → account.type — pro detekci CASH účtu při filtru.
+  const accountTypeMap = useMemo(() => {
+    const m = new Map<string, string>();
+    accounts.forEach((a) => m.set(a.syncId, (a.data.type ?? "").toUpperCase()));
+    return m;
+  }, [accounts]);
+
   const range = useMemo(() => periodRange(period, customRange), [period, customRange]);
 
   const filtered = useMemo(() => {
@@ -84,9 +91,22 @@ export default function ReceiptsPage() {
         if (range.to && d > range.to) return false;
         return true;
       })
-      .filter((r) =>
-        accountFilter === "ALL" ? true : r.data.linkedAccountId === accountFilter,
-      )
+      .filter((r) => {
+        if (accountFilter === "ALL") return true;
+        const linked = r.data.linkedAccountId;
+        const isCashPayment = (r.data.paymentMethod ?? "").toUpperCase() === "CASH";
+        // "Pouze hotovost" — match: CASH paymentMethod, NEBO linkovaný CASH-type účet
+        if (accountFilter === "CASH") {
+          if (isCashPayment) return true;
+          if (linked && accountTypeMap.get(linked) === "CASH") return true;
+          return false;
+        }
+        // Specifický účet — exact link. Plus: pokud je vybraný účet CASH-type,
+        // dovol i nelinkované cash účtenky (paymentMethod=CASH bez linku).
+        if (linked === accountFilter) return true;
+        if (!linked && isCashPayment && accountTypeMap.get(accountFilter) === "CASH") return true;
+        return false;
+      })
       .filter((r) => {
         if (!ql) return true;
         const d = r.data;
@@ -114,7 +134,7 @@ export default function ReceiptsPage() {
         return false;
       })
       .sort((a, b) => (b.data.date ?? "").localeCompare(a.data.date ?? ""));
-  }, [receipts, query, linkFilter, range, accountFilter, accountNameMap]);
+  }, [receipts, query, linkFilter, range, accountFilter, accountNameMap, accountTypeMap]);
 
   return (
     <div className="space-y-6">
@@ -179,6 +199,8 @@ export default function ReceiptsPage() {
           className="h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
         >
           <option value="ALL">{t("filter_account_all")}</option>
+          <option value="CASH">{t("filter_cash_only")}</option>
+          <option disabled>──────────</option>
           {accounts.map((a) => (
             <option key={a.syncId} value={a.syncId}>{a.data.name}</option>
           ))}
