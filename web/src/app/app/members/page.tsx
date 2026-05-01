@@ -27,10 +27,18 @@ interface MemberGroup {
   status: "active" | "pending" | "revoked";
   userDisplayName?: string | null;
   shares: ShareWithAccountDto[]; // všechny shares pro tento email
-  /** Spojený filter z prvního share — předpokládáme, že shares jednoho člena mají stejný filter. */
+  /** Spojený filter z prvního share — pro display fallback. EditMemberDialog
+   *  ale čte per-share visibility přímo ze shares listu. */
   visibilityIncome: boolean;
   visibilityExpenses: boolean;
   visibilityCategories: string[] | null;
+}
+
+/** Per-account visibility filter (income + expenses + categories whitelist). */
+interface PerAccountVisibility {
+  income: boolean;
+  expenses: boolean;
+  categories: string[] | null;
 }
 
 export default function MembersPage() {
@@ -347,6 +355,11 @@ export default function MembersPage() {
   );
 }
 
+/** Default per-account visibility — vše vidí (income + expenses, kategorie bez filtru). */
+function defaultVisibility(): PerAccountVisibility {
+  return { income: true, expenses: true, categories: null };
+}
+
 function InviteDialog({
   accounts,
   categories,
@@ -360,13 +373,17 @@ function InviteDialog({
 }) {
   const t = useTranslations("members_page");
   const [email, setEmail] = useState("");
-  const [selectedAccountIds, setSelectedAccountIds] = useState<Set<string>>(
-    accounts.length > 0 ? new Set([accounts[0].syncId]) : new Set(),
+  // Vis per-account: vybraný účet má svůj záznam, default je "vše vidět".
+  // Mapa se synchronizuje s checkboxy — když user odznačí, mažem ji z mapy.
+  const [accountVis, setAccountVis] = useState<Map<string, PerAccountVisibility>>(
+    () => {
+      const m = new Map<string, PerAccountVisibility>();
+      if (accounts.length > 0) m.set(accounts[0].syncId, defaultVisibility());
+      return m;
+    },
   );
+  const [expandedAccountId, setExpandedAccountId] = useState<string | null>(null);
   const [role, setRole] = useState<Role>("VIEWER");
-  const [visibilityIncome, setVisibilityIncome] = useState(true);
-  const [visibilityExpenses, setVisibilityExpenses] = useState(true);
-  const [visibilityCategories, setVisibilityCategories] = useState<string[] | null>(null);
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -375,21 +392,41 @@ function InviteDialog({
     [accounts],
   );
 
+  const selectedAccountIds = useMemo(() => new Set(accountVis.keys()), [accountVis]);
+
   function toggleAccount(syncId: string) {
-    setSelectedAccountIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(syncId)) next.delete(syncId);
-      else next.add(syncId);
+    setAccountVis((prev) => {
+      const next = new Map(prev);
+      if (next.has(syncId)) {
+        next.delete(syncId);
+        if (expandedAccountId === syncId) setExpandedAccountId(null);
+      } else {
+        next.set(syncId, defaultVisibility());
+      }
+      return next;
+    });
+  }
+
+  function updateAccountVis(syncId: string, patch: Partial<PerAccountVisibility>) {
+    setAccountVis((prev) => {
+      const next = new Map(prev);
+      const current = next.get(syncId) ?? defaultVisibility();
+      next.set(syncId, { ...current, ...patch });
       return next;
     });
   }
 
   function selectAll() {
-    setSelectedAccountIds(new Set(sortedAccounts.map((a) => a.syncId)));
+    const m = new Map<string, PerAccountVisibility>();
+    for (const a of sortedAccounts) {
+      m.set(a.syncId, accountVis.get(a.syncId) ?? defaultVisibility());
+    }
+    setAccountVis(m);
   }
 
   function clearSelection() {
-    setSelectedAccountIds(new Set());
+    setAccountVis(new Map());
+    setExpandedAccountId(null);
   }
 
   const allSelected =
@@ -405,16 +442,18 @@ function InviteDialog({
     setErr(null);
     try {
       const normalizedEmail = email.trim().toLowerCase();
-      const visibility = role === "ACCOUNTANT"
-        ? undefined  // ACCOUNTANT vidí všechno, filtry se neaplikují
-        : {
-            visibilityIncome,
-            visibilityExpenses,
-            visibilityCategories,
-          };
       for (const accountSyncId of selectedAccountIds) {
+        const vis = accountVis.get(accountSyncId) ?? defaultVisibility();
+        // ACCOUNTANT vidí všechno, filtry neaplikujeme.
+        const visibilityArg = role === "ACCOUNTANT"
+          ? undefined
+          : {
+              visibilityIncome: vis.income,
+              visibilityExpenses: vis.expenses,
+              visibilityCategories: vis.categories,
+            };
         await withAuth((tk) =>
-          accountShares.invite(tk, accountSyncId, normalizedEmail, role, visibility),
+          accountShares.invite(tk, accountSyncId, normalizedEmail, role, visibilityArg),
         );
       }
       onCreated();
@@ -458,38 +497,69 @@ function InviteDialog({
           {sortedAccounts.length === 0 ? (
             <p className="text-xs text-amber-700">{t("dialog_no_accounts")}</p>
           ) : (
-            <div className="border border-ink-300 rounded-lg max-h-48 overflow-y-auto divide-y divide-ink-100">
-              {sortedAccounts.map((a) => (
-                <label
-                  key={a.syncId}
-                  className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-ink-50 cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedAccountIds.has(a.syncId)}
-                    onChange={() => toggleAccount(a.syncId)}
-                    className="w-4 h-4"
-                  />
-                  <span className="flex-1 text-ink-900">{a.data.name}</span>
-                  <span className="text-xs text-ink-500">{a.data.currency}</span>
-                </label>
-              ))}
+            <div className="border border-ink-300 rounded-lg max-h-72 overflow-y-auto divide-y divide-ink-100">
+              {sortedAccounts.map((a) => {
+                const isSel = selectedAccountIds.has(a.syncId);
+                const isExpanded = expandedAccountId === a.syncId;
+                const vis = accountVis.get(a.syncId) ?? defaultVisibility();
+                return (
+                  <div key={a.syncId} className={isSel ? "bg-brand-50/40" : ""}>
+                    <div className="flex items-center gap-2 px-3 py-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={isSel}
+                        onChange={() => toggleAccount(a.syncId)}
+                        className="w-4 h-4 cursor-pointer"
+                      />
+                      <span
+                        className="flex-1 text-ink-900 cursor-pointer"
+                        onClick={() => toggleAccount(a.syncId)}
+                      >
+                        {a.data.name}
+                      </span>
+                      <span className="text-xs text-ink-500">{a.data.currency}</span>
+                      {isSel && role !== "ACCOUNTANT" && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedAccountId(isExpanded ? null : a.syncId)
+                          }
+                          className="text-xs text-brand-600 hover:text-brand-700 font-medium px-2 py-1 rounded hover:bg-brand-100"
+                        >
+                          {isExpanded ? "▾" : "▸"} {t("dialog_visibility")}
+                        </button>
+                      )}
+                    </div>
+                    {isSel && isExpanded && role !== "ACCOUNTANT" && (
+                      <div className="px-4 pb-3 pt-1 bg-white border-t border-ink-100">
+                        <VisibilityPicker
+                          role={role}
+                          categories={categories}
+                          income={vis.income}
+                          setIncome={(v) => updateAccountVis(a.syncId, { income: v })}
+                          expenses={vis.expenses}
+                          setExpenses={(v) => updateAccountVis(a.syncId, { expenses: v })}
+                          categoriesFilter={vis.categories}
+                          setCategoriesFilter={(v) =>
+                            updateAccountVis(a.syncId, { categories: v })
+                          }
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
 
         <RolePicker role={role} setRole={setRole} />
 
-        <VisibilityPicker
-          role={role}
-          categories={categories}
-          income={visibilityIncome}
-          setIncome={setVisibilityIncome}
-          expenses={visibilityExpenses}
-          setExpenses={setVisibilityExpenses}
-          categoriesFilter={visibilityCategories}
-          setCategoriesFilter={setVisibilityCategories}
-        />
+        {role === "ACCOUNTANT" && (
+          <div className="rounded-lg bg-ink-50 border border-ink-200 px-3 py-2 text-xs text-ink-700">
+            {t("dialog_visibility_acct_warning")}
+          </div>
+        )}
 
         {err && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">{err}</div>
@@ -531,8 +601,28 @@ function EditMemberDialog({
 }) {
   const t = useTranslations("members_page");
 
-  // Server vrací u každého share `accountSyncId` (= klientský sync id),
-  // takže můžeme přímo namapovat na checklist účtů.
+  // Per-share visibility z aktuálních dat (každý share má vlastní filter,
+  // server to už dlouho podporuje, jen UI to dosud zobrazovalo zploštěně).
+  const [accountVis, setAccountVis] = useState<Map<string, PerAccountVisibility>>(
+    () => {
+      const m = new Map<string, PerAccountVisibility>();
+      for (const s of member.shares) {
+        if (!s.accountSyncId) continue;
+        m.set(s.accountSyncId, {
+          income: s.visibilityIncome,
+          expenses: s.visibilityExpenses,
+          categories: s.visibilityCategories ?? null,
+        });
+      }
+      return m;
+    },
+  );
+  const [expandedAccountId, setExpandedAccountId] = useState<string | null>(null);
+  const [role, setRole] = useState<Role>(member.role);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Initial syncIds podle existujících shares
   const initiallySelectedSyncIds = useMemo(() => {
     const set = new Set<string>();
     for (const s of member.shares) {
@@ -541,15 +631,7 @@ function EditMemberDialog({
     return set;
   }, [member.shares]);
 
-  const [selectedAccountIds, setSelectedAccountIds] =
-    useState<Set<string>>(initiallySelectedSyncIds);
-  const [role, setRole] = useState<Role>(member.role);
-  const [visibilityIncome, setVisibilityIncome] = useState(member.visibilityIncome);
-  const [visibilityExpenses, setVisibilityExpenses] = useState(member.visibilityExpenses);
-  const [visibilityCategories, setVisibilityCategories] =
-    useState<string[] | null>(member.visibilityCategories);
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const selectedAccountIds = useMemo(() => new Set(accountVis.keys()), [accountVis]);
 
   const sortedAccounts = useMemo(
     () => [...accounts].sort((a, b) => a.data.name.localeCompare(b.data.name)),
@@ -557,20 +639,40 @@ function EditMemberDialog({
   );
 
   function toggleAccount(syncId: string) {
-    setSelectedAccountIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(syncId)) next.delete(syncId);
-      else next.add(syncId);
+    setAccountVis((prev) => {
+      const next = new Map(prev);
+      if (next.has(syncId)) {
+        next.delete(syncId);
+        if (expandedAccountId === syncId) setExpandedAccountId(null);
+      } else {
+        next.set(syncId, defaultVisibility());
+      }
+      return next;
+    });
+  }
+
+  function updateAccountVis(syncId: string, patch: Partial<PerAccountVisibility>) {
+    setAccountVis((prev) => {
+      const next = new Map(prev);
+      const current = next.get(syncId) ?? defaultVisibility();
+      next.set(syncId, { ...current, ...patch });
       return next;
     });
   }
 
   function selectAll() {
-    setSelectedAccountIds(new Set(sortedAccounts.map((a) => a.syncId)));
+    setAccountVis((prev) => {
+      const next = new Map<string, PerAccountVisibility>();
+      for (const a of sortedAccounts) {
+        next.set(a.syncId, prev.get(a.syncId) ?? defaultVisibility());
+      }
+      return next;
+    });
   }
 
   function clearSelection() {
-    setSelectedAccountIds(new Set());
+    setAccountVis(new Map());
+    setExpandedAccountId(null);
   }
 
   const allSelected =
@@ -585,32 +687,37 @@ function EditMemberDialog({
     setErr(null);
     try {
       const roleChanged = role !== member.role;
-      const incomeChanged = visibilityIncome !== member.visibilityIncome;
-      const expensesChanged = visibilityExpenses !== member.visibilityExpenses;
-      const categoriesChanged =
-        JSON.stringify(visibilityCategories ?? null) !==
-        JSON.stringify(member.visibilityCategories ?? null);
 
-      // 1) Update existující shares (role + visibility filter pokud se změnil)
-      if (roleChanged || incomeChanged || expensesChanged || categoriesChanged) {
-        const update: {
-          role?: "VIEWER" | "EDITOR" | "ACCOUNTANT";
-          visibilityIncome?: boolean;
-          visibilityExpenses?: boolean;
-          visibilityCategories?: string[] | null;
-          resetVisibilityCategories?: boolean;
-        } = {};
-        if (roleChanged) update.role = role;
-        if (incomeChanged) update.visibilityIncome = visibilityIncome;
-        if (expensesChanged) update.visibilityExpenses = visibilityExpenses;
-        if (categoriesChanged) {
-          if (visibilityCategories === null) {
-            update.resetVisibilityCategories = true;
-          } else {
-            update.visibilityCategories = visibilityCategories;
+      // 1) Update existujících shares — role + per-share visibility podle accountVis.
+      //    Pokud se účet odebral, share půjde revoknout v kroku 3.
+      for (const s of member.shares) {
+        if (!s.accountSyncId) continue;
+        const newVis = accountVis.get(s.accountSyncId);
+        if (!newVis) continue; // pojede revoke později
+        const incomeChanged = newVis.income !== s.visibilityIncome;
+        const expensesChanged = newVis.expenses !== s.visibilityExpenses;
+        const categoriesChanged =
+          JSON.stringify(newVis.categories ?? null) !==
+          JSON.stringify(s.visibilityCategories ?? null);
+
+        if (roleChanged || incomeChanged || expensesChanged || categoriesChanged) {
+          const update: {
+            role?: "VIEWER" | "EDITOR" | "ACCOUNTANT";
+            visibilityIncome?: boolean;
+            visibilityExpenses?: boolean;
+            visibilityCategories?: string[] | null;
+            resetVisibilityCategories?: boolean;
+          } = {};
+          if (roleChanged) update.role = role;
+          if (incomeChanged) update.visibilityIncome = newVis.income;
+          if (expensesChanged) update.visibilityExpenses = newVis.expenses;
+          if (categoriesChanged) {
+            if (newVis.categories === null) {
+              update.resetVisibilityCategories = true;
+            } else {
+              update.visibilityCategories = newVis.categories;
+            }
           }
-        }
-        for (const s of member.shares) {
           await withAuth((tk) => accountShares.updateShare(tk, s.id, update));
         }
       }
@@ -620,13 +727,18 @@ function EditMemberDialog({
       const toAdd = [...selectedAccountIds].filter((sid) => !currentSyncIds.has(sid));
       const toRemove = [...currentSyncIds].filter((sid) => !selectedAccountIds.has(sid));
 
-      // 3) Přidat shares pro nové účty (s aktuálním visibility filtrem)
-      const visibility = role === "ACCOUNTANT"
-        ? undefined
-        : { visibilityIncome, visibilityExpenses, visibilityCategories };
+      // 3) Přidat shares pro nové účty (s per-account visibility z mapy)
       for (const accountSyncId of toAdd) {
+        const v = accountVis.get(accountSyncId) ?? defaultVisibility();
+        const visibilityArg = role === "ACCOUNTANT"
+          ? undefined
+          : {
+              visibilityIncome: v.income,
+              visibilityExpenses: v.expenses,
+              visibilityCategories: v.categories,
+            };
         await withAuth((tk) =>
-          accountShares.invite(tk, accountSyncId, member.email, role, visibility),
+          accountShares.invite(tk, accountSyncId, member.email, role, visibilityArg),
         );
       }
 
@@ -670,38 +782,69 @@ function EditMemberDialog({
           {sortedAccounts.length === 0 ? (
             <p className="text-xs text-amber-700">{t("dialog_no_accounts")}</p>
           ) : (
-            <div className="border border-ink-300 rounded-lg max-h-48 overflow-y-auto divide-y divide-ink-100">
-              {sortedAccounts.map((a) => (
-                <label
-                  key={a.syncId}
-                  className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-ink-50 cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedAccountIds.has(a.syncId)}
-                    onChange={() => toggleAccount(a.syncId)}
-                    className="w-4 h-4"
-                  />
-                  <span className="flex-1 text-ink-900">{a.data.name}</span>
-                  <span className="text-xs text-ink-500">{a.data.currency}</span>
-                </label>
-              ))}
+            <div className="border border-ink-300 rounded-lg max-h-72 overflow-y-auto divide-y divide-ink-100">
+              {sortedAccounts.map((a) => {
+                const isSel = selectedAccountIds.has(a.syncId);
+                const isExpanded = expandedAccountId === a.syncId;
+                const vis = accountVis.get(a.syncId) ?? defaultVisibility();
+                return (
+                  <div key={a.syncId} className={isSel ? "bg-brand-50/40" : ""}>
+                    <div className="flex items-center gap-2 px-3 py-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={isSel}
+                        onChange={() => toggleAccount(a.syncId)}
+                        className="w-4 h-4 cursor-pointer"
+                      />
+                      <span
+                        className="flex-1 text-ink-900 cursor-pointer"
+                        onClick={() => toggleAccount(a.syncId)}
+                      >
+                        {a.data.name}
+                      </span>
+                      <span className="text-xs text-ink-500">{a.data.currency}</span>
+                      {isSel && role !== "ACCOUNTANT" && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedAccountId(isExpanded ? null : a.syncId)
+                          }
+                          className="text-xs text-brand-600 hover:text-brand-700 font-medium px-2 py-1 rounded hover:bg-brand-100"
+                        >
+                          {isExpanded ? "▾" : "▸"} {t("dialog_visibility")}
+                        </button>
+                      )}
+                    </div>
+                    {isSel && isExpanded && role !== "ACCOUNTANT" && (
+                      <div className="px-4 pb-3 pt-1 bg-white border-t border-ink-100">
+                        <VisibilityPicker
+                          role={role}
+                          categories={categories}
+                          income={vis.income}
+                          setIncome={(v) => updateAccountVis(a.syncId, { income: v })}
+                          expenses={vis.expenses}
+                          setExpenses={(v) => updateAccountVis(a.syncId, { expenses: v })}
+                          categoriesFilter={vis.categories}
+                          setCategoriesFilter={(v) =>
+                            updateAccountVis(a.syncId, { categories: v })
+                          }
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
 
         <RolePicker role={role} setRole={setRole} />
 
-        <VisibilityPicker
-          role={role}
-          categories={categories}
-          income={visibilityIncome}
-          setIncome={setVisibilityIncome}
-          expenses={visibilityExpenses}
-          setExpenses={setVisibilityExpenses}
-          categoriesFilter={visibilityCategories}
-          setCategoriesFilter={setVisibilityCategories}
-        />
+        {role === "ACCOUNTANT" && (
+          <div className="rounded-lg bg-ink-50 border border-ink-200 px-3 py-2 text-xs text-ink-700">
+            {t("dialog_visibility_acct_warning")}
+          </div>
+        )}
 
         {err && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">{err}</div>
