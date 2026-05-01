@@ -44,43 +44,37 @@ api.cointrack.cz {
 
 # ─── MinIO (public file access přes presigned URLs) ─────────────────
 files.cointrack.cz {
-    # CORS pro PUT (upload účtenek/faktur z webu) i GET (fotky v UI).
-    # Bez těchto hlaviček browser blokuje cross-origin PUT z cointrack.cz
-    # → user vidí "Failed to fetch" v DocumentDialog.scan flow.
+    # CORS pro PUT/GET z webu — bez nich browser blokuje cross-origin PUT
+    # z cointrack.cz a uživatel vidí "Failed to fetch" v scan flow.
     #
-    # Allowed origins: cointrack.cz (production web) + localhost:3000 (dev).
-    # Pokud bys měl víc origins, vyextrahuj do @cors named matcher.
-    @corsOrigin header Origin "https://cointrack.cz"
-    @corsOriginLocal header Origin "http://localhost:3000"
+    # Použitý vzorec: matchery na Origin, pak per-line `header @matcher X Y`
+    # s `defer` (= aplikuj na response NEZÁVISLE na tom, jestli respond,
+    # reverse_proxy nebo cokoliv jiného odpověď generuje). `Vary: Origin`
+    # informuje proxy/CDN že response závisí na Origin.
+    @corsProd header Origin "https://cointrack.cz"
+    @corsDev header Origin "http://localhost:3000"
 
-    header @corsOrigin {
-        Access-Control-Allow-Origin "https://cointrack.cz"
-        Access-Control-Allow-Methods "GET, PUT, POST, OPTIONS"
-        Access-Control-Allow-Headers "Content-Type, Authorization, x-amz-content-sha256, x-amz-date, x-amz-meta-*, x-amz-acl"
-        Access-Control-Expose-Headers "ETag"
-        Access-Control-Max-Age "3600"
-        Vary "Origin"
-    }
-    header @corsOriginLocal {
-        Access-Control-Allow-Origin "http://localhost:3000"
-        Access-Control-Allow-Methods "GET, PUT, POST, OPTIONS"
-        Access-Control-Allow-Headers "Content-Type, Authorization, x-amz-content-sha256, x-amz-date, x-amz-meta-*, x-amz-acl"
-        Access-Control-Expose-Headers "ETag"
-        Access-Control-Max-Age "3600"
-        Vary "Origin"
-    }
+    header @corsProd defer Access-Control-Allow-Origin "https://cointrack.cz"
+    header @corsProd defer Access-Control-Allow-Methods "GET, PUT, POST, OPTIONS"
+    header @corsProd defer Access-Control-Allow-Headers "Content-Type, Authorization, x-amz-content-sha256, x-amz-date, x-amz-meta-*, x-amz-acl"
+    header @corsProd defer Access-Control-Expose-Headers "ETag"
+    header @corsProd defer Access-Control-Max-Age "3600"
+    header @corsProd defer Vary "Origin"
 
-    # Preflight OPTIONS — okamžitá odpověď (CORS hlavičky doplňují @corsOrigin výš).
+    header @corsDev defer Access-Control-Allow-Origin "http://localhost:3000"
+    header @corsDev defer Access-Control-Allow-Methods "GET, PUT, POST, OPTIONS"
+    header @corsDev defer Access-Control-Allow-Headers "Content-Type, Authorization, x-amz-content-sha256, x-amz-date, x-amz-meta-*, x-amz-acl"
+    header @corsDev defer Access-Control-Expose-Headers "ETag"
+    header @corsDev defer Access-Control-Max-Age "3600"
+    header @corsDev defer Vary "Origin"
+
+    # Preflight OPTIONS — okamžitá 204. `defer` u header @corsProd výš znamená,
+    # že CORS hlavičky se přidají i na tuto response.
     @options method OPTIONS
-    handle @options {
-        respond 204
-    }
+    respond @options 204
 
     reverse_proxy minio:9000 {
         header_up Host {host}
-        header_up X-Real-IP {remote_host}
-        header_up X-Forwarded-For {remote_host}
-        header_up X-Forwarded-Proto {scheme}
     }
 
     header {
