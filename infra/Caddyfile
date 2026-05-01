@@ -44,28 +44,30 @@ api.cointrack.cz {
 
 # ─── MinIO (public file access přes presigned URLs) ─────────────────
 files.cointrack.cz {
-    # CORS pro PUT/GET z webu — bez nich browser blokuje cross-origin PUT
-    # z cointrack.cz a uživatel vidí "Failed to fetch" v scan flow.
-    #
-    # `defer` jako sub-directive uvnitř bloku zajišťuje, že hlavičky se
-    # přidají těsně před zápisem response — přežije jak respond, tak
-    # reverse_proxy. Allow-Origin: * funguje pro non-credentialed requesty
-    # (= náš upload flow s presigned URL, který nepoužívá cookies).
+    # Preflight OPTIONS musí přijít s CORS hlavičkami v jednom kroku, jinak
+    # browser PUT na presigned URL zablokuje. `handle @options { header ...
+    # respond 204 }` všechno explicitně v jednom bloku — žádný defer / order
+    # quirks, žádný reverse_proxy passthrough.
+    @options method OPTIONS
+    handle @options {
+        header Access-Control-Allow-Origin "*"
+        header Access-Control-Allow-Methods "GET, PUT, POST, OPTIONS"
+        header Access-Control-Allow-Headers "*"
+        header Access-Control-Expose-Headers "ETag"
+        header Access-Control-Max-Age "3600"
+        respond 204
+    }
+
+    # Pro non-OPTIONS requesty (GET fotky, PUT upload) — header s defer
+    # přidá CORS přes finální response z reverse_proxy.
     header {
         defer
         Access-Control-Allow-Origin "*"
-        Access-Control-Allow-Methods "GET, PUT, POST, OPTIONS"
-        Access-Control-Allow-Headers "Content-Type, Authorization, x-amz-content-sha256, x-amz-date, x-amz-meta-*, x-amz-acl"
         Access-Control-Expose-Headers "ETag"
-        Access-Control-Max-Age "3600"
         Strict-Transport-Security "max-age=31536000"
         X-Content-Type-Options "nosniff"
         -Server
     }
-
-    # Preflight OPTIONS — okamžitá 204 (header middleware výš doplní CORS).
-    @options method OPTIONS
-    respond @options 204
 
     reverse_proxy minio:9000 {
         header_up Host {host}
