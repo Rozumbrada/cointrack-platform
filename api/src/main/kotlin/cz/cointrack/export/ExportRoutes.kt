@@ -21,21 +21,27 @@ import java.util.UUID
 /**
  * Export endpointy.
  *
- *   GET /api/v1/export/receipts.xml?profileId=UUID&from=YYYY-MM-DD&to=YYYY-MM-DD
- *   GET /api/v1/export/invoices.xml?profileId=UUID&from=YYYY-MM-DD&to=YYYY-MM-DD
+ *   GET /api/v1/export/receipts.xml?profileId=UUID
+ *       &from=YYYY-MM-DD       (optional)
+ *       &to=YYYY-MM-DD         (optional)
+ *       &ids=syncId1,syncId2…  (optional — má přednost před from/to)
  *
- * Profil musí patřit autentizovanému userovi (přes Profiles.cointrackUserId
- * nebo přes členství v organizaci, kterou profil vlastní).
+ *   GET /api/v1/export/invoices.xml?profileId=UUID&from=&to=&ids=
  *
- * Vrací `application/xml` s `Content-Disposition: attachment` (browser stáhne soubor).
+ * Pokud je `ids` předán, server exportuje JEN tyto entity (bez ohledu na from/to).
+ * Pokud není, použije from/to filter (= aktuální chování). Pokud chybí oba,
+ * exportuje vše v profilu.
+ *
+ * Profil musí patřit autentizovanému userovi.
+ * Vrací `application/xml` s `Content-Disposition: attachment`.
  */
 fun Route.exportRoutes() {
     authenticate("jwt") {
         route("/export") {
 
             get("/receipts.xml") {
-                val (profileDbId, from, to) = parseExportParams(call)
-                val xml = PohodaExporter.exportReceipts(profileDbId, from, to)
+                val (profileDbId, from, to, ids) = parseExportParams(call)
+                val xml = PohodaExporter.exportReceipts(profileDbId, from, to, ids = ids)
                 if (xml.isEmpty()) {
                     throw ApiException(
                         HttpStatusCode.NotFound,
@@ -43,7 +49,7 @@ fun Route.exportRoutes() {
                         "Žádné účtenky pro export v zadaném období.",
                     )
                 }
-                val filename = "cointrack-uctenky-${from ?: "all"}_${to ?: "all"}.xml"
+                val filename = filenameFor("uctenky", from, to, ids)
                 call.response.header(
                     HttpHeaders.ContentDisposition,
                     """attachment; filename="$filename"""",
@@ -52,8 +58,8 @@ fun Route.exportRoutes() {
             }
 
             get("/invoices.xml") {
-                val (profileDbId, from, to) = parseExportParams(call)
-                val xml = PohodaExporter.exportInvoices(profileDbId, from, to)
+                val (profileDbId, from, to, ids) = parseExportParams(call)
+                val xml = PohodaExporter.exportInvoices(profileDbId, from, to, ids = ids)
                 if (xml.isEmpty()) {
                     throw ApiException(
                         HttpStatusCode.NotFound,
@@ -61,7 +67,7 @@ fun Route.exportRoutes() {
                         "Žádné faktury pro export v zadaném období.",
                     )
                 }
-                val filename = "cointrack-faktury-${from ?: "all"}_${to ?: "all"}.xml"
+                val filename = filenameFor("faktury", from, to, ids)
                 call.response.header(
                     HttpHeaders.ContentDisposition,
                     """attachment; filename="$filename"""",
@@ -72,7 +78,20 @@ fun Route.exportRoutes() {
     }
 }
 
-private suspend fun parseExportParams(call: io.ktor.server.application.ApplicationCall): Triple<UUID, LocalDate?, LocalDate?> {
+private fun filenameFor(prefix: String, from: LocalDate?, to: LocalDate?, ids: List<UUID>?): String {
+    if (!ids.isNullOrEmpty()) return "cointrack-$prefix-vyber-${ids.size}.xml"
+    return "cointrack-$prefix-${from ?: "all"}_${to ?: "all"}.xml"
+}
+
+private data class ExportParams(
+    val profileDbId: UUID,
+    val from: LocalDate?,
+    val to: LocalDate?,
+    /** Konkrétní syncIds k exportu (priorita před from/to). null = žádný explicitní výběr. */
+    val ids: List<UUID>?,
+)
+
+private suspend fun parseExportParams(call: io.ktor.server.application.ApplicationCall): ExportParams {
     val principal = call.principal<JWTPrincipal>()!!
     val userId = UUID.fromString(principal.subject)
 
@@ -86,7 +105,6 @@ private suspend fun parseExportParams(call: io.ktor.server.application.Applicati
         Profiles.selectAll().where { Profiles.syncId eq profileSyncUuid }.singleOrNull()
     } ?: throw ApiException(HttpStatusCode.NotFound, "profile_not_found", "Profil nenalezen.")
 
-    // Ověření, že profil patří userovi (osobní profil; org-level kontrolu zatím přeskočíme).
     val profileOwner = profile[Profiles.ownerUserId].value
     if (profileOwner != userId) {
         throw ApiException(HttpStatusCode.Forbidden, "forbidden", "K tomuto profilu nemáš přístup.")
@@ -105,5 +123,15 @@ private suspend fun parseExportParams(call: io.ktor.server.application.Applicati
         }
     }
 
-    return Triple(profileDbId, from, to)
+    // ?ids=uuid1,uuid2,uuid3 — ručně vybraný export. Pokud není zadáno (null nebo empty),
+    // použije se from/to filter; pokud je [], vrátí prázdný export (== nic vybráno).
+    val ids = call.request.queryParameters["ids"]?.takeIf { it.isNotBlank() }?.let { raw ->
+        raw.split(",").map { it.trim() }.filter { it.isNotBlank() }.map { idStr ->
+            runCatching { UUID.fromString(idStr) }.getOrElse {
+                throw ApiException(HttpStatusCode.BadRequest, "invalid_ids", "Neplatné UUID v 'ids': $idStr")
+            }
+        }
+    }
+
+    return ExportParams(profileDbId, from, to, ids)
 }

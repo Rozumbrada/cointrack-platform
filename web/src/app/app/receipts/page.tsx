@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
+import { Trash2 } from "lucide-react";
 import { sync } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
@@ -50,6 +51,9 @@ export default function ReceiptsPage() {
   const [linkFilter, setLinkFilter] = useState<"ALL" | "LINKED" | "UNLINKED">("ALL");
   const [accountFilter, setAccountFilter] = useState<string>("ALL");
   const [creating, setCreating] = useState(false);
+  // Multi-select pro hromadné akce (export, delete). Sleduje syncIds.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [period, setPeriod] = useState<Period>("all");
   const [customRange, setCustomRange] = useState<{ from: string; to: string }>({
     from: "",
@@ -136,6 +140,64 @@ export default function ReceiptsPage() {
       .sort((a, b) => (b.data.date ?? "").localeCompare(a.data.date ?? ""));
   }, [receipts, query, linkFilter, range, accountFilter, accountNameMap, accountTypeMap]);
 
+  // ─── Selection helpers ──────────────────────────────────────────────────
+
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((r) => selected.has(r.syncId));
+
+  function toggleOne(syncId: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(syncId)) next.delete(syncId);
+      else next.add(syncId);
+      return next;
+    });
+  }
+
+  function toggleAllVisible() {
+    if (allFilteredSelected) {
+      // Odznačit všechny viditelné (ostatní v profilu zůstanou jak jsou)
+      setSelected((prev) => {
+        const next = new Set(prev);
+        filtered.forEach((r) => next.delete(r.syncId));
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        filtered.forEach((r) => next.add(r.syncId));
+        return next;
+      });
+    }
+  }
+
+  async function bulkDelete() {
+    if (selected.size === 0) return;
+    if (!confirm(t("bulk_delete_confirm", { count: selected.size }))) return;
+    setBulkBusy(true);
+    try {
+      const now = new Date().toISOString();
+      const entities = receipts
+        .filter((r) => selected.has(r.syncId))
+        .map((r) => ({
+          syncId: r.syncId,
+          updatedAt: now,
+          deletedAt: now,
+          clientVersion: 1,
+          data: r.data as unknown as Record<string, unknown>,
+        }));
+      await withAuth((tk) => sync.push(tk, { entities: { receipts: entities } }));
+      setSelected(new Set());
+      await reload();
+    } catch (e) {
+      alert(`${t("bulk_delete_failed")}: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  const selectedIdsArray = useMemo(() => Array.from(selected), [selected]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -150,7 +212,11 @@ export default function ReceiptsPage() {
             custom={customRange}
             onCustomChange={setCustomRange}
           />
-          <ExportButton type="receipts" profileSyncId={profileSyncId} />
+          <ExportButton
+            type="receipts"
+            profileSyncId={profileSyncId}
+            selectedIds={selectedIdsArray}
+          />
           <button
             onClick={() => setCreating(true)}
             className="h-10 px-4 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium"
@@ -223,9 +289,42 @@ export default function ReceiptsPage() {
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-ink-200 overflow-hidden">
+          {selected.size > 0 && (
+            <div className="bg-brand-50 border-b border-brand-200 px-4 py-2 flex items-center gap-3 flex-wrap">
+              <span className="text-sm text-brand-900 font-medium">
+                {t("bulk_selected_count", { count: selected.size })}
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelected(new Set())}
+                className="text-xs text-brand-700 hover:text-brand-900 underline"
+              >
+                {t("bulk_clear")}
+              </button>
+              <div className="flex-1" />
+              <button
+                type="button"
+                onClick={bulkDelete}
+                disabled={bulkBusy}
+                className="inline-flex items-center gap-1.5 h-8 px-3 rounded text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {bulkBusy ? t("bulk_deleting") : t("bulk_delete")}
+              </button>
+            </div>
+          )}
           <table className="w-full text-sm">
             <thead className="bg-ink-50 text-ink-600 text-left text-xs uppercase tracking-wide">
               <tr>
+                <th className="px-3 py-3 w-8">
+                  <input
+                    type="checkbox"
+                    checked={allFilteredSelected}
+                    onChange={toggleAllVisible}
+                    aria-label={t("bulk_select_all")}
+                    className="cursor-pointer"
+                  />
+                </th>
                 <th className="px-6 py-3 font-medium">{t("th_merchant")}</th>
                 <th className="px-6 py-3 font-medium">{t("th_date")}</th>
                 <th className="px-6 py-3 font-medium">{t("th_payment")}</th>
@@ -236,12 +335,26 @@ export default function ReceiptsPage() {
             <tbody className="divide-y divide-ink-100">
               {filtered.map((r) => {
                 const photos = Array.isArray(r.data.photoKeys) ? r.data.photoKeys : [];
+                const isSel = selected.has(r.syncId);
                 return (
                   <tr
                     key={r.syncId}
-                    className="hover:bg-ink-50/50 cursor-pointer"
+                    className={`hover:bg-ink-50/50 cursor-pointer ${isSel ? "bg-brand-50/40" : ""}`}
                     onClick={() => { window.location.href = `/app/receipts/${r.syncId}`; }}
                   >
+                    <td
+                      className="px-3 py-3 w-8"
+                      onClick={(e) => { e.stopPropagation(); toggleOne(r.syncId); }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSel}
+                        onChange={() => toggleOne(r.syncId)}
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label={t("bulk_select_one")}
+                        className="cursor-pointer"
+                      />
+                    </td>
                     <td className="px-6 py-3 font-medium text-ink-900">
                       {r.data.merchantName || t("no_name")}
                     </td>

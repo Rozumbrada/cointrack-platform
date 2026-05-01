@@ -3,35 +3,44 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { withAuth } from "@/lib/auth-store";
-import { FormDialog, Field, inputClass } from "./FormDialog";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
+/**
+ * Export Pohoda XML — bez dialogu. Klik = přímo stahuje.
+ *
+ * Pokud `selectedIds` je non-empty, server vyfiltruje jen tyto entity.
+ * Pokud je prázdný, server exportuje vše v profilu (bez date range — pro
+ * filtrování má teď uživatel klasický date selector na stránce + manuální
+ * výběr přes checkboxy).
+ *
+ * Za běhu je tlačítko disabled (spinner v label) a zachycuje chyby
+ * s alert(). Soubor se stáhne jako attachment z `Content-Disposition` header.
+ */
 export function ExportButton({
   type,
   profileSyncId,
+  selectedIds,
 }: {
   type: "receipts" | "invoices";
   profileSyncId: string | null;
+  /** Pokud non-empty, exportují se JEN tyto syncIds. */
+  selectedIds?: string[];
 }) {
   const t = useTranslations("export_button");
-  const [open, setOpen] = useState(false);
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
   const [exporting, setExporting] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
 
   async function exportXml() {
     if (!profileSyncId) {
-      setErr(t("no_profile"));
+      alert(t("no_profile"));
       return;
     }
     setExporting(true);
-    setErr(null);
     try {
       const params = new URLSearchParams({ profileId: profileSyncId });
-      if (from) params.set("from", from);
-      if (to) params.set("to", to);
+      if (selectedIds && selectedIds.length > 0) {
+        params.set("ids", selectedIds.join(","));
+      }
       const url = `${API_URL}/api/v1/export/${type}.xml?${params}`;
 
       const res = await withAuth((token) =>
@@ -58,52 +67,25 @@ export function ExportButton({
       link.download = filename;
       link.click();
       URL.revokeObjectURL(link.href);
-      setOpen(false);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      alert(`${t("export_failed")}: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setExporting(false);
     }
   }
 
+  const hasSelection = selectedIds && selectedIds.length > 0;
+  const label = hasSelection
+    ? t("button_selected", { count: selectedIds!.length })
+    : t("button");
+
   return (
-    <>
-      <button
-        onClick={() => setOpen(true)}
-        className="h-10 px-4 rounded-lg border border-ink-300 bg-white hover:bg-ink-50 text-sm font-medium text-ink-700"
-      >
-        {t("button")}
-      </button>
-      {open && (
-        <FormDialog
-          title={type === "receipts" ? t("title_receipts") : t("title_invoices")}
-          onClose={() => setOpen(false)}
-          onSave={exportXml}
-          saving={exporting}
-          error={err}
-          saveLabel={t("save_label")}
-        >
-          <p className="text-sm text-ink-600">{t("description")}</p>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label={t("from_optional")}>
-              <input
-                type="date"
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-                className={inputClass}
-              />
-            </Field>
-            <Field label={t("to_optional")}>
-              <input
-                type="date"
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-                className={inputClass}
-              />
-            </Field>
-          </div>
-        </FormDialog>
-      )}
-    </>
+    <button
+      onClick={exportXml}
+      disabled={exporting || !profileSyncId}
+      className="h-10 px-4 rounded-lg border border-ink-300 bg-white hover:bg-ink-50 disabled:opacity-60 text-sm font-medium text-ink-700 whitespace-nowrap"
+    >
+      {exporting ? t("exporting") : label}
+    </button>
   );
 }

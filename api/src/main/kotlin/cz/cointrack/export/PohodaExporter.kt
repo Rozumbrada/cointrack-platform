@@ -33,22 +33,43 @@ import java.util.UUID
  */
 object PohodaExporter {
 
-    /** Vrátí Pohoda XML pro účtenky daného profilu v intervalu [from, to]. */
+    /**
+     * Veřejná base URL webu (slouží pro link v poznámce: "Cointrack: {webUrl}/app/receipts/{syncId}").
+     * Konfiguruje se přes env `PUBLIC_WEB_URL`. Pokud chybí, link do poznámky se nepřidává.
+     */
+    private val publicWebUrl: String? get() = System.getenv("PUBLIC_WEB_URL")?.trimEnd('/')?.takeIf { it.isNotBlank() }
+
+    /**
+     * Vrátí Pohoda XML pro účtenky daného profilu.
+     *
+     * @param ids Pokud non-null, exportují se JEN tyto účtenky (podle syncId).
+     *            from/to v takovém případě ignorováno (uživatel si vybral konkrétní).
+     */
     suspend fun exportReceipts(
         profileDbId: UUID,
         from: LocalDate? = null,
         to: LocalDate? = null,
+        ids: List<UUID>? = null,
         isVatPayer: Boolean = false,
     ): String = db {
         val profile = Profiles.selectAll().where { Profiles.id eq EntityID(profileDbId, Profiles) }
             .singleOrNull()
         val userIco = profile?.get(Profiles.ico).orEmpty()
 
-        val rows = Receipts.selectAll()
+        val baseQuery = Receipts.selectAll()
             .where { (Receipts.profileId eq EntityID(profileDbId, Profiles)) and (Receipts.deletedAt eq null) }
             .orderBy(Receipts.date)
             .toList()
-            .filter { (from == null || !it[Receipts.date].isBefore(from)) && (to == null || !it[Receipts.date].isAfter(to)) }
+
+        val rows = if (!ids.isNullOrEmpty()) {
+            val idSet = ids.toSet()
+            baseQuery.filter { it[Receipts.syncId] in idSet }
+        } else {
+            baseQuery.filter {
+                (from == null || !it[Receipts.date].isBefore(from)) &&
+                    (to == null || !it[Receipts.date].isAfter(to))
+            }
+        }
 
         if (rows.isEmpty()) "" else buildString {
             xmlHeader(this, "voucher", userIco)
@@ -68,25 +89,35 @@ object PohodaExporter {
         }
     }
 
-    /** Vrátí Pohoda XML pro faktury daného profilu v intervalu [from, to]. */
+    /**
+     * Vrátí Pohoda XML pro faktury daného profilu.
+     * @param ids Pokud non-null, exportují se JEN tyto faktury (podle syncId).
+     */
     suspend fun exportInvoices(
         profileDbId: UUID,
         from: LocalDate? = null,
         to: LocalDate? = null,
+        ids: List<UUID>? = null,
         isVatPayer: Boolean = false,
     ): String = db {
         val profile = Profiles.selectAll().where { Profiles.id eq EntityID(profileDbId, Profiles) }
             .singleOrNull()
         val userIco = profile?.get(Profiles.ico).orEmpty()
 
-        val rows = Invoices.selectAll()
+        val baseQuery = Invoices.selectAll()
             .where { (Invoices.profileId eq EntityID(profileDbId, Profiles)) and (Invoices.deletedAt eq null) }
             .orderBy(Invoices.issueDate)
             .toList()
-            .filter {
+
+        val rows = if (!ids.isNullOrEmpty()) {
+            val idSet = ids.toSet()
+            baseQuery.filter { it[Invoices.syncId] in idSet }
+        } else {
+            baseQuery.filter {
                 val d = it[Invoices.issueDate] ?: return@filter from == null && to == null
                 (from == null || !d.isBefore(from)) && (to == null || !d.isAfter(to))
             }
+        }
 
         if (rows.isEmpty()) "" else buildString {
             appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
@@ -144,7 +175,9 @@ object PohodaExporter {
     private fun appendBank(sb: StringBuilder, r: ResultRow, items: List<ResultRow>, seq: Int, isVatPayer: Boolean) {
         // Pohoda bank.xsd — analog s voucher, jen jiný namespace + voucherType
         val merchant = r[Receipts.merchantName].orEmpty().ifBlank { "Karetní platba" }
-        val text = ("Karetní platba - $merchant").take(240)
+        val photoNote = receiptPhotoUrl(r)
+        val baseText = "Karetní platba - $merchant"
+        val text = (if (photoNote != null) "$baseText | Foto: $photoNote" else baseText).take(240)
         // Bankovní účet — buď z propojené tx přes Receipts.transactionId, nebo prázdné.
         // Pro <bnk:account> (typ:refType) potřebujeme Pohoda Zkratku (typ:ids), ne číslo.
         val pohodaIds = r[Receipts.transactionId]?.let { txId ->
@@ -180,7 +213,12 @@ object PohodaExporter {
             else -> ""
         }
         val vatSuffix = if (!isVatPayer) " [neplatce DPH]" else ""
-        val text = "Nakup - $merchant$timeSuffix$pmSuffix$vatSuffix".take(240)
+        val baseText = "Nakup - $merchant$timeSuffix$pmSuffix$vatSuffix"
+        // Pokud má účtenka přiloženou fotku a máme PUBLIC_WEB_URL, přidáme odkaz
+        // na webovou aplikaci. URL je clickable v Pohoda UI a uživatel se přes
+        // něj dostane na originál účtenku (po přihlášení do Cointrack).
+        val photoNote = receiptPhotoUrl(r)
+        val text = (if (photoNote != null) "$baseText | Foto: $photoNote" else baseText).take(240)
 
         sb.appendLine("""      <vou:voucherHeader>""")
         sb.appendLine("""        <vou:voucherType>expense</vou:voucherType>""")
@@ -188,6 +226,25 @@ object PohodaExporter {
         sb.appendLine("""        <vou:text>${text.xml()}</vou:text>""")
         appendPartner(sb, r, "vou")
         sb.appendLine("""      </vou:voucherHeader>""")
+    }
+
+    /**
+     * Pokud má účtenka aspoň jednu fotku (photoKeys JSON není "[]") A je
+     * nakonfigurováno PUBLIC_WEB_URL, vrátí URL odkazu na detail účtenky.
+     * Jinak null.
+     */
+    private fun receiptPhotoUrl(r: ResultRow): String? {
+        val webUrl = publicWebUrl ?: return null
+        val photoKeys = r[Receipts.photoKeys]
+        if (photoKeys.isBlank() || photoKeys == "[]") return null
+        return "$webUrl/app/receipts/${r[Receipts.syncId]}"
+    }
+
+    private fun invoiceFileUrl(r: ResultRow): String? {
+        val webUrl = publicWebUrl ?: return null
+        val fileKeys = r[Invoices.fileKeys]
+        if (fileKeys.isBlank() || fileKeys == "[]") return null
+        return "$webUrl/app/invoices/${r[Invoices.syncId]}"
     }
 
     private fun appendPartner(sb: StringBuilder, r: ResultRow, ns: String) {
@@ -278,8 +335,13 @@ object PohodaExporter {
         val invoiceType = if (isExpense) "receivedInvoice" else "issuedInvoice"
         val partnerName = if (isExpense) r[Invoices.supplierName].orEmpty()
                           else r[Invoices.customerName].orEmpty()
-        val text = (r[Invoices.note]?.takeIf { it.isNotBlank() }
-            ?: partnerName.ifBlank { if (isExpense) "Nakup" else "Prodej" }).take(240)
+        val baseText = r[Invoices.note]?.takeIf { it.isNotBlank() }
+            ?: partnerName.ifBlank { if (isExpense) "Nakup" else "Prodej" }
+        // Pokud má faktura přiložený soubor (PDF/foto), přidáme do textu
+        // odkaz na detail v Cointrack — uživatel klikne v Pohoda UI a
+        // dostane se k originálu (clickable URL).
+        val fileNote = invoiceFileUrl(r)
+        val text = (if (fileNote != null) "$baseText | Soubor: $fileNote" else baseText).take(240)
 
         sb.appendLine("""  <dat:dataPackItem id="$seq" version="2.0">""")
         sb.appendLine("""    <inv:invoice version="2.0">""")
