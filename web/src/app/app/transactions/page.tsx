@@ -55,6 +55,21 @@ export default function TransactionsPage() {
     return m;
   }, [cats]);
 
+  // Map: account syncId → account name (pro fulltext search "Hlavní účet")
+  const accountNameMap = useMemo(() => {
+    const m = new Map<string, string>();
+    accounts.forEach((a) => m.set(a.syncId, a.data.name));
+    return m;
+  }, [accounts]);
+
+  // Map: tx syncId → raw ServerTransaction (pro search v bankVs/protistrana/atd.,
+  // které UiTransaction nemá).
+  const rawTxMap = useMemo(() => {
+    const m = new Map<string, ServerTransaction>();
+    txEntities.forEach((e) => m.set(e.syncId, e.data));
+    return m;
+  }, [txEntities]);
+
   const diag = diagnose("transactions");
 
   // Map server data → UI shape
@@ -66,6 +81,11 @@ export default function TransactionsPage() {
   const range = useMemo(() => periodRange(period, customRange), [period, customRange]);
 
   const filtered = useMemo(() => {
+    // Pre-parse query — lowercase + amount → number (pokud uživatel zadal "1500" nebo "1 500,00")
+    const ql = query.trim().toLowerCase();
+    const qAmount = ql ? parseFloat(ql.replace(/[\s ]/g, "").replace(",", ".")) : NaN;
+    const hasAmountQuery = Number.isFinite(qAmount);
+
     return [...uiTxs]
       .filter((r) => (filter === "ALL" ? true : r.type === filter))
       .filter((r) => {
@@ -78,14 +98,39 @@ export default function TransactionsPage() {
         if (range.to && r.date > range.to) return false;
         return true;
       })
-      .filter((r) =>
-        query
-          ? (r.description?.toLowerCase().includes(query.toLowerCase()) ||
-             r.merchant?.toLowerCase().includes(query.toLowerCase()))
-          : true,
-      )
+      .filter((r) => {
+        if (!ql) return true;
+        // Fulltext search napříč všemi poli, která jsou v detailu transakce.
+        // Match je case-insensitive substring; pro amount tolerance ±0.01 Kč.
+        if (r.description?.toLowerCase().includes(ql)) return true;
+        if (r.merchant?.toLowerCase().includes(ql)) return true;
+
+        const raw = rawTxMap.get(r.syncId);
+        if (raw) {
+          if (raw.bankVs?.toLowerCase().includes(ql)) return true;
+          if (raw.bankCounterparty?.toLowerCase().includes(ql)) return true;
+          if (raw.bankCounterpartyName?.toLowerCase().includes(ql)) return true;
+          if (raw.bankTxId?.toLowerCase().includes(ql)) return true;
+        }
+
+        // Account name ("Hlavní účet", "Fio")
+        const accName = r.accountSyncId ? accountNameMap.get(r.accountSyncId) : undefined;
+        if (accName?.toLowerCase().includes(ql)) return true;
+
+        // Category name ("Potraviny", "Mzda")
+        const catName = r.categorySyncId ? catMap.get(r.categorySyncId)?.name : undefined;
+        if (catName?.toLowerCase().includes(ql)) return true;
+
+        // Datum (YYYY-MM-DD substring, "2026-04" matchne celý duben)
+        if (r.date.toLowerCase().includes(ql)) return true;
+
+        // Částka — uživatel napsal "1500" nebo "1500,50" → match na hodnotu (±1 hal)
+        if (hasAmountQuery && Math.abs(r.amount - qAmount) < 0.01) return true;
+
+        return false;
+      })
       .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
-  }, [uiTxs, filter, accountFilter, query, range]);
+  }, [uiTxs, filter, accountFilter, query, range, rawTxMap, accountNameMap, catMap]);
 
   const allSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.syncId));
 
