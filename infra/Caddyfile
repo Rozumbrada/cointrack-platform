@@ -47,40 +47,28 @@ files.cointrack.cz {
     # CORS pro PUT/GET z webu — bez nich browser blokuje cross-origin PUT
     # z cointrack.cz a uživatel vidí "Failed to fetch" v scan flow.
     #
-    # Použitý vzorec: matchery na Origin, pak per-line `header @matcher X Y`
-    # s `defer` (= aplikuj na response NEZÁVISLE na tom, jestli respond,
-    # reverse_proxy nebo cokoliv jiného odpověď generuje). `Vary: Origin`
-    # informuje proxy/CDN že response závisí na Origin.
-    @corsProd header Origin "https://cointrack.cz"
-    @corsDev header Origin "http://localhost:3000"
+    # `defer` jako sub-directive uvnitř bloku zajišťuje, že hlavičky se
+    # přidají těsně před zápisem response — přežije jak respond, tak
+    # reverse_proxy. Allow-Origin: * funguje pro non-credentialed requesty
+    # (= náš upload flow s presigned URL, který nepoužívá cookies).
+    header {
+        defer
+        Access-Control-Allow-Origin "*"
+        Access-Control-Allow-Methods "GET, PUT, POST, OPTIONS"
+        Access-Control-Allow-Headers "Content-Type, Authorization, x-amz-content-sha256, x-amz-date, x-amz-meta-*, x-amz-acl"
+        Access-Control-Expose-Headers "ETag"
+        Access-Control-Max-Age "3600"
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        -Server
+    }
 
-    header @corsProd defer Access-Control-Allow-Origin "https://cointrack.cz"
-    header @corsProd defer Access-Control-Allow-Methods "GET, PUT, POST, OPTIONS"
-    header @corsProd defer Access-Control-Allow-Headers "Content-Type, Authorization, x-amz-content-sha256, x-amz-date, x-amz-meta-*, x-amz-acl"
-    header @corsProd defer Access-Control-Expose-Headers "ETag"
-    header @corsProd defer Access-Control-Max-Age "3600"
-    header @corsProd defer Vary "Origin"
-
-    header @corsDev defer Access-Control-Allow-Origin "http://localhost:3000"
-    header @corsDev defer Access-Control-Allow-Methods "GET, PUT, POST, OPTIONS"
-    header @corsDev defer Access-Control-Allow-Headers "Content-Type, Authorization, x-amz-content-sha256, x-amz-date, x-amz-meta-*, x-amz-acl"
-    header @corsDev defer Access-Control-Expose-Headers "ETag"
-    header @corsDev defer Access-Control-Max-Age "3600"
-    header @corsDev defer Vary "Origin"
-
-    # Preflight OPTIONS — okamžitá 204. `defer` u header @corsProd výš znamená,
-    # že CORS hlavičky se přidají i na tuto response.
+    # Preflight OPTIONS — okamžitá 204 (header middleware výš doplní CORS).
     @options method OPTIONS
     respond @options 204
 
     reverse_proxy minio:9000 {
         header_up Host {host}
-    }
-
-    header {
-        Strict-Transport-Security "max-age=31536000"
-        X-Content-Type-Options "nosniff"
-        -Server
     }
 
     encode gzip
