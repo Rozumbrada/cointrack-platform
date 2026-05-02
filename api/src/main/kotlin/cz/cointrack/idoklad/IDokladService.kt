@@ -214,44 +214,49 @@ class IDokladService(private val client: IDokladClient = IDokladClient()) {
         items: List<IDokladClient.IDokladInvoice>,
         isExpense: Boolean,
     ): Pair<Int, Int> = db {
+        // PRE-FETCH: jeden dotaz na všechny existující faktury daného profilu
+        // s nějakým idokladId. Předtím jsme dělali N+1 queries (per-invoice
+        // SELECT) → s rostoucím počtem faktur to bylo O(n²) skenování bez
+        // indexu na idokladId. Teď jeden scan, in-memory lookup map.
+        val allExisting = Invoices.selectAll()
+            .where {
+                (Invoices.profileId eq profileDbId) and
+                    Invoices.idokladId.isNotNull() and
+                    Invoices.deletedAt.isNull()
+            }
+            .toList()
+        // Mapa: canonical (positive) id → list of matching rows (sorted by updatedAt DESC)
+        val byCanonical = mutableMapOf<String, MutableList<org.jetbrains.exposed.sql.ResultRow>>()
+        for (row in allExisting) {
+            val raw = row[Invoices.idokladId] ?: continue
+            val canonical = if (raw.startsWith("-")) raw.substring(1) else raw
+            byCanonical.getOrPut(canonical) { mutableListOf() }.add(row)
+        }
+        for (list in byCanonical.values) {
+            list.sortByDescending { it[Invoices.updatedAt] }
+        }
+
         var added = 0
         var updated = 0
         for (inv in items) {
             val idokladId = inv.Id.toString()
-            val negatedIdokladId = "-${inv.Id}"
-            // Lookup po BOTH possible idokladId values:
-            //   - "12345"  (positive — server konvence + nová mobile konvence)
-            //   - "-12345" (negative — legacy mobile konvence pro received invoices)
-            // Mobile před fixem ukládal received jako idokladId="-id" aby je
-            // odlišil od issued. Cloud sync to push'l na server, který má svůj
-            // vlastní lookup podle positive id → vznikly duplikáty (server vložil
-            // "12345" jako nový, mobile-pushed "-12345" zůstal). Teď match obojí
-            // a normalizujeme na positive.
-            val matches = Invoices.selectAll()
-                .where {
-                    (Invoices.profileId eq profileDbId) and
-                        ((Invoices.idokladId eq idokladId) or (Invoices.idokladId eq negatedIdokladId)) and
-                        Invoices.deletedAt.isNull()
-                }
-                .orderBy(Invoices.updatedAt to org.jetbrains.exposed.sql.SortOrder.DESC)
-                .toList()
-
+            val matches = byCanonical[idokladId] ?: emptyList()
             val existing = matches.firstOrNull()
-            // Cleanup: pokud máme >1 match, ostatní jsou duplikáty z historie —
-            // soft-deletneme je. Sjednotí stav pro web/mobile po roce duplicit.
+
+            // Cleanup duplikátů (in-memory IDs → batch UPDATE)
             if (matches.size > 1) {
                 val now = Instant.now()
                 val keepSyncId = existing!![Invoices.syncId]
-                Invoices.update({
-                    (Invoices.profileId eq profileDbId) and
-                        ((Invoices.idokladId eq idokladId) or (Invoices.idokladId eq negatedIdokladId)) and
-                        (Invoices.syncId neq keepSyncId) and
-                        Invoices.deletedAt.isNull()
-                }) {
+                val duplicateSyncIds = matches.drop(1).map { it[Invoices.syncId] }
+                Invoices.update({ Invoices.syncId inList duplicateSyncIds }) {
                     it[deletedAt] = now
                     it[Invoices.updatedAt] = now
                 }
                 log.info("iDoklad sync: cleaned up ${matches.size - 1} duplicate(s) for idokladId=$idokladId")
+                // Drop duplicates from local map — pro jistotu, kdyby další
+                // iterace narazila na stejný canonical (nestane se ale pro
+                // jistotu).
+                byCanonical[idokladId] = mutableListOf(existing)
             }
 
             val total = inv.Prices?.TotalWithVat?.let { BigDecimal.valueOf(it) } ?: BigDecimal.ZERO
