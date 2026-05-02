@@ -501,8 +501,25 @@ class FioService(private val client: FioClient = FioClient()) {
         )
     }
 
+    /**
+     * Najde existující Cointrack Account, který odpovídá Fio bankovním údajům.
+     * **NIKDY nevytvoří nový** — pokud match selže, vyhodí ApiException
+     * s pokyny pro uživatele. Předtím tahle funkce auto-vytvářela account
+     * jako "Fio (xxx)" duplicate, což porušilo princip "žádný účet bez
+     * explicitního schválení uživatelem".
+     *
+     * Lookup heuristiky (řazené od nejspecifičtější):
+     *   1. IBAN exact match
+     *   2. accountNumber + bankCode exact match
+     *   3. accountNumber alone (pokud Cointrack account nemá bankCode vyplněný)
+     *
+     * Pokud nic nematchuje, user musí buď:
+     *   a) upravit svůj existující Account a vyplnit IBAN/číslo shodující s Fio
+     *   b) nebo SI EXPLICITNĚ vytvořit nový účet ručně před sync
+     *   c) nebo smazat Fio connection
+     */
     private suspend fun ensureFioAccount(profileDbId: UUID, info: FioClient.AccountInfo): UUID = db {
-        // 1) najít existing podle IBAN
+        // 1) match podle IBAN (nejpřesnější)
         if (!info.iban.isNullOrBlank()) {
             val existing = Accounts.selectAll()
                 .where {
@@ -510,11 +527,11 @@ class FioService(private val client: FioClient = FioClient()) {
                         (Accounts.bankIban eq info.iban) and
                         Accounts.deletedAt.isNull()
                 }
-                .singleOrNull()
+                .firstOrNull()
             if (existing != null) return@db existing[Accounts.id].value
         }
 
-        // 2) najít existing podle account number + bank code
+        // 2) match podle accountNumber + bankCode
         if (!info.accountId.isNullOrBlank() && !info.bankId.isNullOrBlank()) {
             val existing = Accounts.selectAll()
                 .where {
@@ -523,29 +540,36 @@ class FioService(private val client: FioClient = FioClient()) {
                         (Accounts.bankCode eq info.bankId) and
                         Accounts.deletedAt.isNull()
                 }
-                .singleOrNull()
+                .firstOrNull()
             if (existing != null) return@db existing[Accounts.id].value
         }
 
-        // 3) vytvoř nový (auto-discover)
-        val newId = Accounts.insert {
-            it[syncId] = UUID.randomUUID()
-            it[Accounts.profileId] = EntityID(profileDbId, Profiles)
-            it[Accounts.name] = "Fio (${info.iban?.takeLast(8) ?: info.accountId ?: "?"})"
-            it[Accounts.type] = "BANK"
-            it[Accounts.currency] = info.currency ?: "CZK"
-            it[Accounts.initialBalance] =
-                info.openingBalance?.let { v -> BigDecimal.valueOf(v).setScale(2, RoundingMode.HALF_UP) }
-                    ?: BigDecimal.ZERO
-            it[Accounts.bankProvider] = "fio"
-            it[Accounts.bankIban] = info.iban
-            it[Accounts.bankAccountNumber] = info.accountId
-            it[Accounts.bankCode] = info.bankId
-            it[clientVersion] = 1
-            it[updatedAt] = Instant.now()
-        } get Accounts.id
-        log.info("Auto-vytvořen Fio Account pro profil $profileDbId, IBAN ${info.iban}")
-        newId.value
+        // 3) match podle samotného accountNumber (legacy účty bez bankCode)
+        if (!info.accountId.isNullOrBlank()) {
+            val existing = Accounts.selectAll()
+                .where {
+                    (Accounts.profileId eq profileDbId) and
+                        (Accounts.bankAccountNumber eq info.accountId) and
+                        Accounts.deletedAt.isNull()
+                }
+                .firstOrNull()
+            if (existing != null) return@db existing[Accounts.id].value
+        }
+
+        // Žádný match → fail s pokyny. NIKDY auto-vytváříme.
+        val ibanInfo = info.iban?.let { "IBAN $it" } ?: ""
+        val numberInfo = info.accountId?.let {
+            if (info.bankId != null) "č. ú. $it/${info.bankId}" else "č. ú. $it"
+        } ?: ""
+        val identification = listOf(ibanInfo, numberInfo).filter { it.isNotBlank() }.joinToString(", ")
+        log.warn("Fio sync: žádný matching Account pro profile=$profileDbId, $identification")
+        throw ApiException(
+            HttpStatusCode.Conflict,
+            "fio_no_matching_account",
+            "Fio účet ($identification) není napojený na žádný existující Cointrack účet. " +
+                "Otevři ve webu/aplikaci Účty, edituj svůj účet a vyplň IBAN nebo číslo účtu " +
+                "+ kód banky odpovídající Fio. Pak Fio sync znovu spustí.",
+        )
     }
 
     private fun profileRowFor(userId: UUID, profileSyncId: UUID): org.jetbrains.exposed.sql.ResultRow {
