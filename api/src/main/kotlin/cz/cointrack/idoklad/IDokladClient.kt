@@ -278,17 +278,37 @@ class IDokladClient {
         return json.decodeFromString(IDokladInvoice.serializer(), resp.bodyAsText())
     }
 
-    /** Stáhne PDF faktury jako ByteArray. */
+    /**
+     * Stáhne PDF faktury jako ByteArray.
+     *
+     * iDoklad v3 endpoint `/IssuedInvoices/{Id}/GetPdf` vrací JSON ve tvaru
+     *   { "Data": "<base64>", "FileName": "..." }
+     * Ne raw bytes! Předtím jsme nesprávně používali `/Pdf` (404) → web
+     * dostal HTTP error, mobile používal v2 endpoint který vracel JSON →
+     * uložené ".pdf" obsahovalo JSON text → nešlo otevřít.
+     *
+     * Teď: parsujeme JSON, extrahujeme `Data`, dekódujeme base64 a vracíme
+     * skutečné PDF bytes.
+     */
     suspend fun getInvoicePdf(accessToken: String, invoiceId: Int): ByteArray {
-        val resp = client.get("https://api.idoklad.cz/v3/IssuedInvoices/$invoiceId/Pdf") {
+        val resp = client.get("https://api.idoklad.cz/v3/IssuedInvoices/$invoiceId/GetPdf") {
             bearerAuth(accessToken)
         }
         if (!resp.status.isSuccess()) {
             val txt = resp.bodyAsText()
             log.warn("iDoklad PDF failed: {} {}", resp.status, txt.take(200))
-            throw IDokladException("Get PDF failed: ${resp.status}", resp.status)
+            throw IDokladException("Get PDF failed: ${resp.status} — ${txt.take(200)}", resp.status)
         }
-        return resp.bodyAsBytes()
+        val body = resp.bodyAsText()
+        val parsed = runCatching { Json.parseToJsonElement(body) }.getOrNull()
+            ?: throw IDokladException("PDF response není JSON: ${body.take(200)}", null)
+        val dataField = parsed as? kotlinx.serialization.json.JsonObject
+        val base64 = dataField?.get("Data")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+            ?: dataField?.get("data")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+            ?: throw IDokladException("PDF JSON chybí pole 'Data': ${body.take(200)}", null)
+        return runCatching { java.util.Base64.getDecoder().decode(base64) }.getOrElse {
+            throw IDokladException("PDF base64 decode selhal: ${it.message}", null)
+        }
     }
 
     /** Pošle fakturu emailem zákazníkovi (přes iDoklad). */
