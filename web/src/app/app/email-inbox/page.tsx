@@ -11,25 +11,92 @@ import {
 import { withAuth } from "@/lib/auth-store";
 import { getCurrentProfileSyncId } from "@/lib/profile-store";
 
-const KNOWN_HOSTS: Record<string, { host: string; port: number; ssl: boolean; note?: string }> = {
-  "seznam.cz":     { host: "imap.seznam.cz", port: 993, ssl: true },
-  "email.cz":      { host: "imap.seznam.cz", port: 993, ssl: true },
-  "post.cz":       { host: "imap.seznam.cz", port: 993, ssl: true },
-  "wedos.cz":      { host: "wes1-imap.wedos.net", port: 993, ssl: true },
-  "wedos.com":     { host: "wes1-imap.wedos.net", port: 993, ssl: true },
-  "centrum.cz":    { host: "imap.centrum.cz", port: 993, ssl: true },
-  "atlas.cz":      { host: "imap.atlas.cz", port: 993, ssl: true },
-  "volny.cz":      { host: "imap.volny.cz", port: 993, ssl: true },
-  "gmail.com":     { host: "imap.gmail.com", port: 993, ssl: true, note: "Gmail vyžaduje App Password (Settings → Security → 2-Step → App passwords)." },
-  "outlook.com":   { host: "outlook.office365.com", port: 993, ssl: true, note: "Outlook vyžaduje App Password při zapnutém 2FA." },
-  "hotmail.com":   { host: "outlook.office365.com", port: 993, ssl: true },
-};
+/** Provider-specific instrukce + IMAP konfigurace. */
+interface ProviderInfo {
+  id: string;
+  label: string;          // pro UI ("Gmail", "Seznam.cz", …)
+  domains: string[];      // emailové domény spadající pod providera
+  host: string;
+  port: number;
+  ssl: boolean;
+  /** Vyžaduje App password? (= klasické heslo nestačí, jen separate auth token) */
+  requiresAppPassword: "always" | "when-2fa" | "never";
+  /** Krok-za-krokem návod jak se dostat k app password / IMAP heslu. */
+  instructions: { step: string; link?: { label: string; href: string } }[];
+}
 
-function detectHostFromEmail(email: string) {
+const PROVIDERS: ProviderInfo[] = [
+  {
+    id: "gmail",
+    label: "Gmail",
+    domains: ["gmail.com", "googlemail.com"],
+    host: "imap.gmail.com", port: 993, ssl: true,
+    requiresAppPassword: "always",
+    instructions: [
+      { step: "Gmail od r. 2022 zablokoval IMAP s běžným heslem — vyžaduje App Password." },
+      { step: "Otevři Google účet → Bezpečnost.", link: { label: "Otevřít Bezpečnost Google účtu", href: "https://myaccount.google.com/security" } },
+      { step: "Zapni 2-Step Verification (pokud ještě nemáš)." },
+      { step: "Přejdi na App passwords.", link: { label: "Otevřít App passwords", href: "https://myaccount.google.com/apppasswords" } },
+      { step: "App name: \"Cointrack\". Klik Create — Google ti ukáže 16-znakové heslo (s mezerami)." },
+      { step: "Zkopíruj ho a vlož sem (mezery můžeš nechat, nebo smazat — fungují obojí)." },
+    ],
+  },
+  {
+    id: "seznam",
+    label: "Seznam.cz",
+    domains: ["seznam.cz", "email.cz", "post.cz", "spoluzaci.cz"],
+    host: "imap.seznam.cz", port: 993, ssl: true,
+    requiresAppPassword: "when-2fa",
+    instructions: [
+      { step: "Bez 2FA: stačí klasické heslo, kterým se přihlašuješ na seznam.cz." },
+      { step: "S 2FA: vytvoř Heslo pro aplikace třetích stran.", link: { label: "Otevřít nastavení Seznam emailu", href: "https://email.seznam.cz/" } },
+      { step: "V emailu: Nastavení (ozubené kolo) → Bezpečnost → Hesla pro externí aplikace → Vytvořit nové." },
+      { step: "Pojmenuj např. \"Cointrack\", zkopíruj vygenerované heslo a vlož sem." },
+    ],
+  },
+  {
+    id: "wedos",
+    label: "Wedos Mailhosting",
+    domains: ["wedos.cz", "wedos.com"],
+    host: "wes1-imap.wedos.net", port: 993, ssl: true,
+    requiresAppPassword: "never",
+    instructions: [
+      { step: "Wedos nemá 2FA — stačí klasické heslo, kterým se přihlašuješ do webmail.wedos.cz." },
+      { step: "Pokud nevíš heslo: Zákaznická administrace → E-mailové účty → klikni na účet → Změnit heslo.", link: { label: "Otevřít Wedos administraci", href: "https://client.wedos.com/" } },
+      { step: "IMAP host bývá `wes1-imap.wedos.net` nebo `wes1-out.wedos.net`. Pokud jeden nefunguje, zkus druhý." },
+    ],
+  },
+  {
+    id: "outlook",
+    label: "Outlook / Office 365",
+    domains: ["outlook.com", "hotmail.com", "live.com", "msn.com"],
+    host: "outlook.office365.com", port: 993, ssl: true,
+    requiresAppPassword: "when-2fa",
+    instructions: [
+      { step: "Bez 2FA: klasické heslo Microsoft účtu." },
+      { step: "S 2FA: vytvoř App Password.", link: { label: "Otevřít Microsoft Security", href: "https://account.microsoft.com/security" } },
+      { step: "V Security → Advanced security options → App passwords → Create a new app password." },
+      { step: "Zkopíruj heslo a vlož sem." },
+    ],
+  },
+  {
+    id: "centrum",
+    label: "Centrum / Atlas / Volný",
+    domains: ["centrum.cz", "atlas.cz", "volny.cz"],
+    host: "imap.centrum.cz", port: 993, ssl: true,
+    requiresAppPassword: "never",
+    instructions: [
+      { step: "Centrum/Atlas/Volný — IMAP s klasickým heslem do webmailu funguje." },
+      { step: "Centrum.cz host: `imap.centrum.cz` (i pro atlas.cz, volny.cz)." },
+    ],
+  },
+];
+
+function detectProvider(email: string): ProviderInfo | null {
   const at = email.indexOf("@");
   if (at < 0) return null;
   const domain = email.slice(at + 1).toLowerCase();
-  return KNOWN_HOSTS[domain] ?? null;
+  return PROVIDERS.find((p) => p.domains.includes(domain)) ?? null;
 }
 
 export default function EmailInboxPage() {
@@ -134,8 +201,31 @@ export default function EmailInboxPage() {
       {loading ? (
         <div className="py-12 text-center text-ink-500 text-sm">Načítám…</div>
       ) : accounts.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-ink-200 p-8 text-center text-ink-500 text-sm">
-          Žádná schránka zatím není připojená.
+        <div className="bg-white rounded-2xl border border-ink-200 p-6 space-y-4">
+          <div className="text-center text-ink-700">
+            <div className="text-3xl mb-2">📧</div>
+            <h2 className="font-semibold text-ink-900 mb-1">Začni propojením první schránky</h2>
+            <p className="text-sm text-ink-600">
+              Klikni „+ Přidat schránku" výše a postupuj podle průvodce.
+            </p>
+          </div>
+          <div className="border-t border-ink-100 pt-4">
+            <h3 className="text-xs font-semibold text-ink-700 uppercase tracking-wide mb-2">
+              Jak to celé funguje
+            </h3>
+            <ol className="text-sm text-ink-700 space-y-1.5 list-decimal list-inside">
+              <li>Zadáš email + heslo (nebo app password — průvodce ti řekne kde ho vzít).</li>
+              <li>Cointrack pravidelně přečte nové emaily v té schránce (server stahuje jen tělo + přílohy, maily samé se nepersistují).</li>
+              <li>AI rozezná, který email obsahuje fakturu (přílohu PDF/JPG, nebo fakturu v textu).</li>
+              <li>Vytvoří záznam ve <em>Faktury</em> včetně IČO, dodavatele, položek, VS a celkové částky.</li>
+              <li>Pokud najde matching bankovní transakci (částka + datum), označí ji za zaplacenou.</li>
+              <li>Jinak ji uvidíš jako nezaplacenou — klikneš <em>💰 Zaplatit</em>, vybereš účet, hotovo.</li>
+            </ol>
+          </div>
+          <div className="border-t border-ink-100 pt-4 text-xs text-ink-500">
+            <strong>Bezpečnost:</strong> hesla šifrujeme AES-256-GCM předtím, než je zapíšeme
+            do DB. Klíč je na serveru v env proměnné, do logů se hesla nikdy nedostanou.
+          </div>
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-ink-200 overflow-hidden">
@@ -252,19 +342,25 @@ function AccountDialog({
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [hostNote, setHostNote] = useState<string | null>(null);
+  const [provider, setProvider] = useState<ProviderInfo | null>(
+    existing ? detectProvider(existing.imapUsername ?? "") : null,
+  );
 
-  // Auto-detect IMAP host z email domény
+  // Auto-detect IMAP host z email domény + nastav pro UI provider info (instrukce)
   function onUsernameChange(value: string) {
     setImapUsername(value);
-    if (!isEdit && !imapHost) {
-      const detected = detectHostFromEmail(value);
-      if (detected) {
+    const detected = detectProvider(value);
+    if (detected) {
+      setProvider(detected);
+      // Při create vyplníme automaticky. Při edit nepřepisujeme (user už mohl
+      // host přizpůsobit).
+      if (!isEdit) {
         setImapHost(detected.host);
         setImapPort(String(detected.port));
         setImapSsl(detected.ssl);
-        setHostNote(detected.note ?? null);
       }
+    } else {
+      setProvider(null);
     }
   }
 
@@ -366,9 +462,27 @@ function AccountDialog({
             autoComplete="email"
             className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm font-mono"
           />
+          {provider && (
+            <div className="text-xs text-emerald-700 mt-1">
+              ✓ Detekováno: {provider.label}
+            </div>
+          )}
         </Field>
 
-        <Field label={isEdit ? "Heslo (vynech pro zachování)" : "Heslo / App password"}>
+        {/* Provider-specific instrukce — auto-zobrazí když je detekovaný provider */}
+        {provider && (
+          <ProviderInstructions provider={provider} />
+        )}
+        {!provider && imapUsername.includes("@") && (
+          <div className="text-xs text-ink-600 bg-ink-50 border border-ink-200 rounded-lg p-3">
+            ℹ️ Doménu <strong>{imapUsername.split("@")[1]}</strong> neznám —
+            zadej IMAP host ručně. Heslo bývá to samé, kterým se přihlašuješ
+            do webmailu (pokud máš 2FA, většina providerů vyžaduje vytvořit
+            zvláštní app password).
+          </div>
+        )}
+
+        <Field label={isEdit ? "Heslo (vynech pro zachování)" : (provider?.requiresAppPassword === "always" ? "App password" : "Heslo / App password")}>
           <input
             type="password"
             value={imapPassword}
@@ -377,9 +491,6 @@ function AccountDialog({
             autoComplete="new-password"
             className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm"
           />
-          {hostNote && (
-            <div className="text-xs text-amber-700 mt-1">{hostNote}</div>
-          )}
         </Field>
 
         <div className="grid grid-cols-3 gap-2">
@@ -501,6 +612,51 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <div className="text-xs font-medium text-ink-700 mb-1">{label}</div>
       {children}
     </label>
+  );
+}
+
+/**
+ * Detail karta s instrukcemi jak získat heslo pro daný IMAP provider.
+ * Auto-rozbalí pokud `requiresAppPassword === "always"` (Gmail) — tam je
+ * krok navíc nutný a user by jinak ztratil čas marným pokusem s běžným heslem.
+ */
+function ProviderInstructions({ provider }: { provider: ProviderInfo }) {
+  const autoOpen = provider.requiresAppPassword === "always";
+  const heading = provider.requiresAppPassword === "always"
+    ? `📖 ${provider.label} vyžaduje App Password — návod`
+    : provider.requiresAppPassword === "when-2fa"
+      ? `📖 Návod pro ${provider.label} (s 2FA potřebuješ App Password)`
+      : `📖 Návod pro ${provider.label}`;
+
+  return (
+    <details
+      className="bg-blue-50 border border-blue-200 rounded-lg text-sm"
+      open={autoOpen}
+    >
+      <summary className="cursor-pointer px-3 py-2 font-medium text-blue-900 select-none">
+        {heading}
+      </summary>
+      <ol className="px-3 pb-3 space-y-2 text-blue-900 list-decimal list-inside">
+        {provider.instructions.map((ins, i) => (
+          <li key={i} className="text-xs leading-relaxed">
+            <span>{ins.step}</span>
+            {ins.link && (
+              <span className="ml-1">
+                {" → "}
+                <a
+                  href={ins.link.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline font-medium hover:text-blue-700"
+                >
+                  {ins.link.label} ↗
+                </a>
+              </span>
+            )}
+          </li>
+        ))}
+      </ol>
+    </details>
   );
 }
 
