@@ -30,11 +30,16 @@ export default function ProfileSwitcher() {
           withAuth((t) => accountShares.myShares(t)).catch(() => []),
         ]);
         const raw = res.entities["profiles"] ?? [];
+        // Defense-in-depth dedup po syncId — server by neměl vrátit duplicity
+        // ale kdyby ano (race / data inconsistency), nezobrazujeme je 2×.
+        const seen = new Set<string>();
         const list: Profile[] = raw
           .filter((e) => {
             if (e.deletedAt) return false;
             const d = e.data as Record<string, unknown>;
             if (d.deletedAt != null && d.deletedAt !== 0) return false;
+            if (seen.has(e.syncId)) return false;
+            seen.add(e.syncId);
             return true;
           })
           .map((e) => ({

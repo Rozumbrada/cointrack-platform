@@ -324,6 +324,8 @@ class SyncService {
 
             // V29: shared (accountant + sharedProfile) profily se filtrují přes effectiveSinceForShared,
             // owned přes effectiveSince — incremental pro vlastníka, full-pull pro recipient po acceptu.
+            // V30: distinctBy syncId — defense-in-depth proti duplicitám i v rámci jedné odpovědi
+            // (kdyby se profil objevil v owned i shared logice díky race condition v member shipu).
             result["profiles"] = run {
                 val owned = if (ownedProfileIds.isEmpty()) emptyList() else
                     Profiles.selectAll()
@@ -334,7 +336,7 @@ class SyncService {
                     Profiles.selectAll()
                         .where { (Profiles.id inList sharedPids) and (Profiles.updatedAt greater effectiveSinceForShared) }
                         .map { profileToEntity(it) }
-                owned + shared
+                (owned + shared).distinctBy { it.syncId }
             }
 
             result["accounts"] = run {

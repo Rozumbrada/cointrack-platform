@@ -348,11 +348,15 @@ function ProfileCard({
 }
 
 function filterActiveProfiles(entities: SyncEntity[]): Profile[] {
+  // Defense-in-depth dedup po syncId
+  const seen = new Set<string>();
   return entities
     .filter((e) => {
       if (e.deletedAt) return false;
       const d = e.data as Record<string, unknown>;
       if (d.deletedAt != null && d.deletedAt !== 0) return false;
+      if (seen.has(e.syncId)) return false;
+      seen.add(e.syncId);
       return true;
     })
     .map((e) => ({ syncId: e.syncId, data: e.data as unknown as ProfileData }))
