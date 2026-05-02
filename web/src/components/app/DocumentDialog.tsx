@@ -89,6 +89,55 @@ export function DocumentDialog({
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // ARES lookup state — manuální klik na "Najít v ARES" tlačítko vedle IČO.
+  // Vyplní/přepíše název, DIČ, ulici, město, PSČ podle veřejného registru.
+  const [aresLoading, setAresLoading] = useState(false);
+  const [aresError, setAresError] = useState<string | null>(null);
+
+  async function lookupAres() {
+    const cleanIco = ico.replace(/\D/g, "");
+    if (cleanIco.length < 6) {
+      setAresError("Zadej IČO (min. 6 číslic).");
+      return;
+    }
+    setAresError(null);
+    setAresLoading(true);
+    try {
+      const res = await fetch(
+        `https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty/${encodeURIComponent(cleanIco)}`,
+      );
+      if (!res.ok) {
+        if (res.status === 404) setAresError("Subjekt s tímto IČO nebyl v ARES nalezen.");
+        else setAresError(`ARES nedostupný (${res.status}).`);
+        return;
+      }
+      const data = (await res.json()) as {
+        obchodniJmeno?: string;
+        dic?: string;
+        sidlo?: {
+          uliceSCislem?: string;
+          textovaAdresa?: string;
+          nazevObce?: string;
+          psc?: number;
+        };
+      };
+      // Vždy přepíše název — uživatel klikl explicit, chce ARES verzi.
+      if (data.obchodniJmeno) setMerchant(data.obchodniJmeno);
+      if (data.dic && !dic.trim()) setDic(data.dic);
+      const sidlo = data.sidlo;
+      if (sidlo) {
+        const street = sidlo.uliceSCislem ?? sidlo.textovaAdresa;
+        if (street) setStreet(street);
+        if (sidlo.nazevObce) setCity(sidlo.nazevObce);
+        if (sidlo.psc != null) setZip(String(sidlo.psc));
+      }
+    } catch (e) {
+      setAresError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAresLoading(false);
+    }
+  }
+
   // Otevřít picker rovnou po mountu (lepší UX)
   useEffect(() => {
     fileInputRef.current?.click();
@@ -497,17 +546,30 @@ export function DocumentDialog({
         />
       </Field>
 
-      {/* IČO + DIČ — pro Pohoda XML export jsou klíčové, AI je extrahuje */}
+      {/* IČO + DIČ — pro Pohoda XML export jsou klíčové, AI je extrahuje.
+          Tlačítko "Najít v ARES" doplní název + DIČ + adresu z veřejného
+          registru (užitečné když AI IČO sice extrahovalo, ale adresu špatně). */}
       <div className="grid grid-cols-2 gap-3">
         <Field label="IČO">
-          <input
-            type="text"
-            value={ico}
-            onChange={(e) => setIco(e.target.value)}
-            placeholder="12345678"
-            maxLength={8}
-            className={`${inputClass} font-mono`}
-          />
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={ico}
+              onChange={(e) => setIco(e.target.value)}
+              placeholder="12345678"
+              maxLength={8}
+              className={`${inputClass} font-mono flex-1`}
+            />
+            <button
+              type="button"
+              onClick={lookupAres}
+              disabled={ico.replace(/\D/g, "").length < 6 || aresLoading}
+              className="h-10 px-3 rounded-lg border border-ink-300 bg-white hover:bg-ink-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium text-ink-700 whitespace-nowrap"
+              title="Vyhledat firmu v registru ARES (název, DIČ, adresa)"
+            >
+              {aresLoading ? "⏳" : "🔍 ARES"}
+            </button>
+          </div>
         </Field>
         <Field label="DIČ">
           <input
@@ -519,6 +581,9 @@ export function DocumentDialog({
           />
         </Field>
       </div>
+      {aresError && (
+        <div className="text-xs text-amber-700 -mt-2">{aresError}</div>
+      )}
 
       {/* Adresa (collapsible — typicky stačí AI extrahované; user může upravit) */}
       <details className="text-sm">
