@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { sync, accountShares } from "@/lib/api";
+import { sync, accountShares, admin } from "@/lib/api";
 import { withAuth } from "@/lib/auth-store";
 import {
   getCurrentProfileSyncId,
@@ -16,11 +17,21 @@ import {
 export default function ProfileSwitcher() {
   const t = useTranslations("profile_switcher");
   const tShare = useTranslations("profile_switcher_extras");
+  const router = useRouter();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [sharedProfileIds, setSharedProfileIds] = useState<Set<string>>(new Set());
   const [currentSyncId, setCurrentSyncIdState] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+
+  // Admin check — admin entry v dropdownu se zobrazí jen pokud user je v
+  // ADMIN_EMAILS env. /admin/check vrátí 403 pro ostatní (silently ignoreme).
+  useEffect(() => {
+    withAuth((tk) => admin.check(tk))
+      .then(() => setIsAdmin(true))
+      .catch(() => setIsAdmin(false));
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -185,6 +196,31 @@ export default function ProfileSwitcher() {
           >
             ⚙ {tShare("manage_profiles_action")}
           </Link>
+
+          {/* Admin entry — jen pro adminy (ADMIN_EMAILS env). Není to "profil"
+              v cloud sense, ale UX-wise se tváří jako další volba v switcheru.
+              Klik vede na /app/admin (správa uživatelů). */}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                router.push("/app/admin");
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-amber-50 border-t border-ink-100"
+            >
+              <div
+                className="w-6 h-6 rounded-full grid place-items-center text-xs"
+                style={{ backgroundColor: "rgba(245, 158, 11, 0.2)" }}
+              >
+                🛠
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="truncate font-medium text-amber-900">Admin panel</div>
+                <div className="text-[10px] uppercase text-amber-700">Správa uživatelů</div>
+              </div>
+            </button>
+          )}
         </div>
       )}
     </div>
