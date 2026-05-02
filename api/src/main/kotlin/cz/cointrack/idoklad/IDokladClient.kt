@@ -311,23 +311,39 @@ class IDokladClient {
         }
         val bytes = resp.bodyAsBytes()
         log.info("iDoklad PDF OK {} → ${resp.status}, ${bytes.size} bytes", url)
-        // v2 vrací buď raw binary PDF (začíná "%PDF-") NEBO base64 JSON wrapper.
-        // Detekujeme magic bytes — pokud začíná "%PDF" (0x25, 0x50, 0x44, 0x46),
-        // je to už hotové PDF. Jinak zkusíme rozparsovat JSON s base64.
+        // iDoklad v2 GetPdf vrací base64 PDF ve TŘECH možných formátech:
+        //   1) raw binary PDF (začíná "%PDF" magic bytes 0x25 0x50 0x44 0x46)
+        //   2) JSON string literál: "JVBERi0xLjQ..." (base64 obalená v "")
+        //   3) JSON objekt: {"Data": "JVBERi0xLjQ...", "FileName": "..."}
+        // V praxi (May 2026) vrací #2 — base64 v JSON stringu.
+
+        // Format 1: raw bytes
         if (bytes.size >= 4 &&
             bytes[0] == 0x25.toByte() && bytes[1] == 0x50.toByte() &&
             bytes[2] == 0x44.toByte() && bytes[3] == 0x46.toByte()) {
             return bytes
         }
-        // Fallback: JSON s base64 polem (pro případ že iDoklad přepne formát).
+
         val body = String(bytes, Charsets.UTF_8)
-        log.info("iDoklad PDF: not raw bytes, trying JSON parse, body preview: {}", body.take(120))
-        val parsed = runCatching { Json.parseToJsonElement(body) }.getOrNull() as? kotlinx.serialization.json.JsonObject
+        val parsed = runCatching { Json.parseToJsonElement(body) }.getOrNull()
             ?: throw IDokladException("PDF response není ani PDF ani JSON: ${body.take(200)}", null)
-        val base64 = parsed["Data"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
-            ?: parsed["data"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
-            ?: throw IDokladException("PDF JSON chybí pole 'Data': ${body.take(200)}", null)
+
+        // Format 2: JSON string literál (samotná base64 obalená "")
+        val base64 = when (parsed) {
+            is kotlinx.serialization.json.JsonPrimitive -> {
+                if (parsed.isString) parsed.content else null
+            }
+            is kotlinx.serialization.json.JsonObject -> {
+                // Format 3: {"Data": "base64", ...}
+                parsed["Data"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+                    ?: parsed["data"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+            }
+            else -> null
+        } ?: throw IDokladException("PDF JSON neobsahuje base64: ${body.take(200)}", null)
+
+        log.info("iDoklad PDF base64 length: ${base64.length}")
         return runCatching { java.util.Base64.getDecoder().decode(base64) }.getOrElse {
+            log.warn("iDoklad PDF base64 decode failed: ${it.message}, first 50 chars: {}", base64.take(50))
             throw IDokladException("PDF base64 decode selhal: ${it.message}", null)
         }
     }
