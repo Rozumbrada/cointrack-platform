@@ -295,7 +295,11 @@ class IDokladClient {
      */
     suspend fun getInvoicePdf(accessToken: String, invoiceId: Int, isExpense: Boolean = false): ByteArray {
         val agendaPath = if (isExpense) "ReceivedInvoices" else "IssuedInvoices"
-        val url = "https://api.idoklad.cz/v3/$agendaPath/$invoiceId/GetPdf"
+        // iDoklad: PDF endpoint je pouze v API v2. v3 vrací
+        // "UnsupportedApiVersion" — endpoint /IssuedInvoices/{id}/GetPdf
+        // existuje jen jako legacy v2 resource. v3 ekvivalent zatím chybí.
+        // v2/GetPdf vrací RAW BINARY PDF (ne JSON jako jsme se mylně domnívali).
+        val url = "https://api.idoklad.cz/v2/$agendaPath/$invoiceId/GetPdf"
         log.info("iDoklad PDF GET {}", url)
         val resp = client.get(url) {
             bearerAuth(accessToken)
@@ -305,23 +309,25 @@ class IDokladClient {
             log.warn("iDoklad PDF FAIL {} → {} ({} chars): {}", url, resp.status, txt.length, txt.take(500))
             throw IDokladException("Get PDF failed: ${resp.status} — ${txt.take(200)}", resp.status)
         }
-        val body = resp.bodyAsText()
-        log.info("iDoklad PDF OK {} → ${resp.status}, body ${body.length} chars", url)
-        val parsed = runCatching { Json.parseToJsonElement(body) }.getOrNull()
-            ?: run {
-                log.warn("iDoklad PDF response is NOT JSON, first 200 chars: {}", body.take(200))
-                throw IDokladException("PDF response není JSON: ${body.take(200)}", null)
-            }
-        val dataField = parsed as? kotlinx.serialization.json.JsonObject
-        val base64 = dataField?.get("Data")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
-            ?: dataField?.get("data")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
-            ?: run {
-                log.warn("iDoklad PDF response keys: {}", dataField?.keys?.joinToString(",") ?: "(not object)")
-                throw IDokladException("PDF JSON chybí pole 'Data': ${body.take(200)}", null)
-            }
-        log.info("iDoklad PDF base64 length: ${base64.length}")
+        val bytes = resp.bodyAsBytes()
+        log.info("iDoklad PDF OK {} → ${resp.status}, ${bytes.size} bytes", url)
+        // v2 vrací buď raw binary PDF (začíná "%PDF-") NEBO base64 JSON wrapper.
+        // Detekujeme magic bytes — pokud začíná "%PDF" (0x25, 0x50, 0x44, 0x46),
+        // je to už hotové PDF. Jinak zkusíme rozparsovat JSON s base64.
+        if (bytes.size >= 4 &&
+            bytes[0] == 0x25.toByte() && bytes[1] == 0x50.toByte() &&
+            bytes[2] == 0x44.toByte() && bytes[3] == 0x46.toByte()) {
+            return bytes
+        }
+        // Fallback: JSON s base64 polem (pro případ že iDoklad přepne formát).
+        val body = String(bytes, Charsets.UTF_8)
+        log.info("iDoklad PDF: not raw bytes, trying JSON parse, body preview: {}", body.take(120))
+        val parsed = runCatching { Json.parseToJsonElement(body) }.getOrNull() as? kotlinx.serialization.json.JsonObject
+            ?: throw IDokladException("PDF response není ani PDF ani JSON: ${body.take(200)}", null)
+        val base64 = parsed["Data"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+            ?: parsed["data"]?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+            ?: throw IDokladException("PDF JSON chybí pole 'Data': ${body.take(200)}", null)
         return runCatching { java.util.Base64.getDecoder().decode(base64) }.getOrElse {
-            log.warn("iDoklad PDF base64 decode failed: ${it.message}, first 50 chars of base64: {}", base64.take(50))
             throw IDokladException("PDF base64 decode selhal: ${it.message}", null)
         }
     }
