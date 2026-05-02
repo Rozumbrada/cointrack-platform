@@ -57,7 +57,8 @@ fun Route.exportRoutes() {
                 }
                 // V28: po úspěšném vygenerování označ exportované účtenky.
                 markReceiptsExported(profileDbId, from, to, ids)
-                val filename = filenameFor("uctenky", from, to, ids)
+                val profileName = profileNameFor(profileDbId)
+                val filename = filenameFor("uctenky", profileName, from, to, ids)
                 call.response.header(
                     HttpHeaders.ContentDisposition,
                     """attachment; filename="$filename"""",
@@ -76,7 +77,8 @@ fun Route.exportRoutes() {
                     )
                 }
                 markInvoicesExported(profileDbId, from, to, ids)
-                val filename = filenameFor("faktury", from, to, ids)
+                val profileName = profileNameFor(profileDbId)
+                val filename = filenameFor("faktury", profileName, from, to, ids)
                 call.response.header(
                     HttpHeaders.ContentDisposition,
                     """attachment; filename="$filename"""",
@@ -87,9 +89,60 @@ fun Route.exportRoutes() {
     }
 }
 
-private fun filenameFor(prefix: String, from: LocalDate?, to: LocalDate?, ids: List<UUID>?): String {
-    if (!ids.isNullOrEmpty()) return "cointrack-$prefix-vyber-${ids.size}.xml"
-    return "cointrack-$prefix-${from ?: "all"}_${to ?: "all"}.xml"
+/**
+ * Sanitizuje řetězec pro použití ve jménu souboru.
+ *  - diakritika přepisuje na ASCII (Š→S, ě→e, …)
+ *  - mezery, lomítka a další "nebezpečné" znaky → "-"
+ *  - odstraní vícenásobné pomlčky a leading/trailing pomlčky
+ *  - prázdný/null vrátí "profil"
+ */
+private fun slugify(input: String?): String {
+    if (input.isNullOrBlank()) return "profil"
+    val normalized = java.text.Normalizer.normalize(input, java.text.Normalizer.Form.NFD)
+        .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
+    return normalized
+        .replace(Regex("[^a-zA-Z0-9]+"), "-")
+        .trim('-')
+        .lowercase()
+        .ifBlank { "profil" }
+}
+
+/**
+ * Sestaví jméno souboru pro export. Formát:
+ *   cointrack-{prefix}-{profileSlug}-{date}.xml
+ *
+ * Pokud je `ids` (ruční výběr) — připojí "vyber-N" místo data, datum je dnešní.
+ * Pokud je `from`/`to` rozsah — použije ho. Jinak dnešní datum.
+ *
+ * Příklady:
+ *   cointrack-uctenky-estedent-2026-05-02.xml
+ *   cointrack-uctenky-estedent-vyber-15-2026-05-02.xml
+ *   cointrack-faktury-osobni-2026-04-01_2026-04-30.xml
+ */
+private fun filenameFor(
+    prefix: String,
+    profileName: String,
+    from: LocalDate?,
+    to: LocalDate?,
+    ids: List<UUID>?,
+): String {
+    val slug = slugify(profileName)
+    val today = LocalDate.now()
+    val suffix = when {
+        !ids.isNullOrEmpty() -> "vyber-${ids.size}-$today"
+        from != null && to != null -> "${from}_$to"
+        from != null -> "od-$from"
+        to != null -> "do-$to"
+        else -> today.toString()
+    }
+    return "cointrack-$prefix-$slug-$suffix.xml"
+}
+
+private suspend fun profileNameFor(profileDbId: UUID): String = db {
+    Profiles.selectAll().where { Profiles.id eq EntityID(profileDbId, Profiles) }
+        .singleOrNull()
+        ?.let { it[Profiles.companyName] ?: it[Profiles.name] }
+        ?: "profil"
 }
 
 private data class ExportParams(

@@ -98,8 +98,7 @@ object PohodaExporter {
                     .where { ReceiptItems.receiptId eq r[Receipts.id] }
                     .orderBy(ReceiptItems.position)
                     .toList()
-                val isCard = r[Receipts.paymentMethod] == "CARD"
-                if (isCard) {
+                if (shouldRouteToBank(r)) {
                     appendBank(this, r, items, idx + 1, isVatPayer)
                 } else {
                     appendVoucher(this, r, items, idx + 1, isVatPayer)
@@ -124,8 +123,9 @@ object PohodaExporter {
     private fun appendVoucherHeader(sb: StringBuilder, r: ResultRow, isVatPayer: Boolean) {
         val merchant = r[Receipts.merchantName].orEmpty().ifBlank { "neznamy obchodnik" }
         val timeSuffix = r[Receipts.time]?.let { " ($it)" }.orEmpty()
-        val paymentSuffix = when (r[Receipts.paymentMethod]) {
-            "CARD" -> " [karta]"
+        val paymentSuffix = when (r[Receipts.paymentMethod]?.uppercase()) {
+            "CARD", "CREDIT_CARD", "CREDITCARD" -> " [karta]"
+            "BANK_TRANSFER", "BANK", "TRANSFER" -> " [prevodem]"
             "CASH" -> " [hotove]"
             else -> ""
         }
@@ -263,6 +263,37 @@ object PohodaExporter {
 
         sb.appendLine("""    </bnk:bank>""")
         sb.appendLine("""  </dat:dataPackItem>""")
+    }
+
+    /**
+     * Rozhodne, jestli má účtenka jít do Bank (Pohoda Banka) nebo do voucher (Pokladna).
+     *
+     * Priorita:
+     *   1) Pokud je `linkedAccountId` napojený na NE-cash účet (BANK/CHECKING/CREDIT_CARD/etc.)
+     *      → Bank. Manuální napojení od uživatele má přednost.
+     *   2) Pokud `paymentMethod` (case-insensitive) odpovídá karta/bankovní převod → Bank.
+     *      Akceptujeme: CARD, CREDIT_CARD, CREDITCARD, BANK_TRANSFER, BANK, TRANSFER.
+     *   3) Jinak → voucher (Pokladna). Default pro CASH, OTHER, UNKNOWN, null.
+     *
+     * Před fixem: jen `paymentMethod == "CARD"` (strict). Pokud OCR vrátilo
+     * `BANK_TRANSFER` (gemini ho povoluje) nebo user měl jen lowercase, doklad
+     * šel do Pokladny i když tam nepatřil.
+     */
+    private fun shouldRouteToBank(r: ResultRow): Boolean {
+        // 1) linkedAccountId ukazuje na non-cash účet → Bank
+        r[Receipts.linkedAccountId]?.let { acctId ->
+            val accountType = Accounts.selectAll()
+                .where { Accounts.id eq acctId }
+                .singleOrNull()
+                ?.get(Accounts.type)
+                ?.lowercase()
+            if (accountType != null && accountType !in setOf("cash", "pokladna")) {
+                return true
+            }
+        }
+        // 2) paymentMethod (case-insensitive)
+        val pm = r[Receipts.paymentMethod]?.uppercase()?.replace("-", "_")?.replace(" ", "_")
+        return pm in setOf("CARD", "CREDIT_CARD", "CREDITCARD", "BANK_TRANSFER", "BANK", "TRANSFER")
     }
 
     private fun appendReceiptPartner(sb: StringBuilder, r: ResultRow, ns: String) {
@@ -417,10 +448,10 @@ object PohodaExporter {
         sb.appendLine("""          </typ:address>""")
         sb.appendLine("""        </inv:partnerIdentity>""")
 
-        // paymentType — enum lowercase
-        val pmEnum = when (r[Invoices.paymentMethod]) {
+        // paymentType — enum lowercase (Pohoda XSD: cash | creditcard | draft)
+        val pmEnum = when (r[Invoices.paymentMethod]?.uppercase()) {
             "CASH" -> "cash"
-            "CARD" -> "creditcard"
+            "CARD", "CREDIT_CARD", "CREDITCARD" -> "creditcard"
             else -> "draft"  // bankovní převod (default pro fakturu)
         }
         sb.appendLine("""        <inv:paymentType>""")

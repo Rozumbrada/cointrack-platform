@@ -424,6 +424,11 @@ function ReceiptEditDialog({
   const t = useTranslations("receipt_edit");
   const r = receipt.data;
   const [merchantName, setMerchantName] = useState(r.merchantName ?? "");
+  const [merchantIco, setMerchantIco] = useState(r.merchantIco ?? "");
+  const [merchantDic, setMerchantDic] = useState(r.merchantDic ?? "");
+  const [merchantStreet, setMerchantStreet] = useState(r.merchantStreet ?? "");
+  const [merchantCity, setMerchantCity] = useState(r.merchantCity ?? "");
+  const [merchantZip, setMerchantZip] = useState(r.merchantZip ?? "");
   const [date, setDate] = useState(r.date ?? "");
   const [totalWithVat, setTotalWithVat] = useState(String(r.totalWithVat ?? ""));
   const [totalWithoutVat, setTotalWithoutVat] = useState(String(r.totalWithoutVat ?? ""));
@@ -432,6 +437,55 @@ function ReceiptEditDialog({
   const [note, setNote] = useState(r.note ?? "");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // ARES lookup state — manuální tlačítko pro doplnění partnera podle IČO.
+  const [aresLoading, setAresLoading] = useState(false);
+  const [aresMessage, setAresMessage] = useState<string | null>(null);
+
+  /**
+   * Manuální ARES lookup. Vyhledá podle IČO v ARES a doplní pole, která jsou
+   * prázdná (název přepíše vždy — ARES je autoritativní zdroj). User může
+   * potřebovat doplnit ICO/DIC u starých účtenek, kde OCR nezachytilo nebo
+   * kde clobber bug před fixem hodnoty smazal.
+   */
+  async function lookupAres() {
+    const cleanIco = merchantIco.replace(/\D/g, "");
+    if (cleanIco.length < 6) {
+      setAresMessage("Zadej IČO (alespoň 6 číslic).");
+      return;
+    }
+    setAresLoading(true);
+    setAresMessage(null);
+    try {
+      const res = await fetch(
+        `https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty/${encodeURIComponent(cleanIco)}`,
+      );
+      if (!res.ok) {
+        if (res.status === 404) setAresMessage("Subjekt s tímto IČO nebyl v ARES nalezen.");
+        else setAresMessage(`ARES nedostupný (${res.status}).`);
+        return;
+      }
+      type AresResponse = {
+        obchodniJmeno?: string;
+        dic?: string;
+        sidlo?: { textovaAdresa?: string; ulice?: string; cisloDomovni?: number; obec?: string; psc?: number };
+      };
+      const data: AresResponse = await res.json();
+      if (data.obchodniJmeno) setMerchantName(data.obchodniJmeno);
+      if (data.dic && !merchantDic.trim()) setMerchantDic(data.dic);
+      const sidlo = data.sidlo;
+      if (sidlo) {
+        const street = [sidlo.ulice, sidlo.cisloDomovni].filter(Boolean).join(" ");
+        if (street && !merchantStreet.trim()) setMerchantStreet(street);
+        if (sidlo.obec && !merchantCity.trim()) setMerchantCity(sidlo.obec);
+        if (sidlo.psc && !merchantZip.trim()) setMerchantZip(String(sidlo.psc));
+      }
+      setAresMessage("✓ Údaje doplněny z ARES");
+    } catch (e) {
+      setAresMessage(`Chyba ARES: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setAresLoading(false);
+    }
+  }
 
   async function save() {
     setSaving(true);
@@ -443,6 +497,11 @@ function ReceiptEditDialog({
       const updated: Record<string, unknown> = {
         ...(r as unknown as Record<string, unknown>),
         merchantName: orNull(merchantName),
+        merchantIco: orNull(merchantIco),
+        merchantDic: orNull(merchantDic),
+        merchantStreet: orNull(merchantStreet),
+        merchantCity: orNull(merchantCity),
+        merchantZip: orNull(merchantZip),
         date: date.trim() || r.date,
         totalWithVat: totalWithVat.replace(",", "."),
         totalWithoutVat: totalWithoutVat ? totalWithoutVat.replace(",", ".") : null,
@@ -489,6 +548,73 @@ function ReceiptEditDialog({
               className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm"
             />
           </div>
+          {/* IČO + ARES tlačítko — doplní DIČ + adresu z veřejného registru.
+              Užitečné pro staré účtenky, kde OCR nezachytilo IČO, nebo kde
+              data před fixem clobber bugu zmizela. */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-ink-700 mb-1">IČO</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={merchantIco}
+                  onChange={(e) => setMerchantIco(e.target.value)}
+                  placeholder="12345678"
+                  className="flex-1 h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={lookupAres}
+                  disabled={merchantIco.replace(/\D/g, "").length < 6 || aresLoading}
+                  className="h-10 px-3 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 text-sm font-medium disabled:opacity-50"
+                  title="Vyhledat firmu v registru ARES"
+                >
+                  {aresLoading ? "⏳" : "🔍 ARES"}
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-ink-700 mb-1">DIČ</label>
+              <input
+                type="text"
+                value={merchantDic}
+                onChange={(e) => setMerchantDic(e.target.value)}
+                placeholder="CZ12345678"
+                className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm"
+              />
+            </div>
+          </div>
+          {aresMessage && (
+            <div className={`text-xs ${aresMessage.startsWith("✓") ? "text-emerald-700" : "text-amber-700"}`}>
+              {aresMessage}
+            </div>
+          )}
+          {/* Adresa partnera — ARES ji doplní automaticky, nebo ručně. */}
+          <div className="grid grid-cols-1 gap-3">
+            <input
+              type="text"
+              value={merchantStreet}
+              onChange={(e) => setMerchantStreet(e.target.value)}
+              placeholder="Ulice a č. p."
+              className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm"
+            />
+            <div className="grid grid-cols-[1fr_2fr] gap-3">
+              <input
+                type="text"
+                value={merchantZip}
+                onChange={(e) => setMerchantZip(e.target.value)}
+                placeholder="PSČ"
+                className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm"
+              />
+              <input
+                type="text"
+                value={merchantCity}
+                onChange={(e) => setMerchantCity(e.target.value)}
+                placeholder="Město"
+                className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm"
+              />
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-ink-700 mb-1">{t("date")}</label>
@@ -509,7 +635,7 @@ function ReceiptEditDialog({
                 <option value="">—</option>
                 <option value="CASH">{t("payment_cash")}</option>
                 <option value="CARD">{t("payment_card")}</option>
-                <option value="UNKNOWN">{t("payment_transfer")}</option>
+                <option value="BANK_TRANSFER">{t("payment_transfer")}</option>
               </select>
             </div>
           </div>
