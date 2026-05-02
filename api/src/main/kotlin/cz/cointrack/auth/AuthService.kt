@@ -32,14 +32,23 @@ class AuthService(
 
     // ─── Registrace ─────────────────────────────────────────────────────
 
-    suspend fun register(req: RegisterRequest): UserDto {
+    /**
+     * Registrace — nově vrací plnou [AuthResponse] s access+refresh tokeny.
+     * Web tak má hned po registraci přihlášený session a může zobrazit
+     * "čekáme na ověření emailu" screen místo nucení uživatele se po verify
+     * znovu přihlásit. Verify check (které blokuje login) se neaplikuje na
+     * tokeny vydané rovnou z register — předpokládáme, že uživatel email
+     * okamžitě potvrdí. Endpoity citlivé na verified stav si to mohou
+     * ověřit přes [Users.emailVerifiedAt].
+     */
+    suspend fun register(req: RegisterRequest, deviceId: String? = null): AuthResponse {
         val normalizedEmail = req.email.trim().lowercase()
         validateEmail(normalizedEmail)
         validatePassword(req.password)
 
         val pwdHash = PasswordHasher.hash(req.password)
 
-        val userId = db {
+        val userRow = db {
             val exists = Users.selectAll()
                 .where { Users.email.lowerCase() eq normalizedEmail }
                 .any()
@@ -47,7 +56,7 @@ class AuthService(
                 throw ApiException(HttpStatusCode.Conflict, "email_taken", "Email je již zaregistrován.")
             }
             val now = Instant.now()
-            Users.insertAndGetId {
+            val newId = Users.insertAndGetId {
                 it[email] = normalizedEmail
                 it[passwordHash] = pwdHash
                 it[displayName] = req.displayName
@@ -55,21 +64,15 @@ class AuthService(
                 it[tier] = "FREE"
                 it[createdAt] = now
                 it[updatedAt] = now
-            }.value
+            }
+            Users.selectAll().where { Users.id eq newId }.single()
         }
 
         // `nextPath` (např. /accept-share?token=…) z registrace zachováme přes
         // verify → login → next chain, takže pozvanému uživateli nezmizí kontext.
-        sendVerifyEmail(userId, normalizedEmail, req.nextPath)
+        sendVerifyEmail(userRow[Users.id].value, normalizedEmail, req.nextPath)
 
-        return UserDto(
-            id = userId.toString(),
-            email = normalizedEmail,
-            displayName = req.displayName,
-            locale = req.locale ?: "cs",
-            tier = "FREE",
-            emailVerified = false,
-        )
+        return issueTokens(userRow, deviceId)
     }
 
     // ─── Login ──────────────────────────────────────────────────────────

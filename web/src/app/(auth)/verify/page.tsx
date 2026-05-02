@@ -2,12 +2,14 @@
 
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { auth, ApiError } from "@/lib/api";
+import { getAccessToken } from "@/lib/auth-store";
 
 function VerifyInner() {
+  const router = useRouter();
   const params = useSearchParams();
   const token = params.get("token");
   // `?next=` z verify URL — vložil tam server podle nextPath z RegisterRequest.
@@ -31,7 +33,17 @@ function VerifyInner() {
     (async () => {
       try {
         await auth.verifyEmail(token);
-        if (!cancelled) setState("ok");
+        if (cancelled) return;
+        setState("ok");
+        // Pokud je uživatel přihlášen v tomto prohlížeči (auto-login po
+        // registraci uložil tokens), rovnou ho pošli dál — nemusí znovu klikat
+        // "Pokračovat na přihlášení". safeNext typicky vede na /accept-share.
+        if (getAccessToken()) {
+          // Krátká pauza, aby user viděl success obrazovku.
+          setTimeout(() => {
+            if (!cancelled) router.replace(safeNext ?? "/app/dashboard");
+          }, 800);
+        }
       } catch (e) {
         if (cancelled) return;
         setState("error");
@@ -40,7 +52,7 @@ function VerifyInner() {
       }
     })();
     return () => { cancelled = true; };
-  }, [token, t]);
+  }, [token, t, router, safeNext]);
 
   if (state === "verifying") {
     return (

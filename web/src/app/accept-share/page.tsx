@@ -64,6 +64,19 @@ function AcceptShareInner() {
     }
   }
 
+  // Auto-accept: jakmile máme preview a JWT, accept se sám provede.
+  // Toto pokryje scénář: user se vrátil přes login → /accept-share s tokenem.
+  // User zde nemusí znovu klikat "Přijmout".
+  useEffect(() => {
+    if (!token) return;
+    if (!preview) return;
+    if (done || accepting || error) return;
+    if (needsLogin) return;
+    if (!getAccessToken()) return;
+    onAccept();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, preview, done, accepting, error, needsLogin]);
+
   if (error && !preview) {
     return (
       <Card>
@@ -78,18 +91,7 @@ function AcceptShareInner() {
   }
 
   if (done) {
-    return (
-      <Card>
-        <h1 className="text-2xl font-semibold text-emerald-800 mb-2">{t("ok_title")}</h1>
-        <p className="text-ink-700 mb-6">{t("ok_desc", { name: preview.accountName })}</p>
-        <Link
-          href="/app/dashboard"
-          className="inline-block h-11 px-6 rounded-lg bg-brand-600 hover:bg-brand-700 text-white font-medium leading-[2.75rem]"
-        >
-          {t("go_dashboard")}
-        </Link>
-      </Card>
-    );
+    return <DoneRedirect router={router} t={t} accountName={preview.accountName} />;
   }
 
   if (needsLogin) {
@@ -171,6 +173,41 @@ function Card({ children }: { children: React.ReactNode }) {
         {children}
       </div>
     </div>
+  );
+}
+
+/**
+ * Po úspěšném přijetí pozvánky uživatel uvidí krátkou success zprávu (1.5s)
+ * a sám se přesměruje na dashboard. Zbyl tu i fallback link, kdyby browser
+ * blokoval auto-redirect.
+ */
+function DoneRedirect({
+  router,
+  t,
+  accountName,
+}: {
+  router: ReturnType<typeof useRouter>;
+  t: ReturnType<typeof useTranslations>;
+  accountName: string;
+}) {
+  useEffect(() => {
+    const id = setTimeout(() => {
+      router.replace("/app/dashboard");
+    }, 1500);
+    return () => clearTimeout(id);
+  }, [router]);
+  return (
+    <Card>
+      <h1 className="text-2xl font-semibold text-emerald-800 mb-2">{t("ok_title")}</h1>
+      <p className="text-ink-700 mb-6">{t("ok_desc", { name: accountName })}</p>
+      <p className="text-xs text-ink-500 mb-6">Přesměruji tě za chvíli…</p>
+      <Link
+        href="/app/dashboard"
+        className="inline-block h-11 px-6 rounded-lg bg-brand-600 hover:bg-brand-700 text-white font-medium leading-[2.75rem]"
+      >
+        {t("go_dashboard")}
+      </Link>
+    </Card>
   );
 }
 

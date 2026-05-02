@@ -22,8 +22,10 @@ fun Route.authRoutes(authService: AuthService) {
         rateLimit(RateLimitName("register")) {
             post("/register") {
                 val req = call.receive<RegisterRequest>()
-                val user = authService.register(req)
-                call.respond(HttpStatusCode.Created, user)
+                // Register vydá rovnou tokens — UX flow: register → tokens uložené
+                // → "čekáme na ověření emailu" obrazovka → po verify auto-redirect.
+                val res = authService.register(req)
+                call.respond(HttpStatusCode.Created, res)
             }
         }
 

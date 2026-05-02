@@ -1,19 +1,22 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { auth, ApiError } from "@/lib/api";
+import { setAuth, setStoredUser, getAccessToken } from "@/lib/auth-store";
 
 function SignupInner() {
   const t = useTranslations("auth.signup");
   const tc = useTranslations("common");
   const locale = useLocale();
+  const router = useRouter();
   const params = useSearchParams();
   const next = params.get("next");
-  const loginHref = next ? `/login?next=${encodeURIComponent(next)}` : "/login";
+  const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : null;
+  const loginHref = safeNext ? `/login?next=${encodeURIComponent(safeNext)}` : "/login";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
@@ -21,6 +24,8 @@ function SignupInner() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  const [verifiedDetected, setVerifiedDetected] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -38,8 +43,10 @@ function SignupInner() {
       // Pošleme `next` (např. /accept-share?token=...) na server, ten ji vloží
       // do verify URL → po kliknutí na verify e-mail link uživatele dostaneme
       // přes login zpět na původní cestu (zachovaný kontext share invitation).
-      const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : undefined;
-      await auth.register(email, password, displayName || undefined, locale, safeNext);
+      const res = await auth.register(email, password, displayName || undefined, locale, safeNext ?? undefined);
+      // Server nově vrací AuthResponse — máme rovnou access+refresh tokeny.
+      // Uložíme je → user je v lokálním state přihlášený, jen čeká na ověření.
+      setAuth(res.accessToken, res.refreshToken, res.user);
       setDone(true);
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
@@ -49,15 +56,55 @@ function SignupInner() {
     }
   }
 
+  // Polling po registraci: každé 3s zkontroluj přes auth.me() jestli už user
+  // potvrdil e-mail (klikl na verify link v jiném taby/emailu). Jakmile
+  // emailVerified=true, redirect na safeNext (typicky /accept-share?token=...)
+  // nebo /app/dashboard.
+  useEffect(() => {
+    if (!done || verifiedDetected) return;
+    let cancelled = false;
+    async function tick() {
+      const token = getAccessToken();
+      if (!token) return;
+      try {
+        const me = await auth.me(token);
+        if (cancelled) return;
+        if (me.emailVerified) {
+          setVerifiedDetected(true);
+          if (pollRef.current) clearInterval(pollRef.current);
+          // Aktualizuj uloženého user objektu — propaguje verified=true do
+          // všech komponent čtoucích přes getStoredUser().
+          setStoredUser(me);
+          // Redirect — přednost má `next` param (typicky /accept-share?token=...)
+          router.replace(safeNext ?? "/app/dashboard");
+        }
+      } catch {
+        // Síťová chyba / 401 — pokračujeme v pollingu, user může re-loginovat.
+      }
+    }
+    // První tick okamžitě, pak každé 3s.
+    tick();
+    pollRef.current = setInterval(tick, 3_000);
+    return () => {
+      cancelled = true;
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [done, verifiedDetected, router, safeNext]);
+
   if (done) {
     return (
       <div className="bg-white rounded-2xl border border-ink-200 p-8 shadow-sm text-center">
-        <div className="w-12 h-12 mx-auto rounded-full bg-green-100 text-green-600 flex items-center justify-center mb-4">
-          ✓
+        <div className="w-12 h-12 mx-auto rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mb-4 animate-pulse">
+          ✉️
         </div>
         <h1 className="text-2xl font-semibold text-ink-900 mb-2">{t("almost_done")}</h1>
         <p className="text-ink-600 mb-6">
           {t("verify_sent", { email })}
+        </p>
+        <p className="text-xs text-ink-500 mb-6">
+          {/* Tahle stránka se sama přesměruje, jakmile klikneš na ověřovací odkaz v e-mailu.
+              Můžeš ho otevřít v novém panelu — tato karta to detekuje. */}
+          Tato stránka se automaticky přesměruje, jakmile potvrdíš e-mail (sleduje se každé 3s).
         </p>
         <Button asChild variant="outline" className="w-full">
           <Link href={loginHref}>{t("login_link")}</Link>

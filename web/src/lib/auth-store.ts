@@ -45,6 +45,17 @@ export function setAuth(accessToken: string, refreshToken: string, user: UserDto
   localStorage.setItem("refreshToken", refreshToken);
 }
 
+/**
+ * Aktualizuje jen uloženého user objektu (např. po `auth.me()` na app layout
+ * load) — nemění tokens. Užitečné pro propagaci změny tier po platbě nebo
+ * verifikaci e-mailu — komponenty čtoucí přes `getStoredUser()` (ProfileForm
+ * tier guard) okamžitě vidí novou hodnotu bez nutnosti login-out.
+ */
+export function setStoredUser(user: UserDto) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
 export function clearAuth() {
   if (typeof window === "undefined") return;
   localStorage.removeItem(ACCESS_KEY);

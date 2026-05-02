@@ -8,6 +8,7 @@ import {
   clearAuth,
   getAccessToken,
   getStoredUser,
+  setStoredUser,
 } from "@/lib/auth-store";
 import { auth, sync, UserDto } from "@/lib/api";
 import {
@@ -160,6 +161,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       .me(token)
       .then((u) => {
         setUser(u);
+        // Persistujeme do localStorage — komponenty čtoucí přes getStoredUser()
+        // (ProfileForm tier guard, Members visibility) okamžitě vidí čerstvý
+        // tier po upgradu / e-mail verify bez nutnosti se odhlásit-přihlásit.
+        setStoredUser(u);
         setLoading(false);
       })
       .catch(() => {
