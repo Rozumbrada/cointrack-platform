@@ -214,13 +214,16 @@ object PohodaExporter {
         //   4) hardcoded "BANKA" (Pohoda default Zkratka v čerstvé instalaci) —
         //      user si pak doklad ručně přepojí v Pohoda UI, ale alespoň
         //      doklad správně skončí v Bance, ne v Pokladně.
+        // Zároveň pokud máme spárovanou transakci, vytáhneme z ní bankCounterparty
+        // (číslo účtu protistrany z Fio importu) pro <bnk:paymentAccount>.
+        val linkedTx = r[Receipts.transactionId]?.let { txId ->
+            Transactions.selectAll().where { Transactions.id eq txId }.singleOrNull()
+        }
         val pohodaIds = r[Receipts.linkedAccountId]?.let { pohodaIdsForAccount(it.value) }
-            ?: r[Receipts.transactionId]?.let { txId ->
-                Transactions.selectAll().where { Transactions.id eq txId }.singleOrNull()
-                    ?.let { tx -> tx[Transactions.accountId]?.let { pohodaIdsForAccount(it.value) } }
-            }
+            ?: linkedTx?.let { tx -> tx[Transactions.accountId]?.let { pohodaIdsForAccount(it.value) } }
             ?: defaultBankAccountIds(r[Receipts.profileId].value)
             ?: POHODA_DEFAULT_BANK_IDS
+        val counterpartyAccount = linkedTx?.let { parseCounterpartyAccount(it[Transactions.bankCounterparty]) }
 
         sb.appendLine("""  <dat:dataPackItem id="$seq" version="2.0">""")
         sb.appendLine("""    <bnk:bank version="2.0">""")
@@ -238,6 +241,9 @@ object PohodaExporter {
         sb.appendLine("""        <bnk:account>""")
         sb.appendLine("""          <typ:ids>${pohodaIds.xml()}</typ:ids>""")
         sb.appendLine("""        </bnk:account>""")
+        // <bnk:paymentAccount> — účet PROTISTRANY (z Fio importu / spárované tx).
+        // Pohoda do něj umístí informaci o tom, kam šly peníze.
+        counterpartyAccount?.let { appendPaymentAccount(sb, "bnk", it) }
         sb.appendLine("""        <bnk:note>${note.xml()}</bnk:note>""")
         sb.appendLine("""      </bnk:bankHeader>""")
 
@@ -392,6 +398,16 @@ object PohodaExporter {
         val text = partnerName.ifBlank { if (isExpense) "Nakup" else "Prodej" }.take(240)
         val note = buildInvoiceNote(r)
 
+        // Bankovní účet protistrany pro <inv:paymentAccount>:
+        //   1) Invoices.bankAccount (z OCR/manuálně vyplněné na faktuře)
+        //   2) Linked transaction → Transactions.bankCounterparty (z Fio importu)
+        val invoiceBankAccount = r[Invoices.bankAccount]?.let { parseCounterpartyAccount(it) }
+        val linkedTxAccount = r[Invoices.linkedTransactionId]?.let { txId ->
+            Transactions.selectAll().where { Transactions.id eq txId }.singleOrNull()
+                ?.let { parseCounterpartyAccount(it[Transactions.bankCounterparty]) }
+        }
+        val counterpartyAccount = invoiceBankAccount ?: linkedTxAccount
+
         sb.appendLine("""  <dat:dataPackItem id="$seq" version="2.0">""")
         sb.appendLine("""    <inv:invoice version="2.0">""")
         sb.appendLine("""      <inv:invoiceHeader>""")
@@ -450,6 +466,12 @@ object PohodaExporter {
         sb.appendLine("""            <typ:country><typ:ids>CZ</typ:ids></typ:country>""")
         sb.appendLine("""          </typ:address>""")
         sb.appendLine("""        </inv:partnerIdentity>""")
+
+        // <inv:paymentAccount> — účet PROTISTRANY (kam má klient platit / odkud
+        // se zaplatilo). Priorita: Invoices.bankAccount (z OCR faktury) → linked
+        // transakce. Pohoda v importu fakturu spáruje s adresářem podle IČO,
+        // ale tohle pole umožní účetní vidět konkrétní účet i bez adresáře.
+        counterpartyAccount?.let { appendPaymentAccount(sb, "inv", it) }
 
         // paymentType — enum lowercase (Pohoda XSD: cash | creditcard | draft)
         val pmEnum = when (r[Invoices.paymentMethod]?.uppercase()) {
@@ -541,9 +563,81 @@ object PohodaExporter {
     // ═══════════════════════════════════════════════════════════════════
 
     /**
-     * Pokud má účtenka aspoň jednu fotku (photoKeys JSON není "[]") A je
-     * nakonfigurováno PUBLIC_WEB_URL, vrátí URL odkazu na detail účtenky.
+     * Reprezentace bankovního účtu protistrany pro Pohoda
+     * `<bnk:paymentAccount>` / `<inv:paymentAccount>` element.
+     * Pohoda XSD definuje typ:accountNo + typ:bankCode (czech format) NEBO
+     * typ:iban + typ:bic (mezinárodní). Tady držíme oba — emit logika rozhodne.
      */
+    private data class CounterpartyAccount(
+        val accountNo: String? = null,
+        val bankCode: String? = null,
+        val iban: String? = null,
+    ) {
+        val isEmpty: Boolean get() = accountNo.isNullOrBlank() && iban.isNullOrBlank()
+    }
+
+    /**
+     * Naparsuje `Transactions.bankCounterparty` / `Invoices.bankAccount` na
+     * strukturovaný [CounterpartyAccount]. Akceptuje:
+     *   - "123456789/0100"      → accountNo + bankCode (czech format)
+     *   - "12-1234567890/0100"  → accountNo s prefixem + bankCode
+     *   - "CZ6508000000192000145399" → IBAN (2 letters + digits/letters)
+     *   - "1234567890"          → jen accountNo (bez bankCode)
+     *   - prázdný / null / unknown formát → null
+     */
+    private fun parseCounterpartyAccount(raw: String?): CounterpartyAccount? {
+        if (raw.isNullOrBlank()) return null
+        val cleaned = raw.trim().replace(Regex("\\s+"), "")
+        if (cleaned.isEmpty()) return null
+
+        // IBAN: začíná 2 písmeny, celkem >= 15 znaků, jen alfanumerika
+        if (cleaned.length >= 15
+            && cleaned[0].isLetter() && cleaned[1].isLetter()
+            && cleaned.drop(2).all { it.isLetterOrDigit() }
+        ) {
+            return CounterpartyAccount(iban = cleaned.uppercase())
+        }
+
+        // accountNo/bankCode (slash separator)
+        if ("/" in cleaned) {
+            val parts = cleaned.split("/")
+            if (parts.size == 2) {
+                val accNo = parts[0].takeIf { it.isNotBlank() }
+                val bc = parts[1].takeIf { it.length == 4 && it.all { c -> c.isDigit() } }
+                if (accNo != null) {
+                    return CounterpartyAccount(accountNo = accNo, bankCode = bc)
+                }
+            }
+        }
+
+        // Jen číslo účtu (digits, případně s prefix-pomlčkou jako "12-1234567890")
+        if (cleaned.all { it.isDigit() || it == '-' }) {
+            return CounterpartyAccount(accountNo = cleaned)
+        }
+
+        return null  // neznámý formát — radši vůbec neemitujeme
+    }
+
+    /**
+     * Vypíše Pohoda `<{ns}:paymentAccount>` element s informací o účtu protistrany.
+     * Pokud je IBAN, použije <typ:iban>; jinak <typ:accountNo>+<typ:bankCode>.
+     */
+    private fun appendPaymentAccount(sb: StringBuilder, ns: String, acc: CounterpartyAccount) {
+        if (acc.isEmpty) return
+        sb.appendLine("""        <$ns:paymentAccount>""")
+        if (!acc.iban.isNullOrBlank()) {
+            sb.appendLine("""          <typ:iban>${acc.iban.xml()}</typ:iban>""")
+        } else {
+            acc.accountNo?.takeIf { it.isNotBlank() }?.let {
+                sb.appendLine("""          <typ:accountNo>${it.xml()}</typ:accountNo>""")
+            }
+            acc.bankCode?.takeIf { it.isNotBlank() }?.let {
+                sb.appendLine("""          <typ:bankCode>${it.xml()}</typ:bankCode>""")
+            }
+        }
+        sb.appendLine("""        </$ns:paymentAccount>""")
+    }
+
     /**
      * URL na detail účtenky/faktury v Cointracku — jde do `<vou:note>` /
      * `<bnk:note>` / `<inv:note>` jako klikatelný odkaz. Vždy non-null
