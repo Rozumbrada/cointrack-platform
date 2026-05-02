@@ -35,9 +35,14 @@ object PohodaExporter {
 
     /**
      * Veřejná base URL webu (slouží pro link v poznámce: "Cointrack: {webUrl}/app/receipts/{syncId}").
-     * Konfiguruje se přes env `PUBLIC_WEB_URL`. Pokud chybí, link do poznámky se nepřidává.
+     * Konfiguruje se přes env `PUBLIC_WEB_URL`, default je produkční doména.
+     * **Vždy non-null** — URL link je vždy součást exportu, i pokud env chybí
+     * (nasazení může mít proměnnou opomenutou; default zajistí konzistentní
+     * chování exportu napříč prostředími).
      */
-    private val publicWebUrl: String? get() = System.getenv("PUBLIC_WEB_URL")?.trimEnd('/')?.takeIf { it.isNotBlank() }
+    private val publicWebUrl: String
+        get() = System.getenv("PUBLIC_WEB_URL")?.trimEnd('/')?.takeIf { it.isNotBlank() }
+            ?: "https://cointrack.cz"
 
     // ═══════════════════════════════════════════════════════════════════
     // RECEIPTS
@@ -138,7 +143,7 @@ object PohodaExporter {
         sb.appendLine("""        <vou:date>${r[Receipts.date]}</vou:date>""")
         sb.appendLine("""        <vou:text>${text.xml()}</vou:text>""")
         appendReceiptPartner(sb, r, "vou")
-        if (note != null) sb.appendLine("""        <vou:note>${note.xml()}</vou:note>""")
+        sb.appendLine("""        <vou:note>${note.xml()}</vou:note>""")
         sb.appendLine("""      </vou:voucherHeader>""")
     }
 
@@ -233,7 +238,7 @@ object PohodaExporter {
         sb.appendLine("""        <bnk:account>""")
         sb.appendLine("""          <typ:ids>${pohodaIds.xml()}</typ:ids>""")
         sb.appendLine("""        </bnk:account>""")
-        if (note != null) sb.appendLine("""        <bnk:note>${note.xml()}</bnk:note>""")
+        sb.appendLine("""        <bnk:note>${note.xml()}</bnk:note>""")
         sb.appendLine("""      </bnk:bankHeader>""")
 
         // ── bankDetail ──────────────────────────────────────────────────
@@ -458,7 +463,7 @@ object PohodaExporter {
 
         // <inv:note> — uživatelská poznámka + URL souboru pro snadné dohledání
         // originálního dokumentu zpět v Cointracku.
-        if (note != null) sb.appendLine("""        <inv:note>${note.xml()}</inv:note>""")
+        sb.appendLine("""        <inv:note>${note.xml()}</inv:note>""")
         sb.appendLine("""      </inv:invoiceHeader>""")
 
         // ── invoiceDetail ───────────────────────────────────────────────
@@ -540,48 +545,42 @@ object PohodaExporter {
      * nakonfigurováno PUBLIC_WEB_URL, vrátí URL odkazu na detail účtenky.
      */
     /**
-     * URL na detail účtenky v Cointracku — jde do `<vou:note>` /
-     * `<bnk:note>` jako klikatelný odkaz pro účetní zpět do aplikace.
-     * Nezáleží na tom, jestli má fotku — odkaz vede vždy na detail dokladu,
-     * kde uživatel vidí položky, partnera, fotky, případné editace.
-     *
-     * Pokud chybí PUBLIC_WEB_URL env, vrátí null (link se neemituje).
+     * URL na detail účtenky/faktury v Cointracku — jde do `<vou:note>` /
+     * `<bnk:note>` / `<inv:note>` jako klikatelný odkaz. Vždy non-null
+     * (publicWebUrl má fallback default).
      */
-    private fun receiptDetailUrl(r: ResultRow): String? {
-        val webUrl = publicWebUrl ?: return null
-        return "$webUrl/app/receipts/${r[Receipts.syncId]}"
-    }
+    private fun receiptDetailUrl(r: ResultRow): String =
+        "$publicWebUrl/app/receipts/${r[Receipts.syncId]}"
 
-    private fun invoiceDetailUrl(r: ResultRow): String? {
-        val webUrl = publicWebUrl ?: return null
-        return "$webUrl/app/invoices/${r[Invoices.syncId]}"
-    }
+    private fun invoiceDetailUrl(r: ResultRow): String =
+        "$publicWebUrl/app/invoices/${r[Invoices.syncId]}"
 
     /**
      * Sestaví obsah `<vou:note>` / `<bnk:note>` účtenky:
+     *   - URL na detail účtenky v Cointracku (vždy první, pro snadné kliknutí)
      *   - Uživatelská poznámka (Receipts.note), pokud je
-     *   - URL na detail účtenky v Cointracku — vždy (i bez fotky), aby
-     *     účetní mohl jedním klikem otevřít doklad zpět v aplikaci.
      *
-     * Vrátí null jen pokud chybí jak poznámka, tak URL — pak vůbec note element neemitujeme.
+     * Vždy non-null — URL je garantovaná součást poznámky, takže note element
+     * se vždy emituje. Účetní v Pohoda XML pak vidí klikatelný odkaz zpět
+     * na doklad v Cointracku (kde je foto, položky, partner, atd.).
      */
-    private fun buildReceiptNote(r: ResultRow): String? {
+    private fun buildReceiptNote(r: ResultRow): String {
         val parts = mutableListOf<String>()
-        r[Receipts.note]?.takeIf { it.isNotBlank() }?.let { parts.add(it.trim()) }
-        receiptDetailUrl(r)?.let { parts.add("Cointrack: $it") }
-        return parts.takeIf { it.isNotEmpty() }?.joinToString("\n")
+        parts.add("Doklad v Cointracku: ${receiptDetailUrl(r)}")
+        r[Receipts.note]?.takeIf { it.isNotBlank() }?.let { parts.add("Poznámka: ${it.trim()}") }
+        return parts.joinToString("\n")
     }
 
     /**
      * Sestaví obsah `<inv:note>` faktury:
+     *   - URL na detail faktury v Cointracku (vždy první)
      *   - Uživatelská poznámka (Invoices.note), pokud je
-     *   - URL na detail faktury v Cointracku — vždy
      */
-    private fun buildInvoiceNote(r: ResultRow): String? {
+    private fun buildInvoiceNote(r: ResultRow): String {
         val parts = mutableListOf<String>()
-        r[Invoices.note]?.takeIf { it.isNotBlank() }?.let { parts.add(it.trim()) }
-        invoiceDetailUrl(r)?.let { parts.add("Cointrack: $it") }
-        return parts.takeIf { it.isNotEmpty() }?.joinToString("\n")
+        parts.add("Faktura v Cointracku: ${invoiceDetailUrl(r)}")
+        r[Invoices.note]?.takeIf { it.isNotBlank() }?.let { parts.add("Poznámka: ${it.trim()}") }
+        return parts.joinToString("\n")
     }
 
     // ── DPH sazby ──────────────────────────────────────────────────────
