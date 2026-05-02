@@ -8,6 +8,7 @@ import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.Serializable
 import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.sql.SortOrder
+import org.jetbrains.exposed.sql.or
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
@@ -217,9 +218,41 @@ class IDokladService(private val client: IDokladClient = IDokladClient()) {
         var updated = 0
         for (inv in items) {
             val idokladId = inv.Id.toString()
-            val existing = Invoices.selectAll()
-                .where { (Invoices.profileId eq profileDbId) and (Invoices.idokladId eq idokladId) }
-                .singleOrNull()
+            val negatedIdokladId = "-${inv.Id}"
+            // Lookup po BOTH possible idokladId values:
+            //   - "12345"  (positive — server konvence + nová mobile konvence)
+            //   - "-12345" (negative — legacy mobile konvence pro received invoices)
+            // Mobile před fixem ukládal received jako idokladId="-id" aby je
+            // odlišil od issued. Cloud sync to push'l na server, který má svůj
+            // vlastní lookup podle positive id → vznikly duplikáty (server vložil
+            // "12345" jako nový, mobile-pushed "-12345" zůstal). Teď match obojí
+            // a normalizujeme na positive.
+            val matches = Invoices.selectAll()
+                .where {
+                    (Invoices.profileId eq profileDbId) and
+                        ((Invoices.idokladId eq idokladId) or (Invoices.idokladId eq negatedIdokladId)) and
+                        Invoices.deletedAt.isNull()
+                }
+                .orderBy(Invoices.updatedAt to org.jetbrains.exposed.sql.SortOrder.DESC)
+                .toList()
+
+            val existing = matches.firstOrNull()
+            // Cleanup: pokud máme >1 match, ostatní jsou duplikáty z historie —
+            // soft-deletneme je. Sjednotí stav pro web/mobile po roce duplicit.
+            if (matches.size > 1) {
+                val now = Instant.now()
+                val keepSyncId = existing!![Invoices.syncId]
+                Invoices.update({
+                    (Invoices.profileId eq profileDbId) and
+                        ((Invoices.idokladId eq idokladId) or (Invoices.idokladId eq negatedIdokladId)) and
+                        (Invoices.syncId neq keepSyncId) and
+                        Invoices.deletedAt.isNull()
+                }) {
+                    it[deletedAt] = now
+                    it[Invoices.updatedAt] = now
+                }
+                log.info("iDoklad sync: cleaned up ${matches.size - 1} duplicate(s) for idokladId=$idokladId")
+            }
 
             val total = inv.Prices?.TotalWithVat?.let { BigDecimal.valueOf(it) } ?: BigDecimal.ZERO
             val totalNo = inv.Prices?.TotalWithoutVat?.let { BigDecimal.valueOf(it) }
@@ -256,6 +289,11 @@ class IDokladService(private val client: IDokladClient = IDokladClient()) {
                     it[Invoices.dueDate] = dueDate
                     it[Invoices.paid] = inv.IsPaid
                     it[Invoices.note] = inv.Note ?: inv.Description
+                    // Normalizace: pokud existing měl legacy negative id ("-12345"),
+                    // přepíšeme na positive ("12345"). Tím sjednotíme s konvencí
+                    // a další iDoklad sync už spadne přesně do tohoto řádku.
+                    it[Invoices.idokladId] = idokladId
+                    it[Invoices.isExpense] = isExpense
                     it[Invoices.updatedAt] = now
                 }
                 updated++
