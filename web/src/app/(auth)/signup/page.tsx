@@ -35,7 +35,11 @@ function SignupInner() {
     }
     setLoading(true);
     try {
-      await auth.register(email, password, displayName || undefined, locale);
+      // Pošleme `next` (např. /accept-share?token=...) na server, ten ji vloží
+      // do verify URL → po kliknutí na verify e-mail link uživatele dostaneme
+      // přes login zpět na původní cestu (zachovaný kontext share invitation).
+      const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : undefined;
+      await auth.register(email, password, displayName || undefined, locale, safeNext);
       setDone(true);
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);

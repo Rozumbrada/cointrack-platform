@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { api, sync } from "@/lib/api";
-import { withAuth } from "@/lib/auth-store";
+import { withAuth, getStoredUser } from "@/lib/auth-store";
 import { categoriesForFocus } from "@/lib/business-focus-categories";
 
 const COLORS = [
@@ -96,14 +96,21 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
   const router = useRouter();
   const isEdit = mode === "edit";
 
+  // Tier gating: FREE/PERSONAL → jen PERSONAL profil. BUSINESS+ tier povolí
+  // BUSINESS profil. BUSINESS_PRO/ORGANIZATION → vše. Mirror serverového guardu
+  // v upsertProfile (canCreateProfileType) — server odmítne i pokud klient tohle
+  // obejde, ale tady to user vidí předem.
+  const userTier = (getStoredUser()?.tier ?? "FREE").toUpperCase();
+  const canCreateBusiness = userTier === "BUSINESS" || userTier === "BUSINESS_PRO" || userTier === "ORGANIZATION";
+  const canCreateGroup = userTier === "BUSINESS_PRO" || userTier === "ORGANIZATION";
   // ORGANIZATION typ profilu byl sjednocen s BUSINESS — pro běžného uživatele
   // je rozdíl matoucí. Existující ORGANIZATION profily v DB zůstávají a ukazují
   // se jako "Firemní" (viz mapping níže). Pro multi-user organizační strukturu
   // s rolemi je samostatná stránka /app/organizations.
   const TYPES = [
-    { value: "PERSONAL", label: t("type_personal"), desc: t("type_personal_desc") },
-    { value: "BUSINESS", label: t("type_business"), desc: t("type_business_desc") },
-    { value: "GROUP", label: t("type_group"), desc: t("type_group_desc") },
+    { value: "PERSONAL", label: t("type_personal"), desc: t("type_personal_desc"), locked: false, requiredTier: null },
+    { value: "BUSINESS", label: t("type_business"), desc: t("type_business_desc"), locked: !canCreateBusiness, requiredTier: "BUSINESS" },
+    { value: "GROUP", label: t("type_group"), desc: t("type_group_desc"), locked: !canCreateGroup, requiredTier: "BUSINESS_PRO" },
   ];
 
   const [name, setName] = useState("");
@@ -370,6 +377,47 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
       setError(t("fill_name"));
       return;
     }
+
+    // Tier guard — klient si potvrdí předem, server to taky enforcuje (canCreateProfileType
+    // v upsertProfile). Bez tohoto by FREE user dostal 403 až po sync push.
+    const wantsBusiness = type === "BUSINESS" || type === "ORGANIZATION";
+    const wantsGroup = type === "GROUP";
+    if (wantsBusiness && !canCreateBusiness) {
+      setError("Tento typ profilu vyžaduje tarif Business nebo vyšší.");
+      return;
+    }
+    if (wantsGroup && !canCreateGroup) {
+      setError("Tento typ profilu vyžaduje tarif Business Pro.");
+      return;
+    }
+
+    // Dedup-ICO warning — pokud user vytváří NOVÝ profil se stejným IČO jako už
+    // existující, požádej o potvrzení. Pomáhá proti omylem-vytvořeným duplicitám
+    // (typický bug: user klikne 'vytvořit' několikrát během chyby v UI).
+    if (!isEdit && ico.trim()) {
+      try {
+        const pull = await withAuth((tk) => sync.pull(tk));
+        const existingWithIco = (pull.entities["profiles"] ?? []).filter((en) => {
+          if (en.deletedAt) return false;
+          const d = en.data as Record<string, unknown>;
+          if (d.deletedAt != null && d.deletedAt !== 0) return false;
+          return String(d.ico ?? "") === ico.trim();
+        });
+        if (existingWithIco.length > 0) {
+          const namesList = existingWithIco
+            .map((en) => `${(en.data as Record<string, unknown>).name ?? ""} (${(en.data as Record<string, unknown>).type ?? ""})`)
+            .join(", ");
+          const ok = confirm(
+            `Už máš profil(y) s IČO ${ico.trim()}: ${namesList}.\n\n` +
+              `Opravdu chceš vytvořit další profil se stejným IČO?`,
+          );
+          if (!ok) return;
+        }
+      } catch {
+        // Pull selhal — neblokuj submit (defense in depth, ne hard requirement).
+      }
+    }
+
     setError(null);
     setSaving(true);
 
@@ -486,10 +534,12 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
               {TYPES.map((typ) => (
                 <label
                   key={typ.value}
-                  className={`flex items-start gap-3 p-3 rounded-lg border-2 cursor-pointer transition-colors ${
-                    type === typ.value
-                      ? "border-brand-500 bg-brand-50"
-                      : "border-ink-200 hover:border-ink-300"
+                  className={`flex items-start gap-3 p-3 rounded-lg border-2 transition-colors ${
+                    typ.locked
+                      ? "border-ink-200 bg-ink-50 opacity-60 cursor-not-allowed"
+                      : type === typ.value
+                        ? "border-brand-500 bg-brand-50 cursor-pointer"
+                        : "border-ink-200 hover:border-ink-300 cursor-pointer"
                   }`}
                 >
                   <input
@@ -498,11 +548,28 @@ export default function ProfileForm({ mode, syncId }: ProfileFormProps) {
                     value={typ.value}
                     checked={type === typ.value}
                     onChange={(e) => setType(e.target.value)}
+                    disabled={typ.locked}
                     className="mt-1"
                   />
-                  <div>
-                    <div className="font-medium text-ink-900 text-sm">{typ.label}</div>
+                  <div className="flex-1">
+                    <div className="font-medium text-ink-900 text-sm flex items-center gap-2">
+                      {typ.label}
+                      {typ.locked && (
+                        <span className="text-[10px] uppercase tracking-wide bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">
+                          {typ.requiredTier === "BUSINESS_PRO" ? "Business Pro" : "Business"}
+                        </span>
+                      )}
+                    </div>
                     <div className="text-xs text-ink-600">{typ.desc}</div>
+                    {typ.locked && (
+                      <div className="text-xs text-amber-700 mt-1">
+                        Pro tento typ profilu potřebuješ tarif{" "}
+                        <Link href="/app/upgrade" className="underline font-medium">
+                          {typ.requiredTier === "BUSINESS_PRO" ? "Business Pro" : "Business"}
+                        </Link>
+                        .
+                      </div>
+                    )}
                   </div>
                 </label>
               ))}

@@ -10,6 +10,12 @@ import { auth, ApiError } from "@/lib/api";
 function VerifyInner() {
   const params = useSearchParams();
   const token = params.get("token");
+  // `?next=` z verify URL — vložil tam server podle nextPath z RegisterRequest.
+  // Po úspěšném ověření ho předáme do /login jako ?next=, aby se po loginu
+  // pozvánka (či jiná uložená cesta) automaticky pokračovala.
+  const next = params.get("next");
+  const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : null;
+  const loginHref = safeNext ? `/login?next=${encodeURIComponent(safeNext)}` : "/login";
   const t = useTranslations("auth.verify");
 
   const [state, setState] = useState<"verifying" | "ok" | "error">("verifying");
@@ -57,7 +63,7 @@ function VerifyInner() {
         <h1 className="text-2xl font-semibold text-ink-900 mb-2">{t("success_title")}</h1>
         <p className="text-ink-600 mb-6">{t("success_desc")}</p>
         <Button asChild variant="brand" className="w-full">
-          <Link href="/login">{t("go_login")}</Link>
+          <Link href={loginHref}>{t("go_login")}</Link>
         </Button>
       </div>
     );
@@ -72,7 +78,7 @@ function VerifyInner() {
       <p className="text-ink-600 mb-6">{error}</p>
       <div className="space-y-2">
         <Button asChild variant="brand" className="w-full">
-          <Link href="/login">{t("to_login")}</Link>
+          <Link href={loginHref}>{t("to_login")}</Link>
         </Button>
         <Button asChild variant="outline" className="w-full">
           <Link href="/forgot">{t("request_new")}</Link>

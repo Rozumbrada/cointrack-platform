@@ -38,18 +38,24 @@ export default function DashboardPage() {
   const txEntities = entitiesByProfile<ServerTransaction>("transactions");
   const categoryEntities = entitiesByProfile<ServerCategory>("categories");
 
-  // First-run detection — bez profilu/účtu redirect na onboarding (jednou)
+  // First-run detection — bez profilu redirect na onboarding (jednou).
+  // FIX (2026-05): pokud má uživatel sdílený profil (recipient pozvánky), neopakuj
+  // onboarding — má co používat. Stará podmínka `profiles.length === 0 || accounts === 0`
+  // shazovala recipientovi (který nemá VLASTNÍ účet) na onboarding a ten si tam
+  // pak omylem vytvořil duplicitní profily.
   useEffect(() => {
     if (loading) return;
     if (typeof window === "undefined") return;
     if (localStorage.getItem("cointrack:onboarded") === "1") return;
     const profiles = rawEntities("profiles");
-    if (profiles.length === 0 || accountEntities.length === 0) {
+    // Žádný profil vůbec → onboarding (true first-run).
+    // Profil je → jsme onboarded, i kdyby byl jen sdílený (= bez vlastních účtů).
+    if (profiles.length === 0) {
       router.replace("/onboarding");
     } else {
       localStorage.setItem("cointrack:onboarded", "1");
     }
-  }, [loading, rawEntities, accountEntities.length, router]);
+  }, [loading, rawEntities, router]);
 
   // Map kategorie syncId → kategorie data
   const catMap = useMemo(() => {

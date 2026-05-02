@@ -723,12 +723,28 @@ class SyncService {
         if (existing != null) {
             if (!canWriteProfile(userId, existing)) return UpsertResult.Forbidden
             if (existing[Profiles.updatedAt] >= updatedAt) return UpsertResult.Conflict(profileToEntity(existing))
+            // Při změně typu — pokud existing.type je "PERSONAL" a user mění na BUSINESS/GROUP,
+            // ověř tier (jinak by FREE user mohl obejít guard přes update existing PERSONAL profilu).
+            val newType = e.data.strOrNull("type")?.uppercase()
+            if (newType != null && newType != existing[Profiles.type].uppercase() &&
+                !canCreateProfileType(userId, newType)) {
+                return UpsertResult.Forbidden
+            }
             Profiles.update({ Profiles.syncId eq syncId }) {
                 applyProfileFields(it, e.data, e.clientVersion, updatedAt, deletedAt, userId)
             }
         } else {
-            // Při vytváření nového profilu: pokud e.data obsahuje organizationId,
-            // ověř že user je člen toho orgu. Jinak profile patří jen userovi.
+            // Při vytváření nového profilu — tier guard:
+            //   FREE / PERSONAL tier  → smí jen PERSONAL profil
+            //   BUSINESS tier         → PERSONAL + BUSINESS
+            //   BUSINESS_PRO          → PERSONAL + BUSINESS + GROUP + ORGANIZATION
+            // Bez tohoto recipient FREE účtu mohl při onboardingu omylem vytvořit
+            // BUSINESS / GROUP profily a zaplnit svůj account list.
+            val newType = e.data.strOrNull("type")?.uppercase() ?: "PERSONAL"
+            if (!canCreateProfileType(userId, newType)) {
+                return UpsertResult.Forbidden
+            }
+            // Pokud e.data obsahuje organizationId, ověř že user je člen toho orgu.
             val orgId = resolveProfileOrganization(e.data, userId)
             Profiles.insert {
                 it[Profiles.syncId] = syncId
@@ -739,6 +755,24 @@ class SyncService {
             }
         }
         return UpsertResult.Accepted
+    }
+
+    /**
+     * Tier-based gate: může user na svém tieru vytvořit profil daného typu?
+     * - PERSONAL profil: vždy povolený (každý tier)
+     * - BUSINESS profil: vyžaduje BUSINESS+ (BUSINESS, BUSINESS_PRO, ORGANIZATION)
+     * - GROUP / ORGANIZATION profil: vyžaduje BUSINESS_PRO (sdílené týmové prostředí)
+     */
+    private fun Transaction.canCreateProfileType(userId: UUID, type: String): Boolean {
+        val typeUpper = type.uppercase()
+        if (typeUpper == "PERSONAL") return true
+        val tier = Users.selectAll().where { Users.id eq userId }
+            .singleOrNull()?.get(Users.tier)?.uppercase() ?: "FREE"
+        return when (typeUpper) {
+            "BUSINESS" -> tier in setOf("BUSINESS", "BUSINESS_PRO", "ORGANIZATION")
+            "GROUP", "ORGANIZATION" -> tier in setOf("BUSINESS_PRO", "ORGANIZATION")
+            else -> false  // unknown type = deny
+        }
     }
 
     /**

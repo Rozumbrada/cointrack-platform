@@ -58,7 +58,9 @@ class AuthService(
             }.value
         }
 
-        sendVerifyEmail(userId, normalizedEmail)
+        // `nextPath` (např. /accept-share?token=…) z registrace zachováme přes
+        // verify → login → next chain, takže pozvanému uživateli nezmizí kontext.
+        sendVerifyEmail(userId, normalizedEmail, req.nextPath)
 
         return UserDto(
             id = userId.toString(),
@@ -343,7 +345,7 @@ class AuthService(
         )
     }
 
-    private suspend fun sendVerifyEmail(userId: UUID, toEmail: String) {
+    private suspend fun sendVerifyEmail(userId: UUID, toEmail: String, nextPath: String? = null) {
         val token = TokenGenerator.newToken()
         val now = Instant.now()
         val userLocale = db {
@@ -355,7 +357,11 @@ class AuthService(
             }
             Users.selectAll().where { Users.id eq userId }.singleOrNull()?.get(Users.locale)
         }
-        val verifyUrl = "$webBaseUrl/verify?token=$token"
+        // Sanitizace `nextPath` — povolíme jen relativní cesty začínající "/" a bez "//"
+        // (proti open-redirect). Volitelně přidáme jako URL-encoded query parametr.
+        val safeNext = nextPath?.takeIf { it.startsWith("/") && !it.startsWith("//") }
+        val nextSuffix = safeNext?.let { "&next=${java.net.URLEncoder.encode(it, "UTF-8")}" } ?: ""
+        val verifyUrl = "$webBaseUrl/verify?token=$token$nextSuffix"
         try {
             email.send(
                 toEmail,

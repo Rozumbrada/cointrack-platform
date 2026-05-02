@@ -41,14 +41,16 @@ export default function OnboardingPage() {
     auth.me(token).then(setUser).catch(() => router.replace("/login"));
   }, [router]);
 
-  // Pokud už má profil, nemá tu co dělat
+  // Pokud už má profil (vlastní NEBO sdílený), nemá tu co dělat. Recipient po
+  // acceptu pozvánky má `shared` profil v sync — onboarding by ho nutil vytvářet
+  // svůj vlastní, což byl bug (uživatelé si během onboardingu vytvořili duplicity).
   useEffect(() => {
     (async () => {
       try {
         const res = await withAuth((t) => sync.pull(t));
         const hasProfile = (res.entities["profiles"] ?? []).some((e) => !e.deletedAt);
-        const hasAccount = (res.entities["accounts"] ?? []).some((e) => !e.deletedAt);
-        if (hasProfile && hasAccount) {
+        if (hasProfile) {
+          // Profil existuje (vlastní nebo sdílený) — preskoč onboarding.
           localStorage.setItem("cointrack:onboarded", "1");
           router.replace("/app/dashboard");
         }
@@ -61,6 +63,44 @@ export default function OnboardingPage() {
       setError(t("fill_profile_name"));
       return;
     }
+
+    // Tier guard — mirror serveru: FREE/PERSONAL může jen PERSONAL profil,
+    // BUSINESS tier povolí BUSINESS, BUSINESS_PRO+ povolí ORGANIZATION/GROUP.
+    const tier = (user?.tier ?? "FREE").toUpperCase();
+    const wantsBusiness = profileType === "BUSINESS";
+    const wantsOrg = profileType === "ORGANIZATION";
+    if (wantsBusiness && tier !== "BUSINESS" && tier !== "BUSINESS_PRO" && tier !== "ORGANIZATION") {
+      setError("Firemní profil vyžaduje tarif Business nebo vyšší. Můžeš si vytvořit osobní profil a kdykoliv upgradovat.");
+      return;
+    }
+    if (wantsOrg && tier !== "BUSINESS_PRO" && tier !== "ORGANIZATION") {
+      setError("Organizační profil vyžaduje tarif Business Pro. Můžeš si vytvořit osobní profil a kdykoliv upgradovat.");
+      return;
+    }
+
+    // Dup-ICO warning — pokud už existuje profil se stejným IČO, požádej o potvrzení.
+    if (companyIco.trim()) {
+      try {
+        const pull = await withAuth((tk) => sync.pull(tk));
+        const existingWithIco = (pull.entities["profiles"] ?? []).filter((en) => {
+          if (en.deletedAt) return false;
+          const d = en.data as Record<string, unknown>;
+          if (d.deletedAt != null && d.deletedAt !== 0) return false;
+          return String(d.ico ?? "") === companyIco.trim();
+        });
+        if (existingWithIco.length > 0) {
+          const namesList = existingWithIco
+            .map((en) => `${(en.data as Record<string, unknown>).name ?? ""}`)
+            .join(", ");
+          const ok = confirm(
+            `Už máš profil(y) s IČO ${companyIco.trim()}: ${namesList}.\n\n` +
+              `Opravdu chceš vytvořit další profil se stejným IČO?`,
+          );
+          if (!ok) return;
+        }
+      } catch { /* defense-in-depth, neblokuj submit */ }
+    }
+
     setBusy(true); setError(null);
     try {
       const syncId = crypto.randomUUID();
@@ -175,22 +215,37 @@ export default function OnboardingPage() {
             </div>
 
             <div className="grid grid-cols-3 gap-2 text-sm">
-              {(["PERSONAL", "BUSINESS", "ORGANIZATION"] as const).map((pt) => (
-                <button
-                  key={pt}
-                  onClick={() => setProfileType(pt)}
-                  className={`p-3 rounded-xl border text-left ${
-                    profileType === pt
-                      ? "border-brand-600 bg-brand-50 text-brand-900"
-                      : "border-ink-200 hover:border-ink-300"
-                  }`}
-                >
-                  <div className="text-xl mb-1">{pt === "PERSONAL" ? "👤" : pt === "BUSINESS" ? "🏢" : "🏛️"}</div>
-                  <div className="font-medium text-xs">
-                    {pt === "PERSONAL" ? t("type_personal") : pt === "BUSINESS" ? t("type_business") : t("type_organization")}
-                  </div>
-                </button>
-              ))}
+              {(["PERSONAL", "BUSINESS", "ORGANIZATION"] as const).map((pt) => {
+                const tier = (user?.tier ?? "FREE").toUpperCase();
+                const locked =
+                  (pt === "BUSINESS" && tier !== "BUSINESS" && tier !== "BUSINESS_PRO" && tier !== "ORGANIZATION") ||
+                  (pt === "ORGANIZATION" && tier !== "BUSINESS_PRO" && tier !== "ORGANIZATION");
+                return (
+                  <button
+                    key={pt}
+                    type="button"
+                    onClick={() => !locked && setProfileType(pt)}
+                    disabled={locked}
+                    className={`p-3 rounded-xl border text-left relative ${
+                      locked
+                        ? "border-ink-200 bg-ink-50 opacity-60 cursor-not-allowed"
+                        : profileType === pt
+                          ? "border-brand-600 bg-brand-50 text-brand-900"
+                          : "border-ink-200 hover:border-ink-300"
+                    }`}
+                  >
+                    <div className="text-xl mb-1">{pt === "PERSONAL" ? "👤" : pt === "BUSINESS" ? "🏢" : "🏛️"}</div>
+                    <div className="font-medium text-xs">
+                      {pt === "PERSONAL" ? t("type_personal") : pt === "BUSINESS" ? t("type_business") : t("type_organization")}
+                    </div>
+                    {locked && (
+                      <div className="absolute top-1 right-1 text-[9px] uppercase tracking-wide bg-amber-100 text-amber-800 px-1 py-0.5 rounded">
+                        {pt === "BUSINESS" ? "Business" : "Pro"}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
             </div>
 
             <label className="block">

@@ -8,6 +8,13 @@ data class RegisterRequest(
     val password: String,
     val displayName: String? = null,
     val locale: String? = null,
+    /**
+     * Volitelná cesta uvnitř webu, kam má uživatel pokračovat po ověření emailu
+     * a loginu (např. `/accept-share?token=...`). Server ji uloží do verify URL,
+     * web verify page ji předá do login query, login po úspěchu provede redirect.
+     * Bezpečnostní filtr — povolené jen relativní cesty začínající "/", ne "//".
+     */
+    val nextPath: String? = null,
 )
 
 @Serializable

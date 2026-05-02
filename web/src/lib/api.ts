@@ -70,10 +70,10 @@ export interface UserDto {
 }
 
 export const auth = {
-  register: (email: string, password: string, displayName?: string, locale?: string) =>
+  register: (email: string, password: string, displayName?: string, locale?: string, nextPath?: string) =>
     api<UserDto>("/api/v1/auth/register", {
       method: "POST",
-      body: { email, password, displayName, locale },
+      body: { email, password, displayName, locale, nextPath },
     }),
 
   login: (email: string, password: string) =>
