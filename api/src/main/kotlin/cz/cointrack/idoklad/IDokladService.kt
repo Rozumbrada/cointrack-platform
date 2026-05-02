@@ -389,12 +389,45 @@ class IDokladService(private val client: IDokladClient = IDokladClient()) {
         }
     }
 
-    /** Stáhne PDF faktury z iDokladu (proxy stream). */
+    /**
+     * Stáhne PDF faktury z iDokladu (proxy stream).
+     *
+     * Detekuje, jestli je to vystavená nebo přijatá faktura, podle
+     * `Invoices.isExpense` a `Invoices.iDokladId` v naší DB. Bez tohoto
+     * lookupu jsme volali jen IssuedInvoices, a pro přijaté faktury iDoklad
+     * vracel HTTP 400 (špatná agenda).
+     *
+     * Pokud nemáme v naší DB invoice s tímhle iDoklad ID (např. faktura
+     * existuje jen v iDokladu, není zatím syncnutá), zkusíme nejdřív
+     * IssuedInvoices, fallback ReceivedInvoices.
+     */
     suspend fun getPdf(userId: UUID, profileSyncId: UUID, idokladId: Int): ByteArray {
-        val profileDbId = db { profileRowFor(userId, profileSyncId)[Profiles.id].value }
+        val profileRow = db { profileRowFor(userId, profileSyncId) }
+        val profileDbId = profileRow[Profiles.id].value
         val token = ensureToken(profileDbId)
+
+        val knownIsExpense: Boolean? = db {
+            Invoices.selectAll()
+                .where { (Invoices.profileId eq EntityID(profileDbId, Profiles)) and (Invoices.idokladId eq idokladId.toString()) }
+                .singleOrNull()
+                ?.get(Invoices.isExpense)
+        }
+
         return try {
-            client.getInvoicePdf(token, idokladId)
+            if (knownIsExpense != null) {
+                // Známe typ z DB → rovnou na správný endpoint
+                client.getInvoicePdf(token, idokladId, isExpense = knownIsExpense)
+            } else {
+                // Neznámý typ → zkusit issued, fallback received při 400/404
+                try {
+                    client.getInvoicePdf(token, idokladId, isExpense = false)
+                } catch (e: IDokladException) {
+                    val code = e.status?.value ?: 0
+                    if (code == 400 || code == 404) {
+                        client.getInvoicePdf(token, idokladId, isExpense = true)
+                    } else throw e
+                }
+            }
         } catch (e: IDokladException) {
             throw ApiException(HttpStatusCode.BadGateway, "idoklad_pdf_failed",
                 "iDoklad nevrátil PDF: ${e.message}")

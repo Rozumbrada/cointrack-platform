@@ -279,24 +279,28 @@ class IDokladClient {
     }
 
     /**
-     * Stáhne PDF faktury jako ByteArray.
+     * Stáhne PDF faktury jako ByteArray. Routuje na správný iDoklad endpoint
+     * podle typu (přijatá vs vystavená):
+     *   - issued (vystavená, vystavujeme zákazníkovi): /v3/IssuedInvoices/{id}/GetPdf
+     *   - received (přijatá, od dodavatele):           /v3/ReceivedInvoices/{id}/GetPdf
      *
-     * iDoklad v3 endpoint `/IssuedInvoices/{Id}/GetPdf` vrací JSON ve tvaru
+     * Oba endpointy vrací JSON ve tvaru:
      *   { "Data": "<base64>", "FileName": "..." }
-     * Ne raw bytes! Předtím jsme nesprávně používali `/Pdf` (404) → web
-     * dostal HTTP error, mobile používal v2 endpoint který vracel JSON →
-     * uložené ".pdf" obsahovalo JSON text → nešlo otevřít.
      *
-     * Teď: parsujeme JSON, extrahujeme `Data`, dekódujeme base64 a vracíme
-     * skutečné PDF bytes.
+     * @param isExpense  Pokud true → použije ReceivedInvoices (přijatá faktura).
+     *                   Pokud false → IssuedInvoices (vystavená).
+     *                   Předtím jsme volali jen IssuedInvoices i pro přijaté
+     *                   faktury → iDoklad vracel HTTP 400 (faktura nepatří
+     *                   do té agendy).
      */
-    suspend fun getInvoicePdf(accessToken: String, invoiceId: Int): ByteArray {
-        val resp = client.get("https://api.idoklad.cz/v3/IssuedInvoices/$invoiceId/GetPdf") {
+    suspend fun getInvoicePdf(accessToken: String, invoiceId: Int, isExpense: Boolean = false): ByteArray {
+        val agendaPath = if (isExpense) "ReceivedInvoices" else "IssuedInvoices"
+        val resp = client.get("https://api.idoklad.cz/v3/$agendaPath/$invoiceId/GetPdf") {
             bearerAuth(accessToken)
         }
         if (!resp.status.isSuccess()) {
             val txt = resp.bodyAsText()
-            log.warn("iDoklad PDF failed: {} {}", resp.status, txt.take(200))
+            log.warn("iDoklad PDF failed ($agendaPath/{}): {} {}", invoiceId, resp.status, txt.take(200))
             throw IDokladException("Get PDF failed: ${resp.status} — ${txt.take(200)}", resp.status)
         }
         val body = resp.bodyAsText()

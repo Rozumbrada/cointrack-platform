@@ -1045,10 +1045,18 @@ class SyncService {
         s[Receipts.date] = LocalDate.parse(d.str("date"))
         s[Receipts.totalWithVat] = d.decimalOr("totalWithVat", BigDecimal.ZERO)
         s[Receipts.currency] = d.strOr("currency", "CZK")
-        // FK reference — vždy ze vstupního JSONu (resolveX vrací null pokud chybí).
-        s[Receipts.categoryId] = categoryDbId?.let { EntityID(it, Categories) }
-        s[Receipts.transactionId] = transactionDbId?.let { EntityID(it, Transactions) }
-        s[Receipts.linkedAccountId] = linkedAccountDbId?.let { EntityID(it, Accounts) }
+        // FK reference — containsKey guard. Předtím se vždy nastavovaly,
+        // takže klient bez `transactionId` v JSON serveru clobnul pairing
+        // → "zaplaceno" mizelo z účtenky.
+        if (isInsert) {
+            s[Receipts.categoryId] = categoryDbId?.let { EntityID(it, Categories) }
+            s[Receipts.transactionId] = transactionDbId?.let { EntityID(it, Transactions) }
+            s[Receipts.linkedAccountId] = linkedAccountDbId?.let { EntityID(it, Accounts) }
+        } else {
+            if (d.containsKey("categoryId")) s[Receipts.categoryId] = categoryDbId?.let { EntityID(it, Categories) }
+            if (d.containsKey("transactionId")) s[Receipts.transactionId] = transactionDbId?.let { EntityID(it, Transactions) }
+            if (d.containsKey("linkedAccountId")) s[Receipts.linkedAccountId] = linkedAccountDbId?.let { EntityID(it, Accounts) }
+        }
         // Optional/nullable — containsKey() guard proti clobberu. Tohle je důležité
         // pro merchant ICO/DIC/adresu, které ARES dohledává v mobilu — nesmí je
         // přepsat pozdější edit z webu, který ARES nezavolal.
@@ -1121,10 +1129,18 @@ class SyncService {
         s[Invoices.totalWithVat] = d.decimalOr("totalWithVat", BigDecimal.ZERO)
         s[Invoices.currency] = d.strOr("currency", "CZK")
         s[Invoices.paid] = d.boolOr("paid", false)
-        // FK reference — vždy.
-        s[Invoices.categoryId] = categoryDbId?.let { EntityID(it, Categories) }
-        s[Invoices.linkedAccountId] = accountDbId?.let { EntityID(it, Accounts) }
-        s[Invoices.linkedTransactionId] = transactionDbId?.let { EntityID(it, Transactions) }
+        // FK reference — containsKey guard. Předtím se vždy nastavovaly,
+        // takže klient bez `linkedTransactionId` v JSON serveru clobnul
+        // pairing → "zaplaceno" mizelo z fakture.
+        if (isInsert) {
+            s[Invoices.categoryId] = categoryDbId?.let { EntityID(it, Categories) }
+            s[Invoices.linkedAccountId] = accountDbId?.let { EntityID(it, Accounts) }
+            s[Invoices.linkedTransactionId] = transactionDbId?.let { EntityID(it, Transactions) }
+        } else {
+            if (d.containsKey("categoryId")) s[Invoices.categoryId] = categoryDbId?.let { EntityID(it, Categories) }
+            if (d.containsKey("linkedAccountId")) s[Invoices.linkedAccountId] = accountDbId?.let { EntityID(it, Accounts) }
+            if (d.containsKey("linkedTransactionId")) s[Invoices.linkedTransactionId] = transactionDbId?.let { EntityID(it, Transactions) }
+        }
         // Optional/nullable — containsKey() guard proti clobberu. Důležité pro
         // supplier ICO/DIC/adresu (ARES, OCR), invoiceNumber, VS, idokladId.
         if (isInsert) {
