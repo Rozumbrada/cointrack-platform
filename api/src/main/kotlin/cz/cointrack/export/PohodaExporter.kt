@@ -203,16 +203,21 @@ object PohodaExporter {
         // bnk:text má string96 — hard limit
         val text = (if (photoNote != null) "$baseText | Foto: $photoNote" else baseText).take(96)
 
-        // V29: Bankovní účet — priorita lookup:
+        // V29 + V31: Bankovní účet — priorita lookup, NIKDY neemitujeme
+        // bez `<bnk:account>` (jinak Pohoda doklad spadne do Pokladny).
         //   1) Receipts.linkedAccountId (manuální přiřazení web/mobil)
         //   2) Receipts.transactionId → Transactions.accountId (auto-match)
-        //   3) profile default BANK account (legacy fallback)
+        //   3) profile default BANK/checking/credit_card account
+        //   4) hardcoded "BANKA" (Pohoda default Zkratka v čerstvé instalaci) —
+        //      user si pak doklad ručně přepojí v Pohoda UI, ale alespoň
+        //      doklad správně skončí v Bance, ne v Pokladně.
         val pohodaIds = r[Receipts.linkedAccountId]?.let { pohodaIdsForAccount(it.value) }
             ?: r[Receipts.transactionId]?.let { txId ->
                 Transactions.selectAll().where { Transactions.id eq txId }.singleOrNull()
                     ?.let { tx -> tx[Transactions.accountId]?.let { pohodaIdsForAccount(it.value) } }
             }
             ?: defaultBankAccountIds(r[Receipts.profileId].value)
+            ?: POHODA_DEFAULT_BANK_IDS
 
         sb.appendLine("""  <dat:dataPackItem id="$seq" version="2.0">""")
         sb.appendLine("""    <bnk:bank version="2.0">""")
@@ -224,13 +229,12 @@ object PohodaExporter {
         sb.appendLine("""        <bnk:dateStatement>${r[Receipts.date]}</bnk:dateStatement>""")
         sb.appendLine("""        <bnk:text>${text.xml()}</bnk:text>""")
         appendReceiptPartner(sb, r, "bnk")
-        // <bnk:account> — v bank.xsd typ:refType (jen <typ:ids> = Pohoda Zkratka).
-        // KLÍČOVÉ: bez něj Pohoda dokument přeřazuje do Pokladny.
-        pohodaIds?.let { ids ->
-            sb.appendLine("""        <bnk:account>""")
-            sb.appendLine("""          <typ:ids>${ids.xml()}</typ:ids>""")
-            sb.appendLine("""        </bnk:account>""")
-        }
+        // <bnk:account> — VŽDY emitujeme (bank.xsd typ:refType, jen <typ:ids>).
+        // Bez tohoto Pohoda doklad přeřazuje do Pokladny — proto ULTIMATE
+        // fallback je hardcoded "BANKA" (Pohoda default Zkratka).
+        sb.appendLine("""        <bnk:account>""")
+        sb.appendLine("""          <typ:ids>${pohodaIds.xml()}</typ:ids>""")
+        sb.appendLine("""        </bnk:account>""")
         sb.appendLine("""      </bnk:bankHeader>""")
 
         // ── bankDetail ──────────────────────────────────────────────────
@@ -647,21 +651,47 @@ object PohodaExporter {
     // ── Bank account / Pohoda Zkratka ──────────────────────────────────
 
     /**
-     * V29: fallback pro CARD účtenky bez explicit linked account — najde první
-     * BANK-typ účet v profilu. Vrátí jeho Pohoda Zkratku.
+     * V29 + V31: fallback pro CARD účtenky bez explicit linked account.
+     *
+     * Real-world data inconsistency: account.type může být uppercase ("BANK",
+     * "CREDIT_CARD") nebo lowercase ("checking", "savings", "credit_card") —
+     * Salt Edge import preserveuje původní lowercase, mobile používá uppercase.
+     * Matchujeme **case-insensitive** přes všechny varianty bank-style.
+     *
+     * Strategie:
+     *   1) Najdi všechny non-cash účty profilu.
+     *   2) Preferuj ten s explicit `pohodaShortcut`.
+     *   3) Jinak vrať první (nejstarší) z nich → fallback se sanitized name.
+     *   4) Pokud ani jeden → null = appendBank() pak emituje "BANKA"
+     *      (default Pohoda Zkratka v čerstvé instalaci).
      */
     private fun defaultBankAccountIds(profileDbId: java.util.UUID): String? {
-        val firstBank = Accounts.selectAll()
+        val candidates = Accounts.selectAll()
             .where {
                 (Accounts.profileId eq EntityID(profileDbId, Profiles)) and
-                    (Accounts.type eq "BANK") and
-                    (Accounts.deletedAt.isNull())
+                    Accounts.deletedAt.isNull()
             }
             .orderBy(Accounts.createdAt)
-            .limit(1)
-            .singleOrNull() ?: return null
-        return pohodaIdsForAccount(firstBank[Accounts.id].value)
+            .toList()
+            .filter { row ->
+                val type = row[Accounts.type].lowercase()
+                // Bank-style accounts (přijímají Pohoda bank.xsd):
+                type in setOf("bank", "checking", "savings", "credit_card", "creditcard")
+            }
+        if (candidates.isEmpty()) return null
+        // Preferuj account s nastaveným pohodaShortcut
+        val withShortcut = candidates.firstOrNull { it[Accounts.pohodaShortcut]?.isNotBlank() == true }
+        val chosen = withShortcut ?: candidates.first()
+        return pohodaIdsForAccount(chosen[Accounts.id].value)
     }
+
+    /**
+     * V31 — ULTIMATE fallback pro `<bnk:account>`. Pohoda v čerstvé instalaci
+     * má pre-konfigurovanou Banky entry s Zkratkou "BANKA". Když nedokážeme
+     * resolve nic z user dat, použij ji — alespoň import nespadne do Pokladny.
+     * User si pak ručně doklady přepojí v Pohoda UI.
+     */
+    private val POHODA_DEFAULT_BANK_IDS: String = "BANKA"
 
     /**
      * Pohoda "Zkratka" (typ:ids, max 19 znaků). Preferuje explicit
