@@ -265,20 +265,24 @@ export function DocumentDialog({
       const cashAccountSyncId = targetAccountSyncId;
       const cashTxSyncId = docType === "receipt" ? receiptTxSyncId : invoiceTxSyncId;
 
+      // null místo undefined → explicit clear na serveru. Důvod viz fix(sync) commit
+      // (server používá containsKey guard proti clobberu, undefined by JSON vyhodil
+       // a hodnotu by NEsmazal — což je špatně, když uživatel pole vyprázdnil).
+      const orNull = (v: string) => (v.trim().length > 0 ? v.trim() : null);
       if (docType === "receipt") {
         const data = {
           profileId: profileSyncId,
-          merchantName: merchant.trim() || undefined,
+          merchantName: orNull(merchant),
           // Partner identity z editovatelných polí (user mohl AI hodnoty upravit)
-          merchantIco: ico.trim() || undefined,
-          merchantDic: dic.trim() || undefined,
-          merchantStreet: street.trim() || undefined,
-          merchantCity: city.trim() || undefined,
-          merchantZip: zip.trim() || undefined,
+          merchantIco: orNull(ico),
+          merchantDic: orNull(dic),
+          merchantStreet: orNull(street),
+          merchantCity: orNull(city),
+          merchantZip: orNull(zip),
           date,
-          time: time || undefined,
+          time: time || null,
           totalWithVat: total.toFixed(2),
-          totalWithoutVat: parsed?.totalWithoutVat?.toFixed(2),
+          totalWithoutVat: parsed?.totalWithoutVat?.toFixed(2) ?? null,
           currency,
           paymentMethod,
           note,
@@ -310,7 +314,7 @@ export function DocumentDialog({
                   amount: (-Math.abs(total)).toFixed(2),
                   currency,
                   description: merchant.trim() || t("cash_payment_default"),
-                  merchant: merchant.trim() || undefined,
+                  merchant: orNull(merchant),
                   date,
                   isTransfer: false,
                 } as Record<string, unknown>,
@@ -342,30 +346,30 @@ export function DocumentDialog({
         // bere z parsed (pokud Gemini zachytil obě strany).
         const data = {
           profileId: profileSyncId,
-          invoiceNumber: invoiceNumber.trim() || undefined,
+          invoiceNumber: orNull(invoiceNumber),
           isExpense,
           issueDate: date,
-          dueDate: dueDate || undefined,
+          dueDate: dueDate || null,
           totalWithVat: total.toFixed(2),
-          totalWithoutVat: parsed?.totalWithoutVat?.toFixed(2),
+          totalWithoutVat: parsed?.totalWithoutVat?.toFixed(2) ?? null,
           currency,
           // Supplier (dodavatel)
-          supplierName: isExpense ? merchant.trim() || undefined : (parsed?.supplierName ?? undefined),
-          supplierIco: isExpense ? ico.trim() || undefined : (parsed?.supplierIco ?? undefined),
-          supplierDic: isExpense ? dic.trim() || undefined : (parsed?.supplierDic ?? undefined),
-          supplierStreet: isExpense ? street.trim() || undefined : (parsed?.supplierStreet ?? undefined),
-          supplierCity: isExpense ? city.trim() || undefined : (parsed?.supplierCity ?? undefined),
-          supplierZip: isExpense ? zip.trim() || undefined : (parsed?.supplierZip ?? undefined),
+          supplierName: isExpense ? orNull(merchant) : (parsed?.supplierName ?? null),
+          supplierIco: isExpense ? orNull(ico) : (parsed?.supplierIco ?? null),
+          supplierDic: isExpense ? orNull(dic) : (parsed?.supplierDic ?? null),
+          supplierStreet: isExpense ? orNull(street) : (parsed?.supplierStreet ?? null),
+          supplierCity: isExpense ? orNull(city) : (parsed?.supplierCity ?? null),
+          supplierZip: isExpense ? orNull(zip) : (parsed?.supplierZip ?? null),
           // Customer (odběratel)
-          customerName: !isExpense ? merchant.trim() || undefined : (parsed?.customerName ?? undefined),
-          customerIco: !isExpense ? ico.trim() || undefined : (parsed?.customerIco ?? undefined),
-          customerDic: !isExpense ? dic.trim() || undefined : (parsed?.customerDic ?? undefined),
-          customerStreet: !isExpense ? street.trim() || undefined : (parsed?.customerStreet ?? undefined),
-          customerCity: !isExpense ? city.trim() || undefined : (parsed?.customerCity ?? undefined),
-          customerZip: !isExpense ? zip.trim() || undefined : (parsed?.customerZip ?? undefined),
+          customerName: !isExpense ? orNull(merchant) : (parsed?.customerName ?? null),
+          customerIco: !isExpense ? orNull(ico) : (parsed?.customerIco ?? null),
+          customerDic: !isExpense ? orNull(dic) : (parsed?.customerDic ?? null),
+          customerStreet: !isExpense ? orNull(street) : (parsed?.customerStreet ?? null),
+          customerCity: !isExpense ? orNull(city) : (parsed?.customerCity ?? null),
+          customerZip: !isExpense ? orNull(zip) : (parsed?.customerZip ?? null),
           // Platba
-          variableSymbol: variableSymbol.trim() || undefined,
-          bankAccount: bankAccount.trim() || undefined,
+          variableSymbol: orNull(variableSymbol),
+          bankAccount: orNull(bankAccount),
           paymentMethod,
           paid: paymentMethod === "CASH",
           fileKeys,
@@ -398,7 +402,7 @@ export function DocumentDialog({
                   description:
                     (isExpense ? merchant : (parsed?.customerName ?? merchant))
                       .trim() || t("cash_payment_default"),
-                  merchant: merchant.trim() || undefined,
+                  merchant: orNull(merchant),
                   date,
                   isTransfer: false,
                 } as Record<string, unknown>,

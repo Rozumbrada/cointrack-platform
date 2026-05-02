@@ -67,20 +67,20 @@ export interface ServerCategory {
 
 export interface ServerTransaction {
   profileId: string;
-  accountId?: string;        // UUID string
-  categoryId?: string;       // UUID string
+  accountId?: string | null;        // UUID string
+  categoryId?: string | null;       // UUID string
   /** Signed: negative = výdaj, positive = příjem. */
   amount: string;
   currency: string;
-  description?: string;      // = mobile.note
-  merchant?: string;
+  description?: string | null;      // = mobile.note
+  merchant?: string | null;
   date: string;              // YYYY-MM-DD
   isTransfer: boolean;
-  transferPairId?: string;
-  bankTxId?: string;
-  bankVs?: string;
-  bankCounterparty?: string;
-  bankCounterpartyName?: string;
+  transferPairId?: string | null;
+  bankTxId?: string | null;
+  bankVs?: string | null;
+  bankCounterparty?: string | null;
+  bankCounterpartyName?: string | null;
 }
 
 // ─── Computed types pro UI ─────────────────────────────────────────────
@@ -112,14 +112,14 @@ export function toUiTransaction(syncId: string, t: ServerTransaction): UiTransac
   return {
     syncId,
     profileId: t.profileId,
-    accountSyncId: t.accountId,
-    categorySyncId: t.categoryId,
+    accountSyncId: t.accountId ?? undefined,
+    categorySyncId: t.categoryId ?? undefined,
     type: computeTxType(t),
     amount: Math.abs(signed),
     signedAmount: signed,
     currency: t.currency,
     description: t.description ?? t.merchant ?? "",
-    merchant: t.merchant,
+    merchant: t.merchant ?? undefined,
     date: t.date,
   };
 }

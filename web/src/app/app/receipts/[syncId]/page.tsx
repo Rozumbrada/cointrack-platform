@@ -438,15 +438,17 @@ function ReceiptEditDialog({
     setErr(null);
     try {
       const now = new Date().toISOString();
+      // null místo undefined → server respektuje explicit clear (containsKey guard).
+      const orNull = (v: string) => (v.trim().length > 0 ? v.trim() : null);
       const updated: Record<string, unknown> = {
         ...(r as unknown as Record<string, unknown>),
-        merchantName: merchantName.trim() || undefined,
+        merchantName: orNull(merchantName),
         date: date.trim() || r.date,
         totalWithVat: totalWithVat.replace(",", "."),
-        totalWithoutVat: totalWithoutVat ? totalWithoutVat.replace(",", ".") : undefined,
-        paymentMethod: paymentMethod || undefined,
-        linkedAccountId: linkedAccountId || undefined,
-        note: note.trim() || undefined,
+        totalWithoutVat: totalWithoutVat ? totalWithoutVat.replace(",", ".") : null,
+        paymentMethod: paymentMethod || null,
+        linkedAccountId: linkedAccountId || null,
+        note: orNull(note),
       };
       await withAuth((t) =>
         sync.push(t, {

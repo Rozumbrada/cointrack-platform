@@ -89,13 +89,14 @@ export default function EditTransactionPage() {
     try {
       const now = new Date().toISOString();
       const signedAmount = type === "EXPENSE" ? -Math.abs(amt) : Math.abs(amt);
+      // null místo undefined → server respektuje explicit clear (containsKey guard).
       const merged: ServerTransaction = {
         ...tx.data,
-        accountId: isCash ? undefined : accountId,
-        categoryId: type === "TRANSFER" ? undefined : categoryId || undefined,
+        accountId: isCash ? null : accountId,
+        categoryId: type === "TRANSFER" ? null : categoryId || null,
         amount: signedAmount.toFixed(2),
-        description: description || undefined,
-        merchant: merchant || undefined,
+        description: description.trim() || null,
+        merchant: merchant.trim() || null,
         date,
         isTransfer: type === "TRANSFER",
       };

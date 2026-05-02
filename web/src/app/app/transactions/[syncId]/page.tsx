@@ -293,7 +293,7 @@ export default function TransactionDetailPage() {
       {pickerOpen && (
         <CategoryPicker
           allCategories={cats}
-          currentSyncId={tx.data.categoryId}
+          currentSyncId={tx.data.categoryId ?? undefined}
           txType={txType}
           onSelect={async (catSyncId) => {
             setPickerOpen(false);
@@ -306,7 +306,7 @@ export default function TransactionDetailPage() {
       {accountPickerOpen && (
         <AccountPicker
           allAccounts={allAccounts}
-          currentSyncId={tx.data.accountId}
+          currentSyncId={tx.data.accountId ?? undefined}
           onSelect={async (accSyncId) => {
             setAccountPickerOpen(false);
             await pushUpdate({ accountId: accSyncId ?? undefined });

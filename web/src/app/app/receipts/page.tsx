@@ -503,6 +503,9 @@ function ReceiptCreateDialog({
 
       const now = new Date().toISOString();
       const syncId = crypto.randomUUID();
+      // null místo undefined → konzistence se zbytkem aplikace (server respektuje
+      // explicit clear přes containsKey guard, insert path se chová identicky).
+      const orNull = (v: string) => (v.trim().length > 0 ? v.trim() : null);
       const data: Record<string, unknown> = {
         profileId: profileSyncId,
         merchantName: merchantName.trim(),
@@ -510,8 +513,8 @@ function ReceiptCreateDialog({
         totalWithVat: totalWithVat.replace(",", "."),
         currency: "CZK",
         paymentMethod,
-        linkedAccountId: linkedAccountId || undefined,
-        note: note.trim() || undefined,
+        linkedAccountId: linkedAccountId || null,
+        note: orNull(note),
       };
       await withAuth((t) =>
         sync.push(t, {

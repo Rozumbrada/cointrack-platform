@@ -20,10 +20,10 @@ interface InvestmentPositionData {
   buyDate: string;
   platform: string;
   isOpen: boolean;
-  sellPrice?: string;
-  sellDate?: string;
-  yahooSymbol?: string;
-  notes?: string;
+  sellPrice?: string | null;
+  sellDate?: string | null;
+  yahooSymbol?: string | null;
+  notes?: string | null;
   /** Web extension: Yahoo Finance refresh ukládá lokálně, neukládá se na server. */
   currentPrice?: number;
 }
@@ -272,6 +272,8 @@ function PositionEditor({
     setErr(null);
     try {
       const now = new Date().toISOString();
+      // null místo undefined → server respektuje explicit clear (containsKey guard).
+      const orNull = (v: string) => (v.trim().length > 0 ? v.trim() : null);
       const data: InvestmentPositionData = {
         profileId: profileSyncId,
         accountId,
@@ -283,10 +285,10 @@ function PositionEditor({
         buyDate,
         platform,
         isOpen,
-        sellPrice: !isOpen && sellPrice ? parseFloat(sellPrice.replace(",", ".")).toFixed(4) : undefined,
-        sellDate: !isOpen ? sellDate || undefined : undefined,
-        yahooSymbol: yahooSymbol.trim() || undefined,
-        notes: notes.trim() || undefined,
+        sellPrice: !isOpen && sellPrice ? parseFloat(sellPrice.replace(",", ".")).toFixed(4) : null,
+        sellDate: !isOpen ? sellDate || null : null,
+        yahooSymbol: orNull(yahooSymbol),
+        notes: orNull(notes),
       };
       await withAuth((t) =>
         sync.push(t, {

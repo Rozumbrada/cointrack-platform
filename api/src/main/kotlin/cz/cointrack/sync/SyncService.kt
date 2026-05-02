@@ -922,11 +922,18 @@ class SyncService {
     ) {
         if (isInsert) s[Categories.profileId] = EntityID(profileDbId, Profiles)
         s[Categories.name] = d.str("name")
-        s[Categories.nameEn] = d.strOrNull("nameEn")
         s[Categories.type] = d.str("type")
-        s[Categories.color] = d.intOrNull("color")
-        s[Categories.icon] = d.strOrNull("icon")
         s[Categories.position] = d.intOr("position", 0)
+        // Optional/nullable — containsKey() guard proti clobberu (viz applyAccountFields).
+        if (isInsert) {
+            s[Categories.nameEn] = d.strOrNull("nameEn")
+            s[Categories.color] = d.intOrNull("color")
+            s[Categories.icon] = d.strOrNull("icon")
+        } else {
+            if (d.containsKey("nameEn")) s[Categories.nameEn] = d.strOrNull("nameEn")
+            if (d.containsKey("color")) s[Categories.color] = d.intOrNull("color")
+            if (d.containsKey("icon")) s[Categories.icon] = d.strOrNull("icon")
+        }
         s[Categories.clientVersion] = cv
         s[Categories.updatedAt] = updatedAt
         s[Categories.deletedAt] = deletedAt
@@ -966,19 +973,34 @@ class SyncService {
         profileDbId: UUID, accountDbId: UUID?, categoryDbId: UUID?, isInsert: Boolean
     ) {
         if (isInsert) s[Transactions.profileId] = EntityID(profileDbId, Profiles)
-        s[Transactions.accountId] = accountDbId?.let { EntityID(it, Accounts) }
-        s[Transactions.categoryId] = categoryDbId?.let { EntityID(it, Categories) }
         s[Transactions.amount] = d.decimal("amount")
         s[Transactions.currency] = d.strOr("currency", "CZK")
-        s[Transactions.description] = d.strOrNull("description")
-        s[Transactions.merchant] = d.strOrNull("merchant")
         s[Transactions.date] = LocalDate.parse(d.str("date"))
-        s[Transactions.bankTxId] = d.strOrNull("bankTxId")
-        s[Transactions.bankVs] = d.strOrNull("bankVs")
-        s[Transactions.bankCounterparty] = d.strOrNull("bankCounterparty")
-        s[Transactions.bankCounterpartyName] = d.strOrNull("bankCounterpartyName")
         s[Transactions.isTransfer] = d.boolOr("isTransfer", false)
-        s[Transactions.transferPairId] = d.uuidOrNull("transferPairId")
+        // accountId/categoryId — vždy nastavujeme (resolveAccountDbId vrací null
+        // pokud chybí klíč nebo neexistuje target; FK joiny preferují tuto sémantiku).
+        // Pokud klient nepošle accountId/categoryId, zůstane null — to je v současné
+        // sync architektuře žádoucí (každý transakci nese všechny FK reference).
+        s[Transactions.accountId] = accountDbId?.let { EntityID(it, Accounts) }
+        s[Transactions.categoryId] = categoryDbId?.let { EntityID(it, Categories) }
+        // Optional/nullable — containsKey() guard proti clobberu (viz applyAccountFields).
+        if (isInsert) {
+            s[Transactions.description] = d.strOrNull("description")
+            s[Transactions.merchant] = d.strOrNull("merchant")
+            s[Transactions.bankTxId] = d.strOrNull("bankTxId")
+            s[Transactions.bankVs] = d.strOrNull("bankVs")
+            s[Transactions.bankCounterparty] = d.strOrNull("bankCounterparty")
+            s[Transactions.bankCounterpartyName] = d.strOrNull("bankCounterpartyName")
+            s[Transactions.transferPairId] = d.uuidOrNull("transferPairId")
+        } else {
+            if (d.containsKey("description")) s[Transactions.description] = d.strOrNull("description")
+            if (d.containsKey("merchant")) s[Transactions.merchant] = d.strOrNull("merchant")
+            if (d.containsKey("bankTxId")) s[Transactions.bankTxId] = d.strOrNull("bankTxId")
+            if (d.containsKey("bankVs")) s[Transactions.bankVs] = d.strOrNull("bankVs")
+            if (d.containsKey("bankCounterparty")) s[Transactions.bankCounterparty] = d.strOrNull("bankCounterparty")
+            if (d.containsKey("bankCounterpartyName")) s[Transactions.bankCounterpartyName] = d.strOrNull("bankCounterpartyName")
+            if (d.containsKey("transferPairId")) s[Transactions.transferPairId] = d.uuidOrNull("transferPairId")
+        }
         s[Transactions.clientVersion] = cv
         s[Transactions.updatedAt] = updatedAt
         s[Transactions.deletedAt] = deletedAt
@@ -1020,23 +1042,41 @@ class SyncService {
         profileDbId: UUID, categoryDbId: UUID?, transactionDbId: UUID?, linkedAccountDbId: UUID?, isInsert: Boolean
     ) {
         if (isInsert) s[Receipts.profileId] = EntityID(profileDbId, Profiles)
+        s[Receipts.date] = LocalDate.parse(d.str("date"))
+        s[Receipts.totalWithVat] = d.decimalOr("totalWithVat", BigDecimal.ZERO)
+        s[Receipts.currency] = d.strOr("currency", "CZK")
+        // FK reference — vždy ze vstupního JSONu (resolveX vrací null pokud chybí).
         s[Receipts.categoryId] = categoryDbId?.let { EntityID(it, Categories) }
         s[Receipts.transactionId] = transactionDbId?.let { EntityID(it, Transactions) }
         s[Receipts.linkedAccountId] = linkedAccountDbId?.let { EntityID(it, Accounts) }
-        s[Receipts.merchantName] = d.strOrNull("merchantName")
-        s[Receipts.merchantIco] = d.strOrNull("merchantIco")
-        s[Receipts.merchantDic] = d.strOrNull("merchantDic")
-        s[Receipts.merchantStreet] = d.strOrNull("merchantStreet")
-        s[Receipts.merchantCity] = d.strOrNull("merchantCity")
-        s[Receipts.merchantZip] = d.strOrNull("merchantZip")
-        s[Receipts.date] = LocalDate.parse(d.str("date"))
-        s[Receipts.time] = d.strOrNull("time")
-        s[Receipts.totalWithVat] = d.decimalOr("totalWithVat", BigDecimal.ZERO)
-        s[Receipts.totalWithoutVat] = d.decimalOrNull("totalWithoutVat")
-        s[Receipts.currency] = d.strOr("currency", "CZK")
-        s[Receipts.paymentMethod] = d.strOrNull("paymentMethod")
-        s[Receipts.note] = d.strOrNull("note")
-        s[Receipts.photoKeys] = d["photoKeys"]?.toString() ?: "[]"
+        // Optional/nullable — containsKey() guard proti clobberu. Tohle je důležité
+        // pro merchant ICO/DIC/adresu, které ARES dohledává v mobilu — nesmí je
+        // přepsat pozdější edit z webu, který ARES nezavolal.
+        if (isInsert) {
+            s[Receipts.merchantName] = d.strOrNull("merchantName")
+            s[Receipts.merchantIco] = d.strOrNull("merchantIco")
+            s[Receipts.merchantDic] = d.strOrNull("merchantDic")
+            s[Receipts.merchantStreet] = d.strOrNull("merchantStreet")
+            s[Receipts.merchantCity] = d.strOrNull("merchantCity")
+            s[Receipts.merchantZip] = d.strOrNull("merchantZip")
+            s[Receipts.time] = d.strOrNull("time")
+            s[Receipts.totalWithoutVat] = d.decimalOrNull("totalWithoutVat")
+            s[Receipts.paymentMethod] = d.strOrNull("paymentMethod")
+            s[Receipts.note] = d.strOrNull("note")
+            s[Receipts.photoKeys] = d["photoKeys"]?.toString() ?: "[]"
+        } else {
+            if (d.containsKey("merchantName")) s[Receipts.merchantName] = d.strOrNull("merchantName")
+            if (d.containsKey("merchantIco")) s[Receipts.merchantIco] = d.strOrNull("merchantIco")
+            if (d.containsKey("merchantDic")) s[Receipts.merchantDic] = d.strOrNull("merchantDic")
+            if (d.containsKey("merchantStreet")) s[Receipts.merchantStreet] = d.strOrNull("merchantStreet")
+            if (d.containsKey("merchantCity")) s[Receipts.merchantCity] = d.strOrNull("merchantCity")
+            if (d.containsKey("merchantZip")) s[Receipts.merchantZip] = d.strOrNull("merchantZip")
+            if (d.containsKey("time")) s[Receipts.time] = d.strOrNull("time")
+            if (d.containsKey("totalWithoutVat")) s[Receipts.totalWithoutVat] = d.decimalOrNull("totalWithoutVat")
+            if (d.containsKey("paymentMethod")) s[Receipts.paymentMethod] = d.strOrNull("paymentMethod")
+            if (d.containsKey("note")) s[Receipts.note] = d.strOrNull("note")
+            if (d.containsKey("photoKeys")) s[Receipts.photoKeys] = d["photoKeys"]?.toString() ?: "[]"
+        }
         s[Receipts.clientVersion] = cv
         s[Receipts.updatedAt] = updatedAt
         s[Receipts.deletedAt] = deletedAt
@@ -1077,30 +1117,53 @@ class SyncService {
         profileDbId: UUID, categoryDbId: UUID?, accountDbId: UUID?, transactionDbId: UUID?, isInsert: Boolean
     ) {
         if (isInsert) s[Invoices.profileId] = EntityID(profileDbId, Profiles)
+        s[Invoices.isExpense] = d.bool("isExpense")
+        s[Invoices.totalWithVat] = d.decimalOr("totalWithVat", BigDecimal.ZERO)
+        s[Invoices.currency] = d.strOr("currency", "CZK")
+        s[Invoices.paid] = d.boolOr("paid", false)
+        // FK reference — vždy.
         s[Invoices.categoryId] = categoryDbId?.let { EntityID(it, Categories) }
         s[Invoices.linkedAccountId] = accountDbId?.let { EntityID(it, Accounts) }
         s[Invoices.linkedTransactionId] = transactionDbId?.let { EntityID(it, Transactions) }
-        s[Invoices.invoiceNumber] = d.strOrNull("invoiceNumber")
-        s[Invoices.isExpense] = d.bool("isExpense")
-        s[Invoices.issueDate] = d.strOrNull("issueDate")?.let { LocalDate.parse(it) }
-        s[Invoices.dueDate] = d.strOrNull("dueDate")?.let { LocalDate.parse(it) }
-        s[Invoices.totalWithVat] = d.decimalOr("totalWithVat", BigDecimal.ZERO)
-        s[Invoices.totalWithoutVat] = d.decimalOrNull("totalWithoutVat")
-        s[Invoices.currency] = d.strOr("currency", "CZK")
-        s[Invoices.paymentMethod] = d.strOrNull("paymentMethod")
-        s[Invoices.variableSymbol] = d.strOrNull("variableSymbol")
-        s[Invoices.bankAccount] = d.strOrNull("bankAccount")
-        s[Invoices.paid] = d.boolOr("paid", false)
-        s[Invoices.supplierName] = d.strOrNull("supplierName")
-        s[Invoices.supplierIco] = d.strOrNull("supplierIco")
-        s[Invoices.supplierDic] = d.strOrNull("supplierDic")
-        s[Invoices.supplierStreet] = d.strOrNull("supplierStreet")
-        s[Invoices.supplierCity] = d.strOrNull("supplierCity")
-        s[Invoices.supplierZip] = d.strOrNull("supplierZip")
-        s[Invoices.customerName] = d.strOrNull("customerName")
-        s[Invoices.note] = d.strOrNull("note")
-        s[Invoices.fileKeys] = d["fileKeys"]?.toString() ?: "[]"
-        s[Invoices.idokladId] = d.strOrNull("idokladId")
+        // Optional/nullable — containsKey() guard proti clobberu. Důležité pro
+        // supplier ICO/DIC/adresu (ARES, OCR), invoiceNumber, VS, idokladId.
+        if (isInsert) {
+            s[Invoices.invoiceNumber] = d.strOrNull("invoiceNumber")
+            s[Invoices.issueDate] = d.strOrNull("issueDate")?.let { LocalDate.parse(it) }
+            s[Invoices.dueDate] = d.strOrNull("dueDate")?.let { LocalDate.parse(it) }
+            s[Invoices.totalWithoutVat] = d.decimalOrNull("totalWithoutVat")
+            s[Invoices.paymentMethod] = d.strOrNull("paymentMethod")
+            s[Invoices.variableSymbol] = d.strOrNull("variableSymbol")
+            s[Invoices.bankAccount] = d.strOrNull("bankAccount")
+            s[Invoices.supplierName] = d.strOrNull("supplierName")
+            s[Invoices.supplierIco] = d.strOrNull("supplierIco")
+            s[Invoices.supplierDic] = d.strOrNull("supplierDic")
+            s[Invoices.supplierStreet] = d.strOrNull("supplierStreet")
+            s[Invoices.supplierCity] = d.strOrNull("supplierCity")
+            s[Invoices.supplierZip] = d.strOrNull("supplierZip")
+            s[Invoices.customerName] = d.strOrNull("customerName")
+            s[Invoices.note] = d.strOrNull("note")
+            s[Invoices.fileKeys] = d["fileKeys"]?.toString() ?: "[]"
+            s[Invoices.idokladId] = d.strOrNull("idokladId")
+        } else {
+            if (d.containsKey("invoiceNumber")) s[Invoices.invoiceNumber] = d.strOrNull("invoiceNumber")
+            if (d.containsKey("issueDate")) s[Invoices.issueDate] = d.strOrNull("issueDate")?.let { LocalDate.parse(it) }
+            if (d.containsKey("dueDate")) s[Invoices.dueDate] = d.strOrNull("dueDate")?.let { LocalDate.parse(it) }
+            if (d.containsKey("totalWithoutVat")) s[Invoices.totalWithoutVat] = d.decimalOrNull("totalWithoutVat")
+            if (d.containsKey("paymentMethod")) s[Invoices.paymentMethod] = d.strOrNull("paymentMethod")
+            if (d.containsKey("variableSymbol")) s[Invoices.variableSymbol] = d.strOrNull("variableSymbol")
+            if (d.containsKey("bankAccount")) s[Invoices.bankAccount] = d.strOrNull("bankAccount")
+            if (d.containsKey("supplierName")) s[Invoices.supplierName] = d.strOrNull("supplierName")
+            if (d.containsKey("supplierIco")) s[Invoices.supplierIco] = d.strOrNull("supplierIco")
+            if (d.containsKey("supplierDic")) s[Invoices.supplierDic] = d.strOrNull("supplierDic")
+            if (d.containsKey("supplierStreet")) s[Invoices.supplierStreet] = d.strOrNull("supplierStreet")
+            if (d.containsKey("supplierCity")) s[Invoices.supplierCity] = d.strOrNull("supplierCity")
+            if (d.containsKey("supplierZip")) s[Invoices.supplierZip] = d.strOrNull("supplierZip")
+            if (d.containsKey("customerName")) s[Invoices.customerName] = d.strOrNull("customerName")
+            if (d.containsKey("note")) s[Invoices.note] = d.strOrNull("note")
+            if (d.containsKey("fileKeys")) s[Invoices.fileKeys] = d["fileKeys"]?.toString() ?: "[]"
+            if (d.containsKey("idokladId")) s[Invoices.idokladId] = d.strOrNull("idokladId")
+        }
         // V30 — origin tracking. Server-side přidělené (přes EmailInboxService),
         // klient přepisovat nemůže — zachováme staré hodnoty pokud je sync push neobsahuje.
         d.strOrNull("source")?.let { s[Invoices.originSource] = it }
@@ -1145,10 +1208,16 @@ class SyncService {
         if (isInsert) s[ReceiptItems.receiptId] = EntityID(receiptDbId, Receipts)
         s[ReceiptItems.name] = d.str("name")
         s[ReceiptItems.quantity] = d.decimalOr("quantity", BigDecimal.ONE)
-        s[ReceiptItems.unitPrice] = d.decimalOrNull("unitPrice")
         s[ReceiptItems.totalPrice] = d.decimal("totalPrice")
-        s[ReceiptItems.vatRate] = d.decimalOrNull("vatRate")
         s[ReceiptItems.position] = d.intOr("position", 0)
+        // Optional/nullable — containsKey() guard proti clobberu.
+        if (isInsert) {
+            s[ReceiptItems.unitPrice] = d.decimalOrNull("unitPrice")
+            s[ReceiptItems.vatRate] = d.decimalOrNull("vatRate")
+        } else {
+            if (d.containsKey("unitPrice")) s[ReceiptItems.unitPrice] = d.decimalOrNull("unitPrice")
+            if (d.containsKey("vatRate")) s[ReceiptItems.vatRate] = d.decimalOrNull("vatRate")
+        }
         s[ReceiptItems.clientVersion] = cv
         s[ReceiptItems.updatedAt] = updatedAt
         s[ReceiptItems.deletedAt] = deletedAt
@@ -1189,10 +1258,16 @@ class SyncService {
         if (isInsert) s[InvoiceItems.invoiceId] = EntityID(invoiceDbId, Invoices)
         s[InvoiceItems.name] = d.str("name")
         s[InvoiceItems.quantity] = d.decimalOr("quantity", BigDecimal.ONE)
-        s[InvoiceItems.unitPriceWithVat] = d.decimalOrNull("unitPriceWithVat")
         s[InvoiceItems.totalPriceWithVat] = d.decimal("totalPriceWithVat")
-        s[InvoiceItems.vatRate] = d.decimalOrNull("vatRate")
         s[InvoiceItems.position] = d.intOr("position", 0)
+        // Optional/nullable — containsKey() guard proti clobberu.
+        if (isInsert) {
+            s[InvoiceItems.unitPriceWithVat] = d.decimalOrNull("unitPriceWithVat")
+            s[InvoiceItems.vatRate] = d.decimalOrNull("vatRate")
+        } else {
+            if (d.containsKey("unitPriceWithVat")) s[InvoiceItems.unitPriceWithVat] = d.decimalOrNull("unitPriceWithVat")
+            if (d.containsKey("vatRate")) s[InvoiceItems.vatRate] = d.decimalOrNull("vatRate")
+        }
         s[InvoiceItems.clientVersion] = cv
         s[InvoiceItems.updatedAt] = updatedAt
         s[InvoiceItems.deletedAt] = deletedAt
@@ -1233,11 +1308,19 @@ class SyncService {
         s[LoyaltyCards.storeName] = d.str("storeName")
         s[LoyaltyCards.cardNumber] = d.str("cardNumber")
         s[LoyaltyCards.barcodeFormat] = d.strOr("barcodeFormat", "CODE_128")
-        s[LoyaltyCards.color] = d.intOrNull("color")
         s[LoyaltyCards.note] = d.strOr("note", "")
-        s[LoyaltyCards.logoUrl] = d.strOrNull("logoUrl")
-        s[LoyaltyCards.frontImageKey] = d.strOrNull("frontImageKey")
-        s[LoyaltyCards.backImageKey] = d.strOrNull("backImageKey")
+        // Optional/nullable — containsKey() guard proti clobberu.
+        if (isInsert) {
+            s[LoyaltyCards.color] = d.intOrNull("color")
+            s[LoyaltyCards.logoUrl] = d.strOrNull("logoUrl")
+            s[LoyaltyCards.frontImageKey] = d.strOrNull("frontImageKey")
+            s[LoyaltyCards.backImageKey] = d.strOrNull("backImageKey")
+        } else {
+            if (d.containsKey("color")) s[LoyaltyCards.color] = d.intOrNull("color")
+            if (d.containsKey("logoUrl")) s[LoyaltyCards.logoUrl] = d.strOrNull("logoUrl")
+            if (d.containsKey("frontImageKey")) s[LoyaltyCards.frontImageKey] = d.strOrNull("frontImageKey")
+            if (d.containsKey("backImageKey")) s[LoyaltyCards.backImageKey] = d.strOrNull("backImageKey")
+        }
         s[LoyaltyCards.clientVersion] = cv
         s[LoyaltyCards.updatedAt] = updatedAt
         s[LoyaltyCards.deletedAt] = deletedAt
@@ -1572,9 +1655,12 @@ class SyncService {
         s[Debts.currency] = d.strOr("currency", "CZK")
         s[Debts.type] = d.strOr("type", "BORROWED")
         s[Debts.description] = d.strOr("description", "")
-        s[Debts.dueDate] = d.strOrNull("dueDate")?.let { LocalDate.parse(it) }
         s[Debts.isPaid] = d.boolOr("isPaid", false)
         s[Debts.createdDate] = LocalDate.parse(d.strOr("createdDate", LocalDate.now().toString()))
+        // Nullable — containsKey() guard.
+        if (isInsert || d.containsKey("dueDate")) {
+            s[Debts.dueDate] = d.strOrNull("dueDate")?.let { LocalDate.parse(it) }
+        }
         s[Debts.clientVersion] = cv; s[Debts.updatedAt] = u; s[Debts.deletedAt] = del
     }
 
@@ -1600,9 +1686,12 @@ class SyncService {
         s[Goals.targetAmount] = d.decimalOr("targetAmount", BigDecimal.ZERO)
         s[Goals.currentAmount] = d.decimalOr("currentAmount", BigDecimal.ZERO)
         s[Goals.currency] = d.strOr("currency", "CZK")
-        s[Goals.color] = d.intOrNull("color")
-        s[Goals.deadline] = d.strOrNull("deadline")?.let { LocalDate.parse(it) }
         s[Goals.note] = d.strOr("note", "")
+        // Nullable — containsKey() guard.
+        if (isInsert || d.containsKey("color")) s[Goals.color] = d.intOrNull("color")
+        if (isInsert || d.containsKey("deadline")) {
+            s[Goals.deadline] = d.strOrNull("deadline")?.let { LocalDate.parse(it) }
+        }
         s[Goals.clientVersion] = cv; s[Goals.updatedAt] = u; s[Goals.deletedAt] = del
     }
 
@@ -1628,10 +1717,11 @@ class SyncService {
         s[Warranties.shop] = d.strOr("shop", "")
         s[Warranties.purchaseDate] = LocalDate.parse(d.strOr("purchaseDate", LocalDate.now().toString()))
         s[Warranties.warrantyYears] = d.intOr("warrantyYears", 2)
-        s[Warranties.price] = d.decimalOrNull("price")
         s[Warranties.currency] = d.strOr("currency", "CZK")
         s[Warranties.note] = d.strOr("note", "")
-        s[Warranties.receiptImageKey] = d.strOrNull("receiptImageKey")
+        // Nullable — containsKey() guard.
+        if (isInsert || d.containsKey("price")) s[Warranties.price] = d.decimalOrNull("price")
+        if (isInsert || d.containsKey("receiptImageKey")) s[Warranties.receiptImageKey] = d.strOrNull("receiptImageKey")
         s[Warranties.clientVersion] = cv; s[Warranties.updatedAt] = u; s[Warranties.deletedAt] = del
     }
 
@@ -1684,8 +1774,9 @@ class SyncService {
         if (isInsert) s[ShoppingItems.listId] = EntityID(lid, ShoppingLists)
         s[ShoppingItems.name] = d.str("name")
         s[ShoppingItems.quantity] = d.strOr("quantity", "1")
-        s[ShoppingItems.price] = d.decimalOrNull("price")
         s[ShoppingItems.isChecked] = d.boolOr("isChecked", false)
+        // Nullable — containsKey() guard.
+        if (isInsert || d.containsKey("price")) s[ShoppingItems.price] = d.decimalOrNull("price")
         s[ShoppingItems.clientVersion] = cv; s[ShoppingItems.updatedAt] = u; s[ShoppingItems.deletedAt] = del
     }
 
@@ -1746,10 +1837,11 @@ class SyncService {
         s[InvestmentPositions.buyDate] = d.strOr("buyDate", "")
         s[InvestmentPositions.platform] = d.strOr("platform", "")
         s[InvestmentPositions.isOpen] = d.boolOr("isOpen", true)
-        s[InvestmentPositions.sellPrice] = d.decimalOrNull("sellPrice")
-        s[InvestmentPositions.sellDate] = d.strOrNull("sellDate")
-        s[InvestmentPositions.yahooSymbol] = d.strOrNull("yahooSymbol")
-        s[InvestmentPositions.notes] = d.strOrNull("notes")
+        // Nullable — containsKey() guard.
+        if (isInsert || d.containsKey("sellPrice")) s[InvestmentPositions.sellPrice] = d.decimalOrNull("sellPrice")
+        if (isInsert || d.containsKey("sellDate")) s[InvestmentPositions.sellDate] = d.strOrNull("sellDate")
+        if (isInsert || d.containsKey("yahooSymbol")) s[InvestmentPositions.yahooSymbol] = d.strOrNull("yahooSymbol")
+        if (isInsert || d.containsKey("notes")) s[InvestmentPositions.notes] = d.strOrNull("notes")
         s[InvestmentPositions.clientVersion] = cv; s[InvestmentPositions.updatedAt] = u; s[InvestmentPositions.deletedAt] = del
     }
 
@@ -1774,8 +1866,9 @@ class SyncService {
         if (isInsert) s[FioAccounts.profileId] = EntityID(pid, Profiles)
         s[FioAccounts.name] = d.str("name")
         s[FioAccounts.linkedAccountId] = lid?.let { EntityID(it, Accounts) }
-        s[FioAccounts.lastSync] = d.strOrNull("lastSync")
         s[FioAccounts.isEnabled] = d.boolOr("isEnabled", true)
+        // Nullable — containsKey() guard.
+        if (isInsert || d.containsKey("lastSync")) s[FioAccounts.lastSync] = d.strOrNull("lastSync")
         s[FioAccounts.clientVersion] = cv; s[FioAccounts.updatedAt] = u; s[FioAccounts.deletedAt] = del
     }
 
@@ -2049,7 +2142,11 @@ private fun Transaction.upsertGroupMember(
         GroupMembers.update({ GroupMembers.syncId eq syncId }) {
             it[GroupMembers.name] = e.data.str("name")
             it[GroupMembers.color] = e.data.get("color")?.jsonPrimitive?.intOrNull ?: -13022129
-            it[GroupMembers.cointrackUserId] = e.data.uuidOrNull("cointrackUserId")?.let { EntityID(it, Users) }
+            // Nullable — containsKey() guard proti clobberu (linkování člena na cointrack
+            // user accountu nesmí zmizet jen proto, že klient pole neposlal).
+            if (e.data.containsKey("cointrackUserId")) {
+                it[GroupMembers.cointrackUserId] = e.data.uuidOrNull("cointrackUserId")?.let { uid -> EntityID(uid, Users) }
+            }
             it[GroupMembers.clientVersion] = e.clientVersion
             it[GroupMembers.updatedAt] = updatedAt
             it[GroupMembers.deletedAt] = deletedAt
@@ -2108,6 +2205,7 @@ private fun Transaction.upsertGroupExpense(
     if (existing != null && existing[GroupExpenses.updatedAt] >= updatedAt) {
         return UpsertResult.Conflict(existingGroupExpenseEntity(existing))
     }
+    val isInsert = existing == null
     val apply: UpdateBuilder<*>.() -> Unit = {
         this[GroupExpenses.description] = e.data.str("description")
         this[GroupExpenses.amount] = e.data.decimal("amount")
@@ -2115,8 +2213,9 @@ private fun Transaction.upsertGroupExpense(
         this[GroupExpenses.paidByMemberSyncId] = UUID.fromString(e.data.str("paidByMemberSyncId"))
         this[GroupExpenses.defaultParticipantSyncIds] = e.data.strOr("defaultParticipantSyncIds", "[]")
         this[GroupExpenses.date] = LocalDate.parse(e.data.str("date"))
-        this[GroupExpenses.note] = e.data.strOrNull("note")
         this[GroupExpenses.isSettlement] = e.data.boolOr("isSettlement", false)
+        // Nullable — containsKey() guard proti clobberu.
+        if (isInsert || e.data.containsKey("note")) this[GroupExpenses.note] = e.data.strOrNull("note")
         this[GroupExpenses.clientVersion] = e.clientVersion
         this[GroupExpenses.updatedAt] = updatedAt
         this[GroupExpenses.deletedAt] = deletedAt

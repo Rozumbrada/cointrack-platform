@@ -69,14 +69,15 @@ export default function NewTransactionPage() {
       const now = new Date().toISOString();
       const signedAmount = type === "EXPENSE" ? -Math.abs(amt) : Math.abs(amt);
 
+      // null místo undefined → konzistence se sync clobber fixem.
       const data: ServerTransaction = {
         profileId: profileSyncId,
-        accountId: isCash ? undefined : accountId,
-        categoryId: type === "TRANSFER" ? undefined : categoryId || undefined,
+        accountId: isCash ? null : accountId,
+        categoryId: type === "TRANSFER" ? null : categoryId || null,
         amount: signedAmount.toFixed(2),
         currency,
-        description: description || undefined,
-        merchant: merchant || undefined,
+        description: description.trim() || null,
+        merchant: merchant.trim() || null,
         date,
         isTransfer: type === "TRANSFER",
       };

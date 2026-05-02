@@ -8,27 +8,27 @@ import { FormDialog, Field, inputClass } from "./FormDialog";
 
 export interface InvoiceData {
   profileId: string;
-  invoiceNumber?: string;
+  invoiceNumber?: string | null;
   isExpense: boolean;
-  issueDate?: string;
-  dueDate?: string;
+  issueDate?: string | null;
+  dueDate?: string | null;
   totalWithVat: string;
-  totalWithoutVat?: string;
+  totalWithoutVat?: string | null;
   currency: string;
-  paymentMethod?: string;
-  variableSymbol?: string;
-  bankAccount?: string;
+  paymentMethod?: string | null;
+  variableSymbol?: string | null;
+  bankAccount?: string | null;
   paid: boolean;
-  supplierName?: string;
-  supplierIco?: string;
-  supplierDic?: string;
-  supplierStreet?: string;
-  supplierCity?: string;
-  supplierZip?: string;
-  customerName?: string;
-  note?: string;
+  supplierName?: string | null;
+  supplierIco?: string | null;
+  supplierDic?: string | null;
+  supplierStreet?: string | null;
+  supplierCity?: string | null;
+  supplierZip?: string | null;
+  customerName?: string | null;
+  note?: string | null;
   fileKeys?: string[];
-  linkedAccountId?: string;
+  linkedAccountId?: string | null;
 }
 
 export interface InvoiceItemData {
@@ -188,29 +188,33 @@ export function InvoiceEditor({
       const now = new Date().toISOString();
       const invoiceSyncId = initial?.syncId ?? crypto.randomUUID();
 
+      // null místo undefined = explicit clear na serveru. undefined by JSON.stringify
+      // vyhodil úplně, server by aplikoval containsKey guard a pole NEsmazal — což
+      // je špatně, když uživatel pole vyprázdnil vědomě. Více v fix(sync) commitu.
+      const orNull = (v: string) => (v.trim().length > 0 ? v.trim() : null);
       const data: InvoiceData = {
         profileId: profileSyncId,
-        invoiceNumber: invoiceNumber.trim() || undefined,
+        invoiceNumber: orNull(invoiceNumber),
         isExpense,
         issueDate,
-        dueDate: dueDate || undefined,
+        dueDate: dueDate || null,
         totalWithVat: totalToSave.toFixed(2),
         totalWithoutVat: initial?.data.totalWithoutVat,
         currency,
         paymentMethod,
-        variableSymbol: variableSymbol.trim() || undefined,
-        bankAccount: bankAccount.trim() || undefined,
+        variableSymbol: orNull(variableSymbol),
+        bankAccount: orNull(bankAccount),
         paid,
-        supplierName: supplierName.trim() || undefined,
-        supplierIco: supplierIco.trim() || undefined,
-        supplierDic: supplierDic.trim() || undefined,
-        supplierStreet: supplierStreet.trim() || undefined,
-        supplierCity: supplierCity.trim() || undefined,
-        supplierZip: supplierZip.trim() || undefined,
-        customerName: customerName.trim() || undefined,
-        note: note.trim() || undefined,
+        supplierName: orNull(supplierName),
+        supplierIco: orNull(supplierIco),
+        supplierDic: orNull(supplierDic),
+        supplierStreet: orNull(supplierStreet),
+        supplierCity: orNull(supplierCity),
+        supplierZip: orNull(supplierZip),
+        customerName: orNull(customerName),
+        note: orNull(note),
         fileKeys: initial?.data.fileKeys ?? [],
-        linkedAccountId: linkedAccountId || undefined,
+        linkedAccountId: linkedAccountId || null,
       };
 
       // Položky — uložit aktuální + soft-delete ty, co byly v initialItems ale už nejsou
