@@ -801,16 +801,20 @@ class SyncService {
     ) {
         s[Profiles.name] = d.str("name")
         s[Profiles.type] = d.str("type")
-        s[Profiles.color] = d.intOrNull("color")
-        s[Profiles.businessFocus] = d.strOrNull("businessFocus")
-        s[Profiles.ico] = d.strOrNull("ico")
-        s[Profiles.dic] = d.strOrNull("dic")
-        s[Profiles.companyName] = d.strOrNull("companyName")
-        s[Profiles.street] = d.strOrNull("street")
-        s[Profiles.zip] = d.strOrNull("zip")
-        s[Profiles.city] = d.strOrNull("city")
-        s[Profiles.phone] = d.strOrNull("phone")
-        s[Profiles.email] = d.strOrNull("email")
+        // Optional/nullable: containsKey() guard tak, aby starší klient (nebo
+        // klient, který o poli neví) nemohl CLOBBEROVAT existující hodnotu na
+        // NULL. Před fixem mohla úprava profilu z webu vymazat ICO/DIC/adresu
+        // nastavenou ARES lookupem v mobilu.
+        if (d.containsKey("color")) s[Profiles.color] = d.intOrNull("color")
+        if (d.containsKey("businessFocus")) s[Profiles.businessFocus] = d.strOrNull("businessFocus")
+        if (d.containsKey("ico")) s[Profiles.ico] = d.strOrNull("ico")
+        if (d.containsKey("dic")) s[Profiles.dic] = d.strOrNull("dic")
+        if (d.containsKey("companyName")) s[Profiles.companyName] = d.strOrNull("companyName")
+        if (d.containsKey("street")) s[Profiles.street] = d.strOrNull("street")
+        if (d.containsKey("zip")) s[Profiles.zip] = d.strOrNull("zip")
+        if (d.containsKey("city")) s[Profiles.city] = d.strOrNull("city")
+        if (d.containsKey("phone")) s[Profiles.phone] = d.strOrNull("phone")
+        if (d.containsKey("email")) s[Profiles.email] = d.strOrNull("email")
         // Sprint 5e — přiřazení k orgu (NULL = osobní profil)
         if (userIdForOrgCheck != null && d.containsKey("organizationId")) {
             s[Profiles.organizationId] = resolveProfileOrganization(d, userIdForOrgCheck)
@@ -855,14 +859,32 @@ class SyncService {
         s[Accounts.type] = d.str("type")
         s[Accounts.currency] = d.strOr("currency", "CZK")
         s[Accounts.initialBalance] = d.decimalOr("initialBalance", BigDecimal.ZERO)
-        s[Accounts.color] = d.intOrNull("color")
-        s[Accounts.icon] = d.strOrNull("icon")
         s[Accounts.excludedFromTotal] = d.boolOr("excludedFromTotal", false)
-        s[Accounts.bankProvider] = d.strOrNull("bankProvider")
-        s[Accounts.bankIban] = d.strOrNull("bankIban")
-        s[Accounts.bankAccountNumber] = d.strOrNull("bankAccountNumber")
-        s[Accounts.bankCode] = d.strOrNull("bankCode")
-        s[Accounts.pohodaShortcut] = d.strOrNull("pohodaShortcut")
+        // ─── Optional / nullable fields ────────────────────────────────────
+        // CRITICAL: Use containsKey() guard. Otherwise an older client (or web
+        // form, or any pusher) that omits the field would CLOBBER existing
+        // value to NULL on every push. This is how Pohoda Zkratka mysteriously
+        // disappeared from mobile — web edits without sending the key wiped it.
+        if (isInsert) {
+            // On insert, set fields explicitly (null if missing — no existing value to preserve)
+            s[Accounts.color] = d.intOrNull("color")
+            s[Accounts.icon] = d.strOrNull("icon")
+            s[Accounts.bankProvider] = d.strOrNull("bankProvider")
+            s[Accounts.bankIban] = d.strOrNull("bankIban")
+            s[Accounts.bankAccountNumber] = d.strOrNull("bankAccountNumber")
+            s[Accounts.bankCode] = d.strOrNull("bankCode")
+            s[Accounts.pohodaShortcut] = d.strOrNull("pohodaShortcut")
+        } else {
+            // On update, only modify fields the client explicitly sent.
+            // This preserves values set by other clients (mobile vs web vs background sync).
+            if (d.containsKey("color")) s[Accounts.color] = d.intOrNull("color")
+            if (d.containsKey("icon")) s[Accounts.icon] = d.strOrNull("icon")
+            if (d.containsKey("bankProvider")) s[Accounts.bankProvider] = d.strOrNull("bankProvider")
+            if (d.containsKey("bankIban")) s[Accounts.bankIban] = d.strOrNull("bankIban")
+            if (d.containsKey("bankAccountNumber")) s[Accounts.bankAccountNumber] = d.strOrNull("bankAccountNumber")
+            if (d.containsKey("bankCode")) s[Accounts.bankCode] = d.strOrNull("bankCode")
+            if (d.containsKey("pohodaShortcut")) s[Accounts.pohodaShortcut] = d.strOrNull("pohodaShortcut")
+        }
         s[Accounts.clientVersion] = cv
         s[Accounts.updatedAt] = updatedAt
         s[Accounts.deletedAt] = deletedAt

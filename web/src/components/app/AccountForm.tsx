@@ -99,6 +99,11 @@ export default function AccountForm({ mode, syncId }: AccountFormProps) {
       const targetSyncId = isEdit ? syncId! : crypto.randomUUID();
       const now = new Date().toISOString();
 
+      // Pro nullable pole posíláme null (ne undefined!) když uživatel pole vyprázdnil.
+      // Server teď používá containsKey() guard — chybějící klíč = "nech beze změny",
+      // explicit null = "vymaž". Bez null bychom nikdy nemohli nullable pole vymazat.
+      const trim = (v: string) => v.trim();
+      const orNull = (v: string) => (trim(v).length > 0 ? trim(v) : null);
       const data: Record<string, unknown> = {
         ...(originalData ?? {}),
         profileId: originalData?.profileId ?? profileSyncId,
@@ -108,10 +113,10 @@ export default function AccountForm({ mode, syncId }: AccountFormProps) {
         initialBalance: initialBalance.trim() || "0",
         color,
         excludedFromTotal,
-        bankIban: bankIban.trim() || undefined,
-        bankAccountNumber: bankAccountNumber.trim() || undefined,
-        bankCode: bankCode.trim() || undefined,
-        pohodaShortcut: pohodaShortcut.trim() || undefined,
+        bankIban: orNull(bankIban),
+        bankAccountNumber: orNull(bankAccountNumber),
+        bankCode: orNull(bankCode),
+        pohodaShortcut: orNull(pohodaShortcut),
       };
 
       await withAuth((tk) =>
