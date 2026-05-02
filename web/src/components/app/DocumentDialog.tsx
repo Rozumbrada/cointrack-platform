@@ -71,11 +71,20 @@ export function DocumentDialog({
   const [paymentMethod, setPaymentMethod] = useState("CARD");
   const [note, setNote] = useState("");
 
+  // IČO/DIČ + adresa — partner identity (pro export do Pohody i pro detail).
+  // Nově editovatelné v review screenu, předtím se jen "tiše" uložily ze parsed.
+  const [ico, setIco] = useState("");
+  const [dic, setDic] = useState("");
+  const [street, setStreet] = useState("");
+  const [city, setCity] = useState("");
+  const [zip, setZip] = useState("");
+
   // Pouze pro fakturu
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [isExpense, setIsExpense] = useState(true);
   const [dueDate, setDueDate] = useState("");
   const [variableSymbol, setVariableSymbol] = useState("");
+  const [bankAccount, setBankAccount] = useState("");
 
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -97,18 +106,51 @@ export function DocumentDialog({
       ]);
       setStorageKey(key);
       setParsed(p);
-      setDocType(p.docType ?? "receipt");
-      setMerchant(p.merchantName ?? p.supplierName ?? "");
+      const detected = p.docType ?? "receipt";
+      setDocType(detected);
       setDate(p.date ?? p.issueDate ?? new Date().toISOString().slice(0, 10));
       setTime(p.time ?? "");
       setTotalWithVat(p.totalWithVat?.toString() ?? "");
       setCurrency(p.currency ?? "CZK");
       setPaymentMethod(p.paymentMethod ?? "CARD");
-      if (p.docType === "invoice") {
+
+      // Partner identity: pro receipt → merchant*, pro invoice → supplier* nebo customer*
+      // (podle isExpense). Default isExpense=true (přijatá faktura — na nás).
+      const isExp = p.isExpense ?? true;
+      if (detected === "receipt") {
+        setMerchant(p.merchantName ?? "");
+        setIco(p.merchantIco ?? "");
+        setDic(p.merchantDic ?? "");
+        setStreet(p.merchantStreet ?? "");
+        setCity(p.merchantCity ?? "");
+        setZip(p.merchantZip ?? "");
+      } else if (isExp) {
+        // Přijatá: merchant = supplier
+        setMerchant(p.supplierName ?? "");
+        setIco(p.supplierIco ?? "");
+        setDic(p.supplierDic ?? "");
+        setStreet(p.supplierStreet ?? "");
+        setCity(p.supplierCity ?? "");
+        setZip(p.supplierZip ?? "");
+      } else {
+        // Vystavená: merchant = customer
+        setMerchant(p.customerName ?? "");
+        setIco(p.customerIco ?? "");
+        setDic(p.customerDic ?? "");
+        setStreet(p.customerStreet ?? "");
+        setCity(p.customerCity ?? "");
+        setZip(p.customerZip ?? "");
+      }
+
+      if (detected === "invoice") {
         setInvoiceNumber(p.invoiceNumber ?? "");
-        setIsExpense(p.isExpense ?? true);
+        setIsExpense(isExp);
         setDueDate(p.dueDate ?? "");
         setVariableSymbol(p.variableSymbol ?? "");
+        // Bank account — sjednoť IBAN i číslo/kód do jednoho fieldu (zachová mobile naming).
+        const ba = p.bankAccount ?? "";
+        const bc = p.bankCode ?? "";
+        setBankAccount(ba && bc && !ba.includes("/") ? `${ba}/${bc}` : ba);
       }
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -151,11 +193,12 @@ export function DocumentDialog({
         const data = {
           profileId: profileSyncId,
           merchantName: merchant.trim() || undefined,
-          merchantIco: parsed?.merchantIco ?? undefined,
-          merchantDic: parsed?.merchantDic ?? undefined,
-          merchantStreet: parsed?.merchantStreet ?? undefined,
-          merchantCity: parsed?.merchantCity ?? undefined,
-          merchantZip: parsed?.merchantZip ?? undefined,
+          // Partner identity z editovatelných polí (user mohl AI hodnoty upravit)
+          merchantIco: ico.trim() || undefined,
+          merchantDic: dic.trim() || undefined,
+          merchantStreet: street.trim() || undefined,
+          merchantCity: city.trim() || undefined,
+          merchantZip: zip.trim() || undefined,
           date,
           time: time || undefined,
           totalWithVat: total.toFixed(2),
@@ -218,6 +261,9 @@ export function DocumentDialog({
         );
         router.push(`/app/receipts/${entitySyncId}`);
       } else {
+        // Partner identity — `merchant`+`ico`+atd. v UI patří dle isExpense buď
+        // dodavateli (přijatá) nebo odběrateli (vystavená). Druhý partner se
+        // bere z parsed (pokud Gemini zachytil obě strany).
         const data = {
           profileId: profileSyncId,
           invoiceNumber: invoiceNumber.trim() || undefined,
@@ -227,15 +273,23 @@ export function DocumentDialog({
           totalWithVat: total.toFixed(2),
           totalWithoutVat: parsed?.totalWithoutVat?.toFixed(2),
           currency,
-          supplierName: isExpense ? merchant.trim() || undefined : undefined,
-          supplierIco: parsed?.supplierIco ?? undefined,
-          supplierDic: parsed?.supplierDic ?? undefined,
-          supplierStreet: parsed?.supplierStreet ?? undefined,
-          supplierCity: parsed?.supplierCity ?? undefined,
-          supplierZip: parsed?.supplierZip ?? undefined,
+          // Supplier (dodavatel)
+          supplierName: isExpense ? merchant.trim() || undefined : (parsed?.supplierName ?? undefined),
+          supplierIco: isExpense ? ico.trim() || undefined : (parsed?.supplierIco ?? undefined),
+          supplierDic: isExpense ? dic.trim() || undefined : (parsed?.supplierDic ?? undefined),
+          supplierStreet: isExpense ? street.trim() || undefined : (parsed?.supplierStreet ?? undefined),
+          supplierCity: isExpense ? city.trim() || undefined : (parsed?.supplierCity ?? undefined),
+          supplierZip: isExpense ? zip.trim() || undefined : (parsed?.supplierZip ?? undefined),
+          // Customer (odběratel)
           customerName: !isExpense ? merchant.trim() || undefined : (parsed?.customerName ?? undefined),
+          customerIco: !isExpense ? ico.trim() || undefined : (parsed?.customerIco ?? undefined),
+          customerDic: !isExpense ? dic.trim() || undefined : (parsed?.customerDic ?? undefined),
+          customerStreet: !isExpense ? street.trim() || undefined : (parsed?.customerStreet ?? undefined),
+          customerCity: !isExpense ? city.trim() || undefined : (parsed?.customerCity ?? undefined),
+          customerZip: !isExpense ? zip.trim() || undefined : (parsed?.customerZip ?? undefined),
+          // Platba
           variableSymbol: variableSymbol.trim() || undefined,
-          bankAccount: parsed?.bankAccount ?? undefined,
+          bankAccount: bankAccount.trim() || undefined,
           paymentMethod,
           paid: paymentMethod === "CASH",
           fileKeys,
@@ -443,6 +497,67 @@ export function DocumentDialog({
         />
       </Field>
 
+      {/* IČO + DIČ — pro Pohoda XML export jsou klíčové, AI je extrahuje */}
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="IČO">
+          <input
+            type="text"
+            value={ico}
+            onChange={(e) => setIco(e.target.value)}
+            placeholder="12345678"
+            maxLength={8}
+            className={`${inputClass} font-mono`}
+          />
+        </Field>
+        <Field label="DIČ">
+          <input
+            type="text"
+            value={dic}
+            onChange={(e) => setDic(e.target.value)}
+            placeholder="CZ12345678"
+            className={`${inputClass} font-mono`}
+          />
+        </Field>
+      </div>
+
+      {/* Adresa (collapsible — typicky stačí AI extrahované; user může upravit) */}
+      <details className="text-sm">
+        <summary className="cursor-pointer text-ink-600 hover:text-ink-900 select-none">
+          ▾ Adresa partnera{(street || city || zip) && " (vyplněno)"}
+        </summary>
+        <div className="mt-2 space-y-2">
+          <Field label="Ulice + č.p.">
+            <input
+              type="text"
+              value={street}
+              onChange={(e) => setStreet(e.target.value)}
+              className={inputClass}
+            />
+          </Field>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-2">
+              <Field label="Město">
+                <input
+                  type="text"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+            <Field label="PSČ">
+              <input
+                type="text"
+                value={zip}
+                onChange={(e) => setZip(e.target.value)}
+                placeholder="11000"
+                className={`${inputClass} font-mono`}
+              />
+            </Field>
+          </div>
+        </div>
+      </details>
+
       <div className="grid grid-cols-2 gap-3">
         <Field label={docType === "receipt" ? t("date") : t("issue_date")}>
           <input
@@ -501,14 +616,27 @@ export function DocumentDialog({
       </div>
 
       {docType === "invoice" ? (
-        <Field label={t("vs")}>
-          <input
-            type="text"
-            value={variableSymbol}
-            onChange={(e) => setVariableSymbol(e.target.value)}
-            className={inputClass}
-          />
-        </Field>
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={t("vs")}>
+              <input
+                type="text"
+                value={variableSymbol}
+                onChange={(e) => setVariableSymbol(e.target.value)}
+                className={`${inputClass} font-mono`}
+              />
+            </Field>
+            <Field label="Bankovní účet (pro platbu)">
+              <input
+                type="text"
+                value={bankAccount}
+                onChange={(e) => setBankAccount(e.target.value)}
+                placeholder="123456789/0800"
+                className={`${inputClass} font-mono`}
+              />
+            </Field>
+          </div>
+        </>
       ) : (
         <Field label={t("payment_method")}>
           <select

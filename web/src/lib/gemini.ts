@@ -54,60 +54,90 @@ export function fileToBase64(file: File): Promise<string> {
   });
 }
 
-const DOCUMENT_PROMPT = `Jsi expert na extrakci dat z českých daňových dokladů.
+// Port mobilního ReceiptGeminiExtractor + InvoiceGeminiExtractor pravidel.
+// Jednotný prompt s detekcí typu (receipt/invoice) + všechna pole obou exporterů.
+const DOCUMENT_PROMPT = `Jsi expert na extrakci dat z českých daňových dokladů — účtenek, paragonů, pokladních dokladů a faktur.
 
-Z přiloženého obrázku/PDF rozpoznej typ dokumentu (účtenka vs. faktura) a extrahuj data.
+Z přiloženého obrázku (nebo PDF, může být víc stránek pro vícestránkovou fakturu) rozpoznej typ dokumentu a extrahuj VŠECHNA dostupná data.
 
 Typy:
-- "receipt" = pokladní účtenka / paragon (typicky termální papír, hotovost/karta, kup v obchodě, krátký seznam položek, často bez čísla nebo s pořadovým číslem účtenky/EET)
-- "invoice" = faktura (dodavatel a odběratel, číslo faktury, IČO/DIČ, splatnost, často variabilní symbol, bankovní účet)
+- "receipt" = pokladní účtenka / paragon — typicky termální papír, hotovost/karta, krátký seznam položek, často bez čísla nebo s pořadovým číslem EET. Adresa obchodu obvykle v záhlaví.
+- "invoice" = faktura / daňový doklad — dodavatel a odběratel s plnou adresou, číslo faktury, IČO/DIČ obou stran, splatnost, variabilní symbol, bankovní účet.
 
-Vrať POUZE validní JSON bez markdownu nebo dalšího textu:
+Vrať POUZE validní JSON bez markdownu, bez dalšího textu, bez vysvětlení:
 {
   "docType": "receipt" | "invoice",
-  "merchantName": string|null,
-  "merchantIco": string|null,
-  "merchantDic": string|null,
-  "merchantStreet": string|null,
-  "merchantCity": string|null,
-  "merchantZip": string|null,
-  "date": "YYYY-MM-DD"|null,
-  "time": "HH:MM"|null,
-  "totalWithVat": number|null,
-  "totalWithoutVat": number|null,
-  "currency": "CZK"|"EUR"|"USD",
-  "paymentMethod": "CASH"|"CARD"|"BANK_TRANSFER"|"OTHER"|"UNKNOWN",
 
-  // Pouze pokud docType=="invoice":
-  "invoiceNumber": string|null,
-  "issueDate": "YYYY-MM-DD"|null,
-  "dueDate": "YYYY-MM-DD"|null,
-  "supplierName": string|null,
-  "supplierIco": string|null,
-  "supplierDic": string|null,
-  "supplierStreet": string|null,
-  "supplierCity": string|null,
-  "supplierZip": string|null,
-  "customerName": string|null,
-  "variableSymbol": string|null,
-  "bankAccount": string|null,
-  "isExpense": boolean,
+  // ÚČTENKA — header obchodu
+  "merchantName": "název obchodníka nebo firmy (string nebo null)",
+  "merchantIco": "IČO - PŘESNĚ 8 číslic bez mezer (string nebo null)",
+  "merchantDic": "DIČ ve formátu CZxxxxxxxx (string nebo null)",
+  "merchantStreet": "ulice a číslo popisné (string nebo null)",
+  "merchantCity": "název města (string nebo null)",
+  "merchantZip": "PSČ bez mezer, 5 číslic (string nebo null)",
 
+  // ÚČTENKA — datum + čas + EET
+  "date": "datum ve formátu YYYY-MM-DD (string nebo null)",
+  "time": "čas ve formátu HH:MM (string nebo null)",
+
+  // SPOLEČNÉ částky
+  "totalWithVat": "celková částka K ÚHRADĚ včetně DPH (číslo nebo null)",
+  "totalWithoutVat": "celkový základ daně bez DPH (číslo nebo null)",
+  "currency": "CZK | EUR | USD (default CZK)",
+  "paymentMethod": "CASH (hotově) | CARD (kartou) | BANK_TRANSFER (převodem) | OTHER | UNKNOWN",
+
+  // FAKTURA — vyplň jen pokud docType==invoice
+  "invoiceNumber": "číslo faktury (string nebo null)",
+  "issueDate": "datum vystavení YYYY-MM-DD (string nebo null)",
+  "dueDate": "datum splatnosti YYYY-MM-DD (string nebo null)",
+
+  // FAKTURA — dodavatel
+  "supplierName": "název dodavatele (string nebo null)",
+  "supplierIco": "IČO dodavatele - PŘESNĚ 8 číslic (string nebo null)",
+  "supplierDic": "DIČ dodavatele ve formátu CZxxxxxxxx (string nebo null)",
+  "supplierStreet": "ulice + číslo popisné dodavatele (string nebo null)",
+  "supplierCity": "město dodavatele (string nebo null)",
+  "supplierZip": "PSČ dodavatele bez mezer (string nebo null)",
+
+  // FAKTURA — odběratel
+  "customerName": "název odběratele (string nebo null)",
+  "customerIco": "IČO odběratele - PŘESNĚ 8 číslic (string nebo null)",
+  "customerDic": "DIČ odběratele ve formátu CZxxxxxxxx (string nebo null)",
+  "customerStreet": "ulice + číslo popisné odběratele (string nebo null)",
+  "customerCity": "město odběratele (string nebo null)",
+  "customerZip": "PSČ odběratele (string nebo null)",
+
+  // FAKTURA — platba
+  "variableSymbol": "variabilní symbol pro platbu (string nebo null)",
+  "bankAccount": "číslo účtu pro platbu ve formátu číslo/kód, IBAN nebo jen číslo (string nebo null)",
+  "bankCode": "kód banky - 4 číslice (např. 0800, 0100, 2010), null pro IBAN (string nebo null)",
+  "isExpense": "true pokud JSME odběratel (přijatá faktura), false pokud JSME dodavatel (vystavená)",
+
+  // SPOLEČNÉ — položky
   "items": [
     {
-      "name": string,
-      "quantity": number,
-      "totalPrice": number,    // cena s DPH
-      "vatRate": number        // 0|10|12|21
+      "name": "název položky (string)",
+      "quantity": "množství (číslo, default 1.0)",
+      "unit": "jednotka ks/kg/l/g/m/hod (string nebo null)",
+      "unitPriceWithoutVat": "cena BEZ DPH za 1 jednotku (číslo nebo null)",
+      "totalPrice": "celková cena položky S DPH (číslo)",
+      "vatRate": "sazba DPH v % - 0, 10, 12 nebo 21 (integer)"
     }
   ]
 }
 
-Pravidla:
-- Částky jako desetinná čísla (125.90), null pro chybějící hodnoty.
-- isExpense=true pokud jsme odběratel (customer), false pokud jsme dodavatel.
-- Pokud položky nejsou rozlišitelné, vrať jednu položku "Nákup".
-- Účtenka má docType="receipt" a date+time; faktura má docType="invoice" a issueDate+dueDate.`;
+Důležitá pravidla:
+- Pokud hodnota není v dokumentu, použij null (ne prázdný string "").
+- Částky jsou desetinná čísla — 125.90, ne "125,90" ani "125 Kč".
+- IČO je VŽDY 8 číslic — pokud najdeš méně, doplň nulami zleva (12345 → "00012345").
+- DIČ má prefix země: "CZ12345678", pro SK "SK...", apod.
+- Sazby DPH v ČR: 0%, 10%, 12%, 21% — přiřaď nejbližší platnou.
+- isExpense=true pokud JSME zákazník (faktura na nás od dodavatele = výdaj).
+  isExpense=false pokud JSME ten, kdo fakturu vystavil (= příjem). Když nejsi schopen rozhodnout, použij true.
+- Účtenka: docType="receipt" + date + time. Faktura: docType="invoice" + issueDate + dueDate.
+- Pokud položky nelze rozlišit nebo jsou jen souhrnem, vrať JEDNU položku "Nákup" s totalPrice = totalWithVat.
+- Ignoruj čárové kódy, QR kódy, EET kódy a obrázky log.
+- U faktury, kde je odběratel JEN tvoje firma jako string, můžeš použít supplierName/customerName analogicky podle isExpense.`;
 
 interface GeminiPart {
   text?: string;
@@ -122,34 +152,54 @@ interface GeminiResponse {
 
 export interface ParsedDocument {
   docType: "receipt" | "invoice";
+
+  // Merchant (receipt header)
   merchantName?: string | null;
   merchantIco?: string | null;
   merchantDic?: string | null;
   merchantStreet?: string | null;
   merchantCity?: string | null;
   merchantZip?: string | null;
+
   date?: string | null;
   time?: string | null;
   totalWithVat?: number | null;
   totalWithoutVat?: number | null;
   currency?: string;
   paymentMethod?: string;
+
+  // Invoice
   invoiceNumber?: string | null;
   issueDate?: string | null;
   dueDate?: string | null;
+
+  // Supplier
   supplierName?: string | null;
   supplierIco?: string | null;
   supplierDic?: string | null;
   supplierStreet?: string | null;
   supplierCity?: string | null;
   supplierZip?: string | null;
+
+  // Customer
   customerName?: string | null;
+  customerIco?: string | null;
+  customerDic?: string | null;
+  customerStreet?: string | null;
+  customerCity?: string | null;
+  customerZip?: string | null;
+
+  // Payment routing
   variableSymbol?: string | null;
   bankAccount?: string | null;
+  bankCode?: string | null;
   isExpense?: boolean;
+
   items?: Array<{
     name: string;
     quantity?: number;
+    unit?: string | null;
+    unitPriceWithoutVat?: number | null;
     totalPrice?: number;
     vatRate?: number;
   }>;

@@ -34,9 +34,82 @@ export default function DashboardPage() {
   } | null>(null);
   const [pickerError, setPickerError] = useState<string | null>(null);
 
-  const accountEntities = entitiesByProfile<ServerAccount>("accounts");
-  const txEntities = entitiesByProfile<ServerTransaction>("transactions");
+  const accountEntitiesAll = entitiesByProfile<ServerAccount>("accounts");
+  const txEntitiesAll = entitiesByProfile<ServerTransaction>("transactions");
   const categoryEntities = entitiesByProfile<ServerCategory>("categories");
+
+  // ── Account filter ────────────────────────────────────────────────
+  // User si může vybrat, které účty se zobrazují v přehledu (totals, tx, stats).
+  // Default = všechny ne-Salt-Edge-zombie a ne-excludedFromTotal účty.
+  // Selection se persistuje do localStorage per profile (klíč podle URL profilu).
+
+  const eligibleAccounts = useMemo(
+    () =>
+      accountEntitiesAll.filter((acc) => {
+        const d = acc.data as unknown as Record<string, unknown>;
+        if (d.bankProvider === "saltedge" || d.externalProvider === "saltedge") {
+          const assigned = d.assignedProfileIds as string[] | undefined;
+          if (!assigned || assigned.length === 0) return false;
+        }
+        return true;
+      }),
+    [accountEntitiesAll],
+  );
+
+  const [selectedAccountIds, setSelectedAccountIds] = useState<Set<string> | null>(null);
+
+  // Default selection: všechny eligible ne-excluded. Inicializuje se až po
+  // načtení účtů (loading=true → null state, čeká na data).
+  useEffect(() => {
+    if (selectedAccountIds !== null) return;
+    if (eligibleAccounts.length === 0) return;
+    const defaults = new Set<string>();
+    for (const acc of eligibleAccounts) {
+      const d = acc.data as unknown as Record<string, unknown>;
+      if (d.excludedFromTotal === true) continue;
+      defaults.add(acc.syncId);
+    }
+    setSelectedAccountIds(defaults);
+  }, [eligibleAccounts, selectedAccountIds]);
+
+  // Vyfiltrované účty pro výpočty (totals, monthly stats, recent tx, atd.)
+  const accountEntities = useMemo(() => {
+    if (!selectedAccountIds) return eligibleAccounts; // než dorazí data, počítej se vším
+    return eligibleAccounts.filter((a) => selectedAccountIds.has(a.syncId));
+  }, [eligibleAccounts, selectedAccountIds]);
+
+  // Filtr transakcí podle vybraných účtů (pro statistiky + recent list)
+  const visibleAccountIdSet = useMemo(
+    () => new Set(accountEntities.map((a) => a.syncId)),
+    [accountEntities],
+  );
+  const txEntities = useMemo(() => {
+    if (visibleAccountIdSet.size === 0) return txEntitiesAll;
+    return txEntitiesAll.filter((tx) => {
+      const d = tx.data as unknown as Record<string, unknown>;
+      const accId = String(d.accountId ?? "");
+      // Transfer: pokud target account je vybraný, pusť (bere z toAccountId)
+      const toAccId = String(d.toAccountId ?? "");
+      return visibleAccountIdSet.has(accId) || (toAccId && visibleAccountIdSet.has(toAccId));
+    });
+  }, [txEntitiesAll, visibleAccountIdSet]);
+
+  function toggleAccount(syncId: string) {
+    setSelectedAccountIds((prev) => {
+      const next = new Set(prev ?? []);
+      if (next.has(syncId)) next.delete(syncId);
+      else next.add(syncId);
+      return next;
+    });
+  }
+
+  function selectAllAccounts() {
+    setSelectedAccountIds(new Set(eligibleAccounts.map((a) => a.syncId)));
+  }
+
+  function clearAccountSelection() {
+    setSelectedAccountIds(new Set());
+  }
 
   // First-run detection — bez profilu redirect na onboarding (jednou).
   // FIX (2026-05): pokud má uživatel sdílený profil (recipient pozvánky), neopakuj
@@ -70,30 +143,32 @@ export default function DashboardPage() {
     [txEntities],
   );
 
-  // Celkový zůstatek per měna.
-  //
-  // Pravidla:
-  //  • účet musí mít includeInTotal/!excludedFromTotal
-  //  • Salt Edge účty bez profile assignmentu jsou ignorovány (auto-importované
-  //    do dávno smazaných profilů zůstaly v cloudu jako "zombie")
-  //  • Nulový součet měny se neukazuje (zbavuje UI artefaktů smazaných účtů)
+  // Celkový zůstatek per měna z vybraných účtů. accountEntities je už filtrované
+  // přes selectedAccountIds + eligibleAccounts (nezombie). txEntities pro live
+  // balance výpočet — pro každý účet se sečtou tx kterou ten účet má (uvnitř
+  // computeAccountBalance se filtruje per accountId).
   const totalBalance = useMemo(() => {
     const totals: Record<string, number> = {};
     for (const acc of accountEntities) {
-      const d = acc.data as unknown as Record<string, unknown>;
-      if (d.excludedFromTotal === true) continue;
-      // Salt Edge účet bez assignmentu = zombie data, ignoruj
-      if (d.bankProvider === "saltedge" || d.externalProvider === "saltedge") {
-        const assigned = d.assignedProfileIds as string[] | undefined;
-        if (!assigned || assigned.length === 0) continue;
-      }
-      const live = computeAccountBalance(acc.data, txEntities, acc.syncId);
+      // Pro live balance používáme txEntitiesAll — i když účet je vybraný v
+      // overview, jeho balance počítáme ze všech jeho tx (selection ovlivňuje
+      // kolik účtů sčítáme, ne jak se počítá per-account).
+      const live = computeAccountBalance(acc.data, txEntitiesAll, acc.syncId);
       totals[acc.data.currency] = (totals[acc.data.currency] ?? 0) + live;
     }
     return Object.fromEntries(
       Object.entries(totals).filter(([, amount]) => Math.abs(amount) > 0.005),
     );
-  }, [accountEntities, txEntities]);
+  }, [accountEntities, txEntitiesAll]);
+
+  // Per-account balance map pro overview cards
+  const perAccountBalance = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const acc of eligibleAccounts) {
+      m.set(acc.syncId, computeAccountBalance(acc.data, txEntitiesAll, acc.syncId));
+    }
+    return m;
+  }, [eligibleAccounts, txEntitiesAll]);
 
   // Měsíční příjmy/výdaje
   const monthlyStats = useMemo(() => {
@@ -201,6 +276,60 @@ export default function DashboardPage() {
         <p className="text-sm text-ink-600 mt-1">{t("subtitle")}</p>
       </div>
 
+      {/* Account selector chips — uživatel si volí, které účty se započítávají
+          do přehledu, statistik a recent tx. Default = všechny ne-Salt-Edge-zombie
+          a ne-excludedFromTotal účty. */}
+      {eligibleAccounts.length > 0 && selectedAccountIds && (
+        <section className="bg-white rounded-2xl border border-ink-200 p-4">
+          <div className="flex items-baseline justify-between mb-3">
+            <h2 className="text-xs font-medium text-ink-500 uppercase tracking-wide">
+              Zobrazované účty
+            </h2>
+            <div className="flex gap-3 text-xs">
+              <button
+                type="button"
+                onClick={selectAllAccounts}
+                className="text-brand-600 hover:text-brand-700 font-medium"
+              >
+                Vybrat vše
+              </button>
+              <button
+                type="button"
+                onClick={clearAccountSelection}
+                className="text-ink-500 hover:text-ink-700 font-medium"
+              >
+                Zrušit výběr
+              </button>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {eligibleAccounts.map((acc) => {
+              const isSel = selectedAccountIds.has(acc.syncId);
+              const balance = perAccountBalance.get(acc.syncId) ?? 0;
+              return (
+                <button
+                  key={acc.syncId}
+                  type="button"
+                  onClick={() => toggleAccount(acc.syncId)}
+                  className={`px-3 py-1.5 rounded-full border text-xs transition-colors ${
+                    isSel
+                      ? "bg-brand-600 border-brand-600 text-white"
+                      : "bg-white border-ink-300 text-ink-700 hover:border-ink-400"
+                  }`}
+                  title={`${acc.data.name} · ${fmt(balance, acc.data.currency)}`}
+                >
+                  {isSel && <span className="mr-1">✓</span>}
+                  {acc.data.name}
+                  <span className={`ml-2 tabular-nums ${isSel ? "opacity-90" : "text-ink-500"}`}>
+                    {fmt(balance, acc.data.currency)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {/* KPI + trend */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <section className="bg-white rounded-2xl border border-ink-200 p-5 space-y-4">
@@ -238,6 +367,42 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
+
+          {/* Per-account overview — list vybraných účtů s živým balance.
+              Klik na účet → /app/accounts (zatím; v budoucnu detail stránka). */}
+          {accountEntities.length > 0 && (
+            <div className="pt-3 border-t border-ink-100">
+              <div className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-2">
+                Účty
+              </div>
+              <div className="space-y-1.5">
+                {accountEntities.map((acc) => {
+                  const balance = perAccountBalance.get(acc.syncId) ?? 0;
+                  return (
+                    <Link
+                      key={acc.syncId}
+                      href="/app/accounts"
+                      className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-ink-50 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: colorFromInt(acc.data.color) }}
+                        />
+                        <span className="text-sm text-ink-900 truncate">{acc.data.name}</span>
+                        <span className="text-[10px] uppercase text-ink-500 shrink-0">
+                          {labelAccountType(acc.data.type)}
+                        </span>
+                      </div>
+                      <span className="text-sm font-medium text-ink-900 tabular-nums shrink-0">
+                        {fmt(balance, acc.data.currency)}
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="bg-white rounded-2xl border border-ink-200 p-5">
@@ -443,6 +608,16 @@ function fmt(amount: number, currency: string): string {
     currency,
     maximumFractionDigits: 2,
   }).format(amount);
+}
+
+function labelAccountType(type: string | undefined): string {
+  switch (type) {
+    case "CASH": return "Hotovost";
+    case "BANK": return "Banka";
+    case "CREDIT_CARD": return "Kreditka";
+    case "INVESTMENT": return "Investice";
+    default: return type ?? "";
+  }
 }
 
 function formatDate(iso: string): string {
