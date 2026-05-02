@@ -89,26 +89,37 @@ export function DocumentDialog({
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // ARES lookup state — manuální klik na "Najít v ARES" tlačítko vedle IČO.
+  // ARES lookup state — auto po OCR (pokud IČO má 8 číslic) + manuální tlačítko.
   // Vyplní/přepíše název, DIČ, ulici, město, PSČ podle veřejného registru.
   const [aresLoading, setAresLoading] = useState(false);
   const [aresError, setAresError] = useState<string | null>(null);
+  const [aresInfo, setAresInfo] = useState<string | null>(null);
+  const aresLookedUpFor = useRef<string | null>(null);
 
-  async function lookupAres() {
+  /**
+   * Provede ARES lookup pro daný IČO. Default `auto=false` znamená manuální
+   * klik (vždy přepíše název). `auto=true` (po OCR) má jemnější chování:
+   * vyplní jen ta pole co AI nezachytila, název přepíše vždy (ARES je
+   * autoritativní zdroj firemního názvu).
+   */
+  async function lookupAres(auto = false) {
     const cleanIco = ico.replace(/\D/g, "");
     if (cleanIco.length < 6) {
-      setAresError("Zadej IČO (min. 6 číslic).");
+      if (!auto) setAresError("Zadej IČO (min. 6 číslic).");
       return;
     }
     setAresError(null);
+    setAresInfo(null);
     setAresLoading(true);
     try {
       const res = await fetch(
         `https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty/${encodeURIComponent(cleanIco)}`,
       );
       if (!res.ok) {
-        if (res.status === 404) setAresError("Subjekt s tímto IČO nebyl v ARES nalezen.");
-        else setAresError(`ARES nedostupný (${res.status}).`);
+        if (res.status === 404 && !auto)
+          setAresError("Subjekt s tímto IČO nebyl v ARES nalezen.");
+        else if (!auto)
+          setAresError(`ARES nedostupný (${res.status}).`);
         return;
       }
       const data = (await res.json()) as {
@@ -121,7 +132,8 @@ export function DocumentDialog({
           psc?: number;
         };
       };
-      // Vždy přepíše název — uživatel klikl explicit, chce ARES verzi.
+      // Název: vždy přepíše (ARES je autoritativní + AI to často přečte
+      // s překlepy z účtenkového tisku).
       if (data.obchodniJmeno) setMerchant(data.obchodniJmeno);
       if (data.dic && !dic.trim()) setDic(data.dic);
       const sidlo = data.sidlo;
@@ -131,12 +143,27 @@ export function DocumentDialog({
         if (sidlo.nazevObce) setCity(sidlo.nazevObce);
         if (sidlo.psc != null) setZip(String(sidlo.psc));
       }
+      if (auto) setAresInfo("✓ Údaje doplněny z ARES");
     } catch (e) {
-      setAresError(e instanceof Error ? e.message : String(e));
+      if (!auto) setAresError(e instanceof Error ? e.message : String(e));
     } finally {
       setAresLoading(false);
     }
   }
+
+  // Auto-ARES po OCR — když parser vrátí 8místné IČO, automaticky doplní
+  // partner data (název, DIČ, adresa). Ref `aresLookedUpFor` brání
+  // opakovanému volání pro stejné IČO (např. když user opraví město a
+  // useEffect by jinak znovu spustil ARES).
+  useEffect(() => {
+    if (!parsed) return;
+    const cleanIco = ico.replace(/\D/g, "");
+    if (cleanIco.length !== 8) return;
+    if (aresLookedUpFor.current === cleanIco) return;
+    aresLookedUpFor.current = cleanIco;
+    lookupAres(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parsed, ico]);
 
   // Otevřít picker rovnou po mountu (lepší UX)
   useEffect(() => {
@@ -562,7 +589,10 @@ export function DocumentDialog({
             />
             <button
               type="button"
-              onClick={lookupAres}
+              onClick={() => {
+                aresLookedUpFor.current = null; // umožni re-lookup pro stejné IČO
+                lookupAres(false);
+              }}
               disabled={ico.replace(/\D/g, "").length < 6 || aresLoading}
               className="h-10 px-3 rounded-lg border border-ink-300 bg-white hover:bg-ink-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium text-ink-700 whitespace-nowrap"
               title="Vyhledat firmu v registru ARES (název, DIČ, adresa)"
@@ -583,6 +613,9 @@ export function DocumentDialog({
       </div>
       {aresError && (
         <div className="text-xs text-amber-700 -mt-2">{aresError}</div>
+      )}
+      {aresInfo && !aresError && (
+        <div className="text-xs text-emerald-700 -mt-2">{aresInfo}</div>
       )}
 
       {/* Adresa (collapsible — typicky stačí AI extrahované; user může upravit) */}
