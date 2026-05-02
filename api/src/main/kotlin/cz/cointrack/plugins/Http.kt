@@ -16,6 +16,11 @@ fun Application.configureHttp() {
         allowHeader(HttpHeaders.ContentType)
         allowHeader("X-Client-Version")
         allowHeader("X-Device-Id")
+        // Bez tohoto browser nevystaví Content-Disposition do JS, takže
+        // ExportButton.tsx nedokáže přečíst filename a stáhne soubor pod
+        // fallback jménem `cointrack-uctenky.xml` (Chrome pak ke každému
+        // dalšímu stažení přidá " (1)", " (2)"…).
+        exposeHeader(HttpHeaders.ContentDisposition)
         allowCredentials = true
         allowMethod(HttpMethod.Get)
         allowMethod(HttpMethod.Post)

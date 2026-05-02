@@ -539,43 +539,48 @@ object PohodaExporter {
      * Pokud má účtenka aspoň jednu fotku (photoKeys JSON není "[]") A je
      * nakonfigurováno PUBLIC_WEB_URL, vrátí URL odkazu na detail účtenky.
      */
-    private fun receiptPhotoUrl(r: ResultRow): String? {
+    /**
+     * URL na detail účtenky v Cointracku — jde do `<vou:note>` /
+     * `<bnk:note>` jako klikatelný odkaz pro účetní zpět do aplikace.
+     * Nezáleží na tom, jestli má fotku — odkaz vede vždy na detail dokladu,
+     * kde uživatel vidí položky, partnera, fotky, případné editace.
+     *
+     * Pokud chybí PUBLIC_WEB_URL env, vrátí null (link se neemituje).
+     */
+    private fun receiptDetailUrl(r: ResultRow): String? {
         val webUrl = publicWebUrl ?: return null
-        val photoKeys = r[Receipts.photoKeys]
-        if (photoKeys.isBlank() || photoKeys == "[]") return null
         return "$webUrl/app/receipts/${r[Receipts.syncId]}"
     }
 
-    private fun invoiceFileUrl(r: ResultRow): String? {
+    private fun invoiceDetailUrl(r: ResultRow): String? {
         val webUrl = publicWebUrl ?: return null
-        val fileKeys = r[Invoices.fileKeys]
-        if (fileKeys.isBlank() || fileKeys == "[]") return null
         return "$webUrl/app/invoices/${r[Invoices.syncId]}"
     }
 
     /**
      * Sestaví obsah `<vou:note>` / `<bnk:note>` účtenky:
      *   - Uživatelská poznámka (Receipts.note), pokud je
-     *   - URL na fotku v Cointracku (klikatelný odkaz pro účetní)
+     *   - URL na detail účtenky v Cointracku — vždy (i bez fotky), aby
+     *     účetní mohl jedním klikem otevřít doklad zpět v aplikaci.
      *
-     * Vrátí null, pokud nic z toho neexistuje (note element pak vůbec neemitujeme).
+     * Vrátí null jen pokud chybí jak poznámka, tak URL — pak vůbec note element neemitujeme.
      */
     private fun buildReceiptNote(r: ResultRow): String? {
         val parts = mutableListOf<String>()
         r[Receipts.note]?.takeIf { it.isNotBlank() }?.let { parts.add(it.trim()) }
-        receiptPhotoUrl(r)?.let { parts.add("Fotografie účtenky: $it") }
+        receiptDetailUrl(r)?.let { parts.add("Cointrack: $it") }
         return parts.takeIf { it.isNotEmpty() }?.joinToString("\n")
     }
 
     /**
      * Sestaví obsah `<inv:note>` faktury:
      *   - Uživatelská poznámka (Invoices.note), pokud je
-     *   - URL na soubor v Cointracku (PDF/foto, klikatelný odkaz pro účetní)
+     *   - URL na detail faktury v Cointracku — vždy
      */
     private fun buildInvoiceNote(r: ResultRow): String? {
         val parts = mutableListOf<String>()
         r[Invoices.note]?.takeIf { it.isNotBlank() }?.let { parts.add(it.trim()) }
-        invoiceFileUrl(r)?.let { parts.add("Soubor faktury: $it") }
+        invoiceDetailUrl(r)?.let { parts.add("Cointrack: $it") }
         return parts.takeIf { it.isNotEmpty() }?.joinToString("\n")
     }
 
