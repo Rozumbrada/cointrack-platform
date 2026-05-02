@@ -49,10 +49,13 @@ export default function AccountsPage() {
     return computeAccountBalance(acc.data, txEntities, acc.syncId);
   }
 
+  // Cash účty se VŽDY zahrnují do totalu (sjednoceno s mobilem). Předtím web
+  // ignoroval cash s excludedFromTotal=true — což byl auto-vytvořený stav.
   const totals = useMemo(() => {
     const m: Record<string, number> = {};
     for (const a of visibleAccounts) {
-      if (a.data.excludedFromTotal) continue;
+      const isCash = String(a.data.type ?? "").toLowerCase() === "cash";
+      if (a.data.excludedFromTotal && !isCash) continue;
       const live = computeAccountBalance(a.data, txEntities, a.syncId);
       m[a.data.currency] = (m[a.data.currency] ?? 0) + live;
     }
@@ -70,12 +73,58 @@ export default function AccountsPage() {
   }
 
   function labelType(type: string | undefined): string {
-    switch (type) {
-      case "CASH": return t("type_cash");
-      case "BANK": return t("type_bank");
-      case "CREDIT_CARD": return t("type_credit");
-      case "INVESTMENT": return t("type_investment");
+    // Server data má lowercase typy. Web form zatím posílá UPPERCASE — handle obojí.
+    switch (String(type ?? "").toLowerCase()) {
+      case "cash": return t("type_cash");
+      case "bank":
+      case "checking":
+      case "savings": return t("type_bank");
+      case "credit_card":
+      case "creditcard": return t("type_credit");
+      case "investment": return t("type_investment");
       default: return t("type_other");
+    }
+  }
+
+  // Cash účty s `excludedFromTotal=true` jsou inkonzistentní s mobile chováním
+  // (mobile používá `includeInTotal=true` pro Hotovost). Tahle pomocná akce
+  // všechny takové účty "opraví" — flipne `excludedFromTotal` na false a pushne.
+  // Po fixu mobile uvidí Hotovost v totalu stejně jako web.
+  const cashAccountsToRepair = useMemo(
+    () =>
+      visibleAccounts.filter((a) => {
+        const isCash = String(a.data.type ?? "").toLowerCase() === "cash";
+        return isCash && a.data.excludedFromTotal === true;
+      }),
+    [visibleAccounts],
+  );
+
+  async function repairCashAccounts() {
+    if (cashAccountsToRepair.length === 0) return;
+    if (!confirm(`Zahrnout ${cashAccountsToRepair.length} hotovostní účet/y do celkového zůstatku? Synchronizuje se s mobilní aplikací.`)) return;
+    setActionError(null);
+    try {
+      const now = new Date().toISOString();
+      await withAuth((tk) =>
+        sync.push(tk, {
+          entities: {
+            accounts: cashAccountsToRepair.map((a) => ({
+              syncId: a.syncId,
+              updatedAt: now,
+              clientVersion: 1,
+              // Server používá containsKey guard — pošleme jen klíče, které měníme +
+              // povinná pole z applyAccountFields.
+              data: {
+                ...(a.data as unknown as Record<string, unknown>),
+                excludedFromTotal: false,
+              },
+            })),
+          },
+        }),
+      );
+      await reload();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -144,6 +193,30 @@ export default function AccountsPage() {
               {fmt(amount, cur)}
             </div>
           ))}
+        </div>
+      )}
+
+      {cashAccountsToRepair.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+          <div className="text-amber-600 text-xl">⚠️</div>
+          <div className="flex-1 text-sm">
+            <div className="font-medium text-amber-900">
+              {cashAccountsToRepair.length === 1
+                ? "1 hotovostní účet je vyloučený z celkového zůstatku"
+                : `${cashAccountsToRepair.length} hotovostních účtů je vyloučeno z celkového zůstatku`}
+            </div>
+            <div className="text-amber-800 mt-1">
+              V mobilní aplikaci se hotovost počítá do celkového zůstatku (i v záporu).
+              Klikni níž pro sjednocení s mobilem.
+            </div>
+            <button
+              type="button"
+              onClick={repairCashAccounts}
+              className="mt-2 h-8 px-3 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium"
+            >
+              Zahrnout do celkového zůstatku
+            </button>
+          </div>
         </div>
       )}
 
@@ -248,11 +321,14 @@ export default function AccountsPage() {
 }
 
 function iconForType(t: string | undefined): string {
-  switch (t) {
-    case "CASH": return "💵";
-    case "BANK": return "🏦";
-    case "CREDIT_CARD": return "💳";
-    case "INVESTMENT": return "📈";
+  switch (String(t ?? "").toLowerCase()) {
+    case "cash": return "💵";
+    case "bank":
+    case "checking":
+    case "savings": return "🏦";
+    case "credit_card":
+    case "creditcard": return "💳";
+    case "investment": return "📈";
     default: return "💰";
   }
 }

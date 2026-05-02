@@ -130,16 +130,15 @@ object PohodaExporter {
             else -> ""
         }
         val vatSuffix = if (!isVatPayer) " [neplatce DPH]" else ""
-        val baseText = "Nakup - $merchant$timeSuffix$paymentSuffix$vatSuffix"
-        // Pokud má účtenka přiloženou fotku a máme PUBLIC_WEB_URL, přidáme odkaz.
-        val photoNote = receiptPhotoUrl(r)
-        val text = (if (photoNote != null) "$baseText | Foto: $photoNote" else baseText).take(240)
+        val text = "Nakup - $merchant$timeSuffix$paymentSuffix$vatSuffix".take(240)
+        val note = buildReceiptNote(r)
 
         sb.appendLine("""      <vou:voucherHeader>""")
         sb.appendLine("""        <vou:voucherType>expense</vou:voucherType>""")
         sb.appendLine("""        <vou:date>${r[Receipts.date]}</vou:date>""")
         sb.appendLine("""        <vou:text>${text.xml()}</vou:text>""")
         appendReceiptPartner(sb, r, "vou")
+        if (note != null) sb.appendLine("""        <vou:note>${note.xml()}</vou:note>""")
         sb.appendLine("""      </vou:voucherHeader>""")
     }
 
@@ -198,10 +197,9 @@ object PohodaExporter {
         val merchant = r[Receipts.merchantName].orEmpty().ifBlank { "neznamy obchodnik" }
         val timeSuffix = r[Receipts.time]?.let { " ($it)" }.orEmpty()
         val vatSuffix = if (!isVatPayer) " [neplatce DPH]" else ""
-        val baseText = "Platba kartou - $merchant$timeSuffix$vatSuffix"
-        val photoNote = receiptPhotoUrl(r)
-        // bnk:text má string96 — hard limit
-        val text = (if (photoNote != null) "$baseText | Foto: $photoNote" else baseText).take(96)
+        // bnk:text má string96 — hard limit. URL na fotku jde do <bnk:note> (string240).
+        val text = "Platba kartou - $merchant$timeSuffix$vatSuffix".take(96)
+        val note = buildReceiptNote(r)
 
         // V29 + V31: Bankovní účet — priorita lookup, NIKDY neemitujeme
         // bez `<bnk:account>` (jinak Pohoda doklad spadne do Pokladny).
@@ -235,6 +233,7 @@ object PohodaExporter {
         sb.appendLine("""        <bnk:account>""")
         sb.appendLine("""          <typ:ids>${pohodaIds.xml()}</typ:ids>""")
         sb.appendLine("""        </bnk:account>""")
+        if (note != null) sb.appendLine("""        <bnk:note>${note.xml()}</bnk:note>""")
         sb.appendLine("""      </bnk:bankHeader>""")
 
         // ── bankDetail ──────────────────────────────────────────────────
@@ -383,11 +382,10 @@ object PohodaExporter {
         val invoiceType = if (isExpense) "receivedInvoice" else "issuedInvoice"
         val partnerName = if (isExpense) r[Invoices.supplierName].orEmpty()
                           else r[Invoices.customerName].orEmpty()
-        val baseText = r[Invoices.note]?.takeIf { it.isNotBlank() }
-            ?: partnerName.ifBlank { if (isExpense) "Nakup" else "Prodej" }
-        // URL na detail v Cointrack pokud je nahraný soubor.
-        val fileNote = invoiceFileUrl(r)
-        val text = (if (fileNote != null) "$baseText | Soubor: $fileNote" else baseText).take(240)
+        // Text dokladu = krátký popis (do <inv:text>). User note + URL souboru
+        // jdou do <inv:note> níž (delší a samostatné pole).
+        val text = partnerName.ifBlank { if (isExpense) "Nakup" else "Prodej" }.take(240)
+        val note = buildInvoiceNote(r)
 
         sb.appendLine("""  <dat:dataPackItem id="$seq" version="2.0">""")
         sb.appendLine("""    <inv:invoice version="2.0">""")
@@ -458,6 +456,9 @@ object PohodaExporter {
         sb.appendLine("""          <typ:paymentType>$pmEnum</typ:paymentType>""")
         sb.appendLine("""        </inv:paymentType>""")
 
+        // <inv:note> — uživatelská poznámka + URL souboru pro snadné dohledání
+        // originálního dokumentu zpět v Cointracku.
+        if (note != null) sb.appendLine("""        <inv:note>${note.xml()}</inv:note>""")
         sb.appendLine("""      </inv:invoiceHeader>""")
 
         // ── invoiceDetail ───────────────────────────────────────────────
@@ -550,6 +551,32 @@ object PohodaExporter {
         val fileKeys = r[Invoices.fileKeys]
         if (fileKeys.isBlank() || fileKeys == "[]") return null
         return "$webUrl/app/invoices/${r[Invoices.syncId]}"
+    }
+
+    /**
+     * Sestaví obsah `<vou:note>` / `<bnk:note>` účtenky:
+     *   - Uživatelská poznámka (Receipts.note), pokud je
+     *   - URL na fotku v Cointracku (klikatelný odkaz pro účetní)
+     *
+     * Vrátí null, pokud nic z toho neexistuje (note element pak vůbec neemitujeme).
+     */
+    private fun buildReceiptNote(r: ResultRow): String? {
+        val parts = mutableListOf<String>()
+        r[Receipts.note]?.takeIf { it.isNotBlank() }?.let { parts.add(it.trim()) }
+        receiptPhotoUrl(r)?.let { parts.add("Fotografie účtenky: $it") }
+        return parts.takeIf { it.isNotEmpty() }?.joinToString("\n")
+    }
+
+    /**
+     * Sestaví obsah `<inv:note>` faktury:
+     *   - Uživatelská poznámka (Invoices.note), pokud je
+     *   - URL na soubor v Cointracku (PDF/foto, klikatelný odkaz pro účetní)
+     */
+    private fun buildInvoiceNote(r: ResultRow): String? {
+        val parts = mutableListOf<String>()
+        r[Invoices.note]?.takeIf { it.isNotBlank() }?.let { parts.add(it.trim()) }
+        invoiceFileUrl(r)?.let { parts.add("Soubor faktury: $it") }
+        return parts.takeIf { it.isNotEmpty() }?.joinToString("\n")
     }
 
     // ── DPH sazby ──────────────────────────────────────────────────────

@@ -60,13 +60,18 @@ export default function DashboardPage() {
 
   // Default selection: všechny eligible ne-excluded. Inicializuje se až po
   // načtení účtů (loading=true → null state, čeká na data).
+  // Cash účty (type=cash, case-insensitive) jsou VŽDY included — odpovídá
+  // mobile chování (Hotovost se počítá do total, i v záporu). Před fixem mohl
+  // mít web cash účet s `excluded=true` (auto-vytvořený přes ensureCashAccount),
+  // takže by se nezahrnul — což matlo uživatele.
   useEffect(() => {
     if (selectedAccountIds !== null) return;
     if (eligibleAccounts.length === 0) return;
     const defaults = new Set<string>();
     for (const acc of eligibleAccounts) {
       const d = acc.data as unknown as Record<string, unknown>;
-      if (d.excludedFromTotal === true) continue;
+      const isCash = String(d.type ?? "").toLowerCase() === "cash";
+      if (d.excludedFromTotal === true && !isCash) continue;
       defaults.add(acc.syncId);
     }
     setSelectedAccountIds(defaults);
@@ -170,33 +175,96 @@ export default function DashboardPage() {
     return m;
   }, [eligibleAccounts, txEntitiesAll]);
 
-  // Měsíční příjmy/výdaje
-  const monthlyStats = useMemo(() => {
-    const monthKey = new Date().toISOString().slice(0, 7);
+  // ─── Period selector ──────────────────────────────────────────────
+  // Místo fixního "tento měsíc" si user volí období: měsíc / předchozí /
+  // 3 měs / rok / vlastní rozsah. Aplikuje se na příjmy/výdaje, top kategorie
+  // a donut. 6-měs trend zůstává nezávisle (samostatná vizualizace).
+  type PeriodMode = "currentMonth" | "lastMonth" | "last3Months" | "currentYear" | "custom";
+  const [periodMode, setPeriodMode] = useState<PeriodMode>("currentMonth");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+
+  function isoDate(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  const period = useMemo(() => {
+    const now = new Date();
+    switch (periodMode) {
+      case "currentMonth": {
+        const start = isoDate(new Date(now.getFullYear(), now.getMonth(), 1));
+        const end = isoDate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+        return { start, end };
+      }
+      case "lastMonth": {
+        const start = isoDate(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+        const end = isoDate(new Date(now.getFullYear(), now.getMonth(), 0));
+        return { start, end };
+      }
+      case "last3Months": {
+        const start = isoDate(new Date(now.getFullYear(), now.getMonth() - 2, 1));
+        const end = isoDate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+        return { start, end };
+      }
+      case "currentYear": {
+        const start = isoDate(new Date(now.getFullYear(), 0, 1));
+        const end = isoDate(new Date(now.getFullYear(), 11, 31));
+        return { start, end };
+      }
+      case "custom":
+        return {
+          start: customFrom || "0000-01-01",
+          end: customTo || "9999-12-31",
+        };
+    }
+  }, [periodMode, customFrom, customTo]);
+
+  function inPeriod(date: string | undefined): boolean {
+    if (!date) return false;
+    const d = date.slice(0, 10); // jen YYYY-MM-DD část
+    return d >= period.start && d <= period.end;
+  }
+
+  // Příjmy/výdaje za zvolené období
+  const periodStats = useMemo(() => {
     let income = 0;
     let expense = 0;
     for (const tx of uiTxs) {
-      if (!tx.date?.startsWith(monthKey)) continue;
+      if (!inPeriod(tx.date)) continue;
       if (tx.type === "INCOME") income += tx.amount;
       else if (tx.type === "EXPENSE") expense += tx.amount;
     }
     return { income, expense };
-  }, [uiTxs]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uiTxs, period]);
 
-  // Posledních 10 transakcí
+  const periodLabel = useMemo(() => {
+    switch (periodMode) {
+      case "currentMonth": return monthLabel;
+      case "lastMonth": {
+        const d = new Date();
+        d.setMonth(d.getMonth() - 1);
+        return new Intl.DateTimeFormat(locale, { month: "long" }).format(d);
+      }
+      case "last3Months": return "posledních 3 měs.";
+      case "currentYear": return new Date().getFullYear().toString();
+      case "custom": return `${period.start} – ${period.end}`;
+    }
+  }, [periodMode, monthLabel, locale, period]);
+
+  // Posledních 10 transakcí (vždy z celku, period nemění recent list)
   const recent = useMemo(() => {
     return [...uiTxs]
       .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
       .slice(0, 10);
   }, [uiTxs]);
 
-  // Top 5 kategorií výdajů tento měsíc
+  // Top 5 kategorií výdajů za zvolené období
   const topExpenseCats = useMemo(() => {
-    const monthKey = new Date().toISOString().slice(0, 7);
     const sums = new Map<string | null, number>();
     for (const tx of uiTxs) {
       if (tx.type !== "EXPENSE") continue;
-      if (!tx.date?.startsWith(monthKey)) continue;
+      if (!inPeriod(tx.date)) continue;
       const cid = tx.categorySyncId ?? null;
       sums.set(cid, (sums.get(cid) ?? 0) + tx.amount);
     }
@@ -208,7 +276,8 @@ export default function DashboardPage() {
       }))
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 5);
-  }, [uiTxs, catMap]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uiTxs, catMap, period]);
 
   // 6-měsíční trend
   const trend = useMemo(() => {
@@ -330,6 +399,64 @@ export default function DashboardPage() {
         </section>
       )}
 
+      {/* Období — chips + custom range. Aplikuje se na KPI příjmy/výdaje, top
+          výdajové kategorie a donut. 6-měs trend zůstává nezávisle. */}
+      <section className="bg-white rounded-2xl border border-ink-200 p-4">
+        <div className="flex items-baseline justify-between mb-3">
+          <h2 className="text-xs font-medium text-ink-500 uppercase tracking-wide">
+            Období
+          </h2>
+          <div className="text-xs text-ink-500 tabular-nums">
+            {period.start} – {period.end}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {([
+            ["currentMonth", "Tento měsíc"],
+            ["lastMonth", "Předchozí měsíc"],
+            ["last3Months", "Posledních 3 měsíců"],
+            ["currentYear", "Tento rok"],
+            ["custom", "Vlastní"],
+          ] as Array<[PeriodMode, string]>).map(([mode, label]) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setPeriodMode(mode)}
+              className={`px-3 py-1.5 rounded-full border text-xs transition-colors ${
+                periodMode === mode
+                  ? "bg-brand-600 border-brand-600 text-white"
+                  : "bg-white border-ink-300 text-ink-700 hover:border-ink-400"
+              }`}
+            >
+              {periodMode === mode && <span className="mr-1">✓</span>}
+              {label}
+            </button>
+          ))}
+        </div>
+        {periodMode === "custom" && (
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-ink-500 mb-1">Od</label>
+              <input
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="w-full h-9 rounded-lg border border-ink-300 bg-white px-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-ink-500 mb-1">Do</label>
+              <input
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="w-full h-9 rounded-lg border border-ink-300 bg-white px-2 text-sm"
+              />
+            </div>
+          </div>
+        )}
+      </section>
+
       {/* KPI + trend */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <section className="bg-white rounded-2xl border border-ink-200 p-5 space-y-4">
@@ -352,18 +479,18 @@ export default function DashboardPage() {
           <div className="grid grid-cols-2 gap-3 pt-3 border-t border-ink-100">
             <div>
               <div className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-1">
-                {t("income_for_month", { month: monthLabel })}
+                {t("income_for_month", { month: periodLabel })}
               </div>
               <div className="text-xl font-semibold text-emerald-700 tabular-nums">
-                +{fmt(monthlyStats.income, "CZK")}
+                +{fmt(periodStats.income, "CZK")}
               </div>
             </div>
             <div>
               <div className="text-xs font-medium text-ink-500 uppercase tracking-wide mb-1">
-                {t("expense_for_month", { month: monthLabel })}
+                {t("expense_for_month", { month: periodLabel })}
               </div>
               <div className="text-xl font-semibold text-red-700 tabular-nums">
-                −{fmt(monthlyStats.expense, "CZK")}
+                −{fmt(periodStats.expense, "CZK")}
               </div>
             </div>
           </div>
@@ -446,12 +573,12 @@ export default function DashboardPage() {
       {/* Donut + top výdaje */}
       <section className="bg-white rounded-2xl border border-ink-200 p-5">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-ink-900">{t("expenses_by_category", { month: monthLabel })}</h2>
+          <h2 className="font-semibold text-ink-900">{t("expenses_by_category", { month: periodLabel })}</h2>
           <Link href="/app/statistics" className="text-sm text-brand-600 hover:text-brand-700">
             {t("detail")}
           </Link>
         </div>
-        {topExpenseCats.length === 0 || monthlyStats.expense === 0 ? (
+        {topExpenseCats.length === 0 || periodStats.expense === 0 ? (
           <div className="py-6 text-center text-ink-500 text-sm">
             {t("no_expenses")}
           </div>
@@ -464,14 +591,14 @@ export default function DashboardPage() {
                   amount: c.amount,
                   category: c.category,
                 }))}
-                total={monthlyStats.expense}
+                total={periodStats.expense}
                 size={200}
                 stroke={36}
               />
             </div>
             <div className="space-y-3">
               {topExpenseCats.map((row) => {
-                const pct = (row.amount / monthlyStats.expense) * 100;
+                const pct = (row.amount / periodStats.expense) * 100;
                 return (
                   <div key={String(row.cid)}>
                     <div className="flex items-center justify-between text-sm mb-1 gap-2">
@@ -611,11 +738,17 @@ function fmt(amount: number, currency: string): string {
 }
 
 function labelAccountType(type: string | undefined): string {
-  switch (type) {
-    case "CASH": return "Hotovost";
-    case "BANK": return "Banka";
-    case "CREDIT_CARD": return "Kreditka";
-    case "INVESTMENT": return "Investice";
+  // Server data má lowercase typy (Salt Edge / mobile mapping):
+  // "cash", "checking", "savings", "credit_card", "investment", "other"
+  // Web AccountForm zatím posílá UPPERCASE — handle obojí.
+  switch (String(type ?? "").toLowerCase()) {
+    case "cash": return "Hotovost";
+    case "bank":
+    case "checking":
+    case "savings": return "Banka";
+    case "credit_card":
+    case "creditcard": return "Kreditka";
+    case "investment": return "Investice";
     default: return type ?? "";
   }
 }
