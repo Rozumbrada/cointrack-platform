@@ -64,6 +64,11 @@ export default function InvoiceDetailPage() {
   const all = entitiesByProfile<InvoiceData>("invoices");
   const allItems = rawEntities("invoice_items");
   const [editing, setEditing] = useState(false);
+  // POZOR: všechny useState/useMemo/useEffect MUSÍ být před early returny níž.
+  // Předtím byl showPayDialog deklarovaný až za `if (loading)` / `if (!invoice)`,
+  // což porušilo Rules of Hooks → React házel "Rendered more hooks than during
+  // the previous render" → detail faktury se nedalo vůbec otevřít (page crash).
+  const [showPayDialog, setShowPayDialog] = useState(false);
 
   const invoice = useMemo(
     () => all.find((r) => r.syncId === params.syncId),
@@ -133,7 +138,6 @@ export default function InvoiceDetailPage() {
   const currency = r.currency || "CZK";
   const fileKeys = Array.isArray(r.fileKeys) ? r.fileKeys : [];
   const isPaid = r.paid || !!r.linkedTransactionId;
-  const [showPayDialog, setShowPayDialog] = useState(false);
 
   return (
     <div className="space-y-6 max-w-3xl">
