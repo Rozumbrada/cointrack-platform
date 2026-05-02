@@ -17,7 +17,17 @@ import kotlinx.serialization.Serializable
 import java.util.UUID
 
 @Serializable
-data class AcceptShareRequest(val token: String)
+data class AcceptShareRequest(
+    val token: String,
+    /**
+     * Pokud true, recipient může přijmout pozvánku i když má účet pod jiným
+     * e-mailem než na který byla pozvánka poslána. Použito v UI scenario:
+     * "Už mám účet pod jiným emailem → přihlas se → přijmout pozvánku".
+     * Bezpečnost: token v invitation linku je dostatečná autorizace; e-mail
+     * check byl jen UX hint kdyby user měl víc účtů otevřených najednou.
+     */
+    val allowDifferentEmail: Boolean = false,
+)
 
 fun Route.accountShareRoutes(service: AccountShareService) {
     route("/accounts") {
@@ -64,7 +74,7 @@ fun Route.accountShareRoutes(service: AccountShareService) {
             post("/shares/accept") {
                 val userId = call.userId()
                 val req = call.receive<AcceptShareRequest>()
-                call.respond(service.acceptInvite(req.token, userId))
+                call.respond(service.acceptInvite(req.token, userId, req.allowDifferentEmail))
             }
 
             // Recipient: list všech share, které mám aktivně přijaté (pro UI)

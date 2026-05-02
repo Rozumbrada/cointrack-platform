@@ -428,8 +428,14 @@ class AccountShareService(
         )
     }
 
-    /** Přijetí pozvánky — link `user_id` na share row. */
-    suspend fun acceptInvite(token: String, userId: UUID): ShareDto {
+    /**
+     * Přijetí pozvánky — link `user_id` na share row.
+     * @param allowDifferentEmail true = přijmout pod jiným e-mailem než byl
+     *   v pozvánce (user explicitně klikl "už mám účet pod jiným emailem").
+     *   Token v URL je sám o sobě dostatečná autorizace; e-mail check byl jen
+     *   UX hint pro uživatele s víc účty otevřenými.
+     */
+    suspend fun acceptInvite(token: String, userId: UUID, allowDifferentEmail: Boolean = false): ShareDto {
         val tokenHash = TokenGenerator.hash(token)
         return db {
             val share = AccountShares.selectAll().where {
@@ -443,13 +449,14 @@ class AccountShareService(
                 throw ApiException(HttpStatusCode.Gone, "invite_expired", "Pozvánka vypršela.")
             }
 
-            // Email recipient se musí shodovat — buď user.email == share.email,
-            // nebo accept jakýmkoliv ověřeným uživatelem (pokud přihlášený).
+            // Default: e-mail recipient se musí shodovat se share.email.
+            // Override: `allowDifferentEmail=true` (user explicit volba "mám účet pod jiným emailem")
+            // — token sám je dostatečná autorizace.
             val acceptingUserEmail = Users.selectAll().where { Users.id eq userId }
                 .singleOrNull()?.get(Users.email)?.lowercase()
                 ?: throw ApiException(HttpStatusCode.NotFound, "user_not_found", "User nenalezen.")
             val inviteEmail = share[AccountShares.email].lowercase()
-            if (acceptingUserEmail != inviteEmail) {
+            if (!allowDifferentEmail && acceptingUserEmail != inviteEmail) {
                 throw ApiException(HttpStatusCode.Forbidden, "wrong_user",
                     "Pozvánka byla zaslaná na jiný email ($inviteEmail).")
             }

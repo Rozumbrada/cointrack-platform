@@ -13,6 +13,9 @@ function AcceptShareInner() {
   const t = useTranslations("accept_share");
   const locale = useLocale();
   const token = params.get("token");
+  // ?different=1 → user klikl "Už mám účet pod jiným emailem" v needsLogin
+  // sekci → po loginu accept proběhne s allowDifferentEmail=true.
+  const allowDifferent = params.get("different") === "1";
 
   const [preview, setPreview] = useState<AccountSharePreviewDto | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +43,7 @@ function AcceptShareInner() {
     setAccepting(true);
     setError(null);
     try {
-      await accountShares.accept(at, token);
+      await accountShares.accept(at, token, allowDifferent);
       setDone(true);
     } catch (e) {
       if (e instanceof ApiError) {
@@ -95,23 +98,34 @@ function AcceptShareInner() {
   }
 
   if (needsLogin) {
-    const next = `/accept-share?token=${encodeURIComponent(token!)}`;
+    // Pozvánka na e-mail recipienta — předpokládáme, že jde o nového uživatele.
+    // Primární CTA: registrace. Sekundární link pod tím: "Už mám účet pod jiným
+    // emailem" → /login s ?different=1 ve return path. Server pak skipne email
+    // check (token je dostatečná autorizace).
+    const nextSame = `/accept-share?token=${encodeURIComponent(token!)}`;
+    const nextDifferent = `/accept-share?token=${encodeURIComponent(token!)}&different=1`;
     return (
       <Card>
         <h1 className="text-xl font-semibold text-ink-900 mb-3">{t("title")}</h1>
-        <p className="text-sm text-ink-600 mb-6">{t("login_first")}</p>
-        <div className="flex gap-3">
+        <div className="space-y-2 text-sm text-ink-700 mb-6 mt-4">
+          <Row label={t("from")} value={preview.ownerEmail} />
+          <Row label={t("account")} value={preview.accountName} bold />
+          <Row label={t("profile")} value={preview.profileName} />
+        </div>
+        <p className="text-sm text-ink-600 mb-4">{t("register_to_continue")}</p>
+        <Link
+          href={`/signup?next=${encodeURIComponent(nextSame)}`}
+          className="block w-full h-11 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium grid place-items-center"
+        >
+          {t("go_signup")}
+        </Link>
+        <div className="mt-4 pt-4 border-t border-ink-100">
+          <p className="text-xs text-ink-500 mb-2 text-center">{t("already_have_account")}</p>
           <Link
-            href={`/login?next=${encodeURIComponent(next)}`}
-            className="flex-1 h-11 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium grid place-items-center"
+            href={`/login?next=${encodeURIComponent(nextDifferent)}`}
+            className="block w-full h-10 rounded-lg border border-ink-300 bg-white hover:bg-ink-50 text-xs font-medium text-ink-700 grid place-items-center"
           >
-            {t("go_login")}
-          </Link>
-          <Link
-            href={`/signup?next=${encodeURIComponent(next)}`}
-            className="flex-1 h-11 rounded-lg border border-ink-300 bg-white hover:bg-ink-50 text-sm font-medium text-ink-900 grid place-items-center"
-          >
-            {t("go_signup")}
+            {t("login_with_different_email")}
           </Link>
         </div>
       </Card>

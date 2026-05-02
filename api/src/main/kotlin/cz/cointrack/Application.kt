@@ -1,5 +1,7 @@
 package cz.cointrack
 
+import cz.cointrack.admin.AdminService
+import cz.cointrack.admin.adminRoutes
 import cz.cointrack.auth.AuthService
 import cz.cointrack.auth.JwtConfig
 import cz.cointrack.auth.JwtService
@@ -116,6 +118,16 @@ fun Application.module() {
     // V21 — per-account sharing (Organization tier)
     val accountShareService = AccountShareService(email = emailService, webBaseUrl = webBaseUrl)
 
+    // Admin sekce — přístup omezen přes ADMIN_EMAILS env (CSV), ostatní 403.
+    val adminEmailsEnv = System.getenv("ADMIN_EMAILS").orEmpty()
+        .split(",").map { it.trim().lowercase() }.filter { it.isNotBlank() }.toSet()
+    if (adminEmailsEnv.isNotEmpty()) {
+        log.info("Admin sekce aktivní pro: ${adminEmailsEnv.joinToString(", ")}")
+    } else {
+        log.info("ADMIN_EMAILS není nastavený — admin sekce zamítne všechny.")
+    }
+    val adminService = AdminService(adminEmails = adminEmailsEnv)
+
     // GDPR — data export + account deletion (čl. 17, 20)
     val gdprService = GdprService(storage = storageService)
     @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
@@ -155,6 +167,7 @@ fun Application.module() {
             exportRoutes()
             gdprRoutes(gdprService)
             accountShareRoutes(accountShareService)
+            adminRoutes(adminService)
 
             // TODO (Sprint 8): billing endpoints
         }

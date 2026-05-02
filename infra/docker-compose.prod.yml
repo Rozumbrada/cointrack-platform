@@ -116,6 +116,9 @@ services:
       PUBLIC_API_URL: ${PUBLIC_API_URL}
       # AI (Gemini OCR + categorization, key na serveru)
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      # Admin sekce — CSV seznam e-mailů s admin přístupem (založ to do .env.prod
+      # jako `ADMIN_EMAILS=founder@cointrack.cz,...`). Bez nastavení = sekce zamítne všechny.
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       # Banking (Sprint 6)
       BANKING_PROVIDER: ${BANKING_PROVIDER:-fio_only}
       SALT_EDGE_APP_ID: ${SALT_EDGE_APP_ID:-}

@@ -256,9 +256,9 @@ export const accountShares = {
   preview: (shareToken: string) =>
     api<AccountSharePreviewDto>(`/api/v1/accounts/shares/preview?token=${encodeURIComponent(shareToken)}`),
 
-  accept: (token: string, shareToken: string) =>
+  accept: (token: string, shareToken: string, allowDifferentEmail = false) =>
     api<AccountShareDto>(`/api/v1/accounts/shares/accept`, {
-      method: "POST", token, body: { token: shareToken },
+      method: "POST", token, body: { token: shareToken, allowDifferentEmail },
     }),
 
   myShares: (token: string) =>
@@ -266,6 +266,56 @@ export const accountShares = {
 
   listOwned: (token: string) =>
     api<ShareWithAccountDto[]>(`/api/v1/accounts/shares/owned`, { token }),
+};
+
+// ─── Admin (jen pro adminy dle ADMIN_EMAILS env) ─────────────────────
+
+export interface AdminUserDto {
+  id: string;
+  email: string;
+  displayName?: string | null;
+  locale: string;
+  tier: string;
+  tierExpiresAt?: string | null;
+  emailVerified: boolean;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+}
+
+export interface AdminUpdateUserRequest {
+  tier?: string;
+  displayName?: string;
+  emailVerified?: boolean;
+  locale?: string;
+}
+
+export const admin = {
+  check: (token: string) =>
+    api<{ isAdmin: boolean }>(`/api/v1/admin/check`, { token }),
+
+  listUsers: (token: string, q?: string, limit = 100, offset = 0) => {
+    const qs = new URLSearchParams();
+    if (q) qs.set("q", q);
+    qs.set("limit", String(limit));
+    qs.set("offset", String(offset));
+    return api<AdminUserDto[]>(`/api/v1/admin/users?${qs.toString()}`, { token });
+  },
+
+  updateUser: (token: string, userId: string, req: AdminUpdateUserRequest) =>
+    api<AdminUserDto>(`/api/v1/admin/users/${userId}`, {
+      method: "PATCH", token, body: req,
+    }),
+
+  deleteUser: (token: string, userId: string) =>
+    api<{ ok: boolean }>(`/api/v1/admin/users/${userId}`, {
+      method: "DELETE", token,
+    }),
+
+  restoreUser: (token: string, userId: string) =>
+    api<{ ok: boolean }>(`/api/v1/admin/users/${userId}/restore`, {
+      method: "POST", token,
+    }),
 };
 
 // ─── iDoklad full proxy (V21) ───────────────────────────────────────

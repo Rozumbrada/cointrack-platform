@@ -9,8 +9,9 @@ import {
   getAccessToken,
   getStoredUser,
   setStoredUser,
+  withAuth,
 } from "@/lib/auth-store";
-import { auth, sync, UserDto } from "@/lib/api";
+import { admin, auth, sync, UserDto } from "@/lib/api";
 import {
   getCurrentProfileSyncId,
   getCachedProfileType,
@@ -32,6 +33,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   // Init z localStorage cache — layout má od první frame správný typ
   // (pokud user už profil dříve používal). Bez cache by Členové menu
   // chvíli flickly do/z viditelnosti při každém načtení.
@@ -171,6 +173,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         clearAuth();
         router.replace("/login");
       });
+
+    // Admin check — zobrazí Admin link v sidebaru jen pro adminy. Endpoint vrací
+    // 403 pokud user není v ADMIN_EMAILS. Přidáno až po /me, aby běh selhání
+    // (403) nepoložil hlavní auth flow.
+    withAuth((tk) => admin.check(tk))
+      .then(() => setIsAdmin(true))
+      .catch(() => setIsAdmin(false));
   }, [router]);
 
   async function onLogout() {
@@ -238,6 +247,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     // přímý odkaz, což stačí pro power-uživatele.
     { href: "/app/upgrade", label: ts("upgrade"), section: ts("section_account") },
     { href: "/app/settings", label: ts("settings") },
+    // Admin sekce — jen pro adminy (ADMIN_EMAILS env). Server vrací 403 pro
+    // ostatní; my UI zobrazujeme jen pokud /admin/check prošel.
+    ...(isAdmin
+      ? [{ href: "/app/admin", label: "🛠 Admin", section: "Admin" }]
+      : []),
   ];
 
   // Pro profile selection — minimální layout, bez navigace
