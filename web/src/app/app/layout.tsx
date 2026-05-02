@@ -221,6 +221,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/app/statistics", label: ts("statistics") },
     { href: "/app/receipts", label: ts("receipts"), section: ts("section_documents") },
     { href: "/app/invoices", label: ts("invoices") },
+    { href: "/app/email-inbox", label: "📧 Email schránky" },
     { href: "/app/idoklad", label: ts("idoklad") },
     // /app/fio přesunuto inline do /app/banks ("Bankovní spojení") — sjednoceno
     // s mobile patternem (BankSyncScreen). Sidebar link odstraněn.

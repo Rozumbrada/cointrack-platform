@@ -119,6 +119,10 @@ services:
       # Admin sekce — CSV seznam e-mailů s admin přístupem (založ to do .env.prod
       # jako `ADMIN_EMAILS=founder@cointrack.cz,...`). Bez nastavení = sekce zamítne všechny.
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      # AES-256-GCM klíč pro šifrování citlivých credentials (iDoklad client_secret,
+      # IMAP password, Fio token). Generuj `openssl rand -hex 32`. Pokud chybí,
+      # fallback na JWT_SECRET (funguje, ale rotace vyžaduje login-out všech uživatelů).
+      IDOKLAD_ENC_KEY: ${IDOKLAD_ENC_KEY:-}
       # Banking (Sprint 6)
       BANKING_PROVIDER: ${BANKING_PROVIDER:-fio_only}
       SALT_EDGE_APP_ID: ${SALT_EDGE_APP_ID:-}

@@ -36,6 +36,10 @@ interface InvoiceData {
   paymentMethod?: string;
   /** ISO timestamp posledního Pohoda XML exportu. Null = nikdy. */
   exportedAt?: string | null;
+  /** V30 — origin tracking (manual/scan/idoklad/email) */
+  source?: string;
+  emailSubject?: string;
+  emailSender?: string;
 }
 
 type AccountListEntry = { syncId: string; data: ServerAccount };
@@ -506,6 +510,14 @@ export default function InvoicesPage() {
                           title={t("exported_tooltip", { date: r.data.exportedAt.slice(0, 10) })}
                         >
                           {t("exported_badge")}
+                        </span>
+                      )}
+                      {r.data.source === "email" && (
+                        <span
+                          className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium whitespace-nowrap"
+                          title={r.data.emailSender ? `Z emailu: ${r.data.emailSender}` : "Z emailu"}
+                        >
+                          📧 Email
                         </span>
                       )}
                     </div>

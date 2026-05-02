@@ -1079,6 +1079,9 @@ class SyncService {
         s[Invoices.note] = d.strOrNull("note")
         s[Invoices.fileKeys] = d["fileKeys"]?.toString() ?: "[]"
         s[Invoices.idokladId] = d.strOrNull("idokladId")
+        // V30 — origin tracking. Server-side přidělené (přes EmailInboxService),
+        // klient přepisovat nemůže — zachováme staré hodnoty pokud je sync push neobsahuje.
+        d.strOrNull("source")?.let { s[Invoices.originSource] = it }
         s[Invoices.clientVersion] = cv
         s[Invoices.updatedAt] = updatedAt
         s[Invoices.deletedAt] = deletedAt
@@ -1415,6 +1418,11 @@ class SyncService {
             put("fileKeys", Json.parseToJsonElement(r[Invoices.fileKeys]))
             r[Invoices.idokladId]?.let { put("idokladId", it) }
             r[Invoices.exportedAt]?.let { put("exportedAt", it.toString()) }
+            // V30 — origin tracking
+            r[Invoices.originSource]?.let { put("source", it) }
+            r[Invoices.emailSubject]?.let { put("emailSubject", it) }
+            r[Invoices.emailSender]?.let { put("emailSender", it) }
+            r[Invoices.emailReceivedAt]?.let { put("emailReceivedAt", it.toString()) }
         },
     )
 

@@ -2,6 +2,10 @@ package cz.cointrack
 
 import cz.cointrack.admin.AdminService
 import cz.cointrack.admin.adminRoutes
+import cz.cointrack.email.inbox.EmailGeminiOcr
+import cz.cointrack.email.inbox.EmailInboxService
+import cz.cointrack.email.inbox.EmailInboxWorker
+import cz.cointrack.email.inbox.emailInboxRoutes
 import cz.cointrack.auth.AuthService
 import cz.cointrack.auth.JwtConfig
 import cz.cointrack.auth.JwtService
@@ -128,6 +132,12 @@ fun Application.module() {
     }
     val adminService = AdminService(adminEmails = adminEmailsEnv)
 
+    // V30 — Email inbox (IMAP fetcher + AI OCR)
+    val emailOcr = EmailGeminiOcr(geminiService)
+    val emailInboxService = EmailInboxService(storage = storageService, ocr = emailOcr)
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+    EmailInboxWorker(emailInboxService).start(scope = kotlinx.coroutines.GlobalScope)
+
     // GDPR — data export + account deletion (čl. 17, 20)
     val gdprService = GdprService(storage = storageService)
     @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
@@ -168,6 +178,7 @@ fun Application.module() {
             gdprRoutes(gdprService)
             accountShareRoutes(accountShareService)
             adminRoutes(adminService)
+            emailInboxRoutes(emailInboxService)
 
             // TODO (Sprint 8): billing endpoints
         }

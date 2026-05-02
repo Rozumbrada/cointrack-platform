@@ -26,6 +26,9 @@ export interface ServerProfile {
   cointrackUserId?: string;
 }
 
+/** V30 — origin tracking pro faktury (manual / scan / idoklad / email). */
+export type InvoiceSource = "manual" | "scan" | "idoklad" | "email";
+
 export interface ServerAccount {
   profileId: string;
   name: string;

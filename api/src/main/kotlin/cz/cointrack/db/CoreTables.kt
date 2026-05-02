@@ -185,6 +185,45 @@ object Invoices : SyncableTable("invoices") {
     val fileKeys           = text("file_keys").default("[]")
     val idokladId          = varchar("idoklad_id", 64).nullable()
     val exportedAt         = timestamp("exported_at").nullable()  // V28
+
+    // V30 — origin tracking (manual/scan/idoklad/email)
+    // `source` musí mít jiné jméno než SQL `source` aliasem ColumnSet — používáme `originSource`.
+    val originSource       = varchar("source", 16).nullable()
+    val emailAccountId     = reference("email_account_id", EmailAccounts).nullable()
+    val emailSubject       = varchar("email_subject", 512).nullable()
+    val emailSender        = varchar("email_sender", 255).nullable()
+    val emailMessageId     = varchar("email_message_id", 255).nullable()
+    val emailReceivedAt    = timestamp("email_received_at").nullable()
+}
+
+// V30 — Email inbox (IMAP)
+object EmailAccounts : SyncableTable("email_accounts") {
+    val profileId               = reference("profile_id", Profiles)
+    val provider                = varchar("provider", 16).default("IMAP")
+    val displayLabel            = varchar("display_label", 128).nullable()
+
+    // IMAP credentials (heslo AES-GCM, base64; klíč v env IDOKLAD_ENC_KEY)
+    val imapHost                = varchar("imap_host", 128).nullable()
+    val imapPort                = integer("imap_port").default(993)
+    val imapUsername            = varchar("imap_username", 255).nullable()
+    val imapPasswordEnc         = text("imap_password_enc").nullable()
+    val imapSsl                 = bool("imap_ssl").default(true)
+
+    // OAuth (Phase 3 placeholder)
+    val oauthRefreshTokenEnc    = text("oauth_refresh_token_enc").nullable()
+
+    // Filtry
+    val folder                  = varchar("folder", 64).default("INBOX")
+    val senderWhitelist         = text("sender_whitelist").nullable()
+    val subjectFilter           = varchar("subject_filter", 255).nullable()
+
+    // State
+    val lastSyncedAt            = timestamp("last_synced_at").nullable()
+    val lastSyncedUid           = varchar("last_synced_uid", 64).nullable()
+    val lastSyncError           = text("last_sync_error").nullable()
+    val syncIntervalHours       = integer("sync_interval_hours").default(6)
+
+    val enabled                 = bool("enabled").default(true)
 }
 
 object InvoiceItems : SyncableTable("invoice_items") {

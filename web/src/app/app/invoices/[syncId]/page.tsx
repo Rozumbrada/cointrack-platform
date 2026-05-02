@@ -36,8 +36,13 @@ interface InvoiceData {
   note?: string;
   fileKeys?: string[];
   linkedTransactionId?: string;
+  linkedAccountId?: string;
   profileId?: string;
   idokladId?: string;
+  source?: string;
+  emailSubject?: string;
+  emailSender?: string;
+  emailReceivedAt?: string;
 }
 
 interface InvoiceItemData {
@@ -128,6 +133,7 @@ export default function InvoiceDetailPage() {
   const currency = r.currency || "CZK";
   const fileKeys = Array.isArray(r.fileKeys) ? r.fileKeys : [];
   const isPaid = r.paid || !!r.linkedTransactionId;
+  const [showPayDialog, setShowPayDialog] = useState(false);
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -184,7 +190,21 @@ export default function InvoiceDetailPage() {
             {isPaid ? (
               <div className="text-xs text-emerald-700 mt-1">✓ uhrazeno</div>
             ) : (
-              <div className="text-xs text-amber-700 mt-1">nezaplaceno</div>
+              <div className="mt-1 space-y-1">
+                <div className="text-xs text-amber-700">nezaplaceno</div>
+                <button
+                  type="button"
+                  onClick={() => setShowPayDialog(true)}
+                  className="text-xs h-7 px-3 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+                >
+                  💰 Zaplatit
+                </button>
+              </div>
+            )}
+            {r.source === "email" && (
+              <div className="mt-2 text-[10px] uppercase tracking-wide bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded inline-block">
+                📧 Z emailu
+              </div>
             )}
           </div>
         </div>
@@ -311,6 +331,181 @@ export default function InvoiceDetailPage() {
           }}
         />
       )}
+
+      {showPayDialog && (
+        <PayInvoiceDialog
+          invoiceSyncId={params.syncId}
+          invoice={r}
+          profileSyncId={profileSyncId}
+          accounts={entitiesByProfile<{ name: string; type?: string; currency?: string }>("accounts")}
+          onClose={() => setShowPayDialog(false)}
+          onPaid={async () => {
+            setShowPayDialog(false);
+            await reload();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Pay Invoice Dialog ─────────────────────────────────────────────
+
+function PayInvoiceDialog({
+  invoiceSyncId,
+  invoice,
+  profileSyncId,
+  accounts,
+  onClose,
+  onPaid,
+}: {
+  invoiceSyncId: string;
+  invoice: InvoiceData;
+  profileSyncId: string | null;
+  accounts: Array<{ syncId: string; data: { name: string; type?: string; currency?: string } }>;
+  onClose: () => void;
+  onPaid: () => Promise<void>;
+}) {
+  const [accountSyncId, setAccountSyncId] = useState<string>(accounts[0]?.syncId ?? "");
+  const [date, setDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [note, setNote] = useState<string>("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function onSubmit() {
+    if (!profileSyncId || !accountSyncId) return;
+    const total = parseFloat(String(invoice.totalWithVat).replace(",", ".")) || 0;
+    if (total <= 0) {
+      setErr("Faktura má neplatnou částku.");
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    try {
+      const now = new Date().toISOString();
+      const txSyncId = crypto.randomUUID();
+      // EXPENSE pro přijatou (peníze odejdou), INCOME pro vystavenou (peníze přijdou)
+      const amount = invoice.isExpense ? -Math.abs(total) : Math.abs(total);
+      const description = invoice.isExpense
+        ? (invoice.supplierName || invoice.invoiceNumber || "Faktura")
+        : (invoice.customerName || invoice.invoiceNumber || "Faktura");
+      await withAuth((tk) =>
+        sync.push(tk, {
+          entities: {
+            transactions: [
+              {
+                syncId: txSyncId,
+                updatedAt: now,
+                clientVersion: 1,
+                data: {
+                  profileId: profileSyncId,
+                  accountId: accountSyncId,
+                  amount: amount.toFixed(2),
+                  currency: invoice.currency || "CZK",
+                  description,
+                  date,
+                  note: note.trim() || undefined,
+                  isTransfer: false,
+                },
+              },
+            ],
+            invoices: [
+              {
+                syncId: invoiceSyncId,
+                updatedAt: now,
+                clientVersion: 1,
+                data: {
+                  ...(invoice as unknown as Record<string, unknown>),
+                  paid: true,
+                  linkedTransactionId: txSyncId,
+                  linkedAccountId: accountSyncId,
+                },
+              },
+            ],
+          },
+        }),
+      );
+      await onPaid();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const total = parseFloat(String(invoice.totalWithVat).replace(",", ".")) || 0;
+  const currency = invoice.currency || "CZK";
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl border border-ink-200 max-w-md w-full p-6 space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-ink-900">Zaplatit fakturu</h2>
+          <p className="text-sm text-ink-600 mt-1">
+            {invoice.isExpense ? "Z účtu odejde" : "Na účet přijde"}{" "}
+            <strong className="tabular-nums">{total.toLocaleString("cs-CZ", { style: "currency", currency })}</strong>
+            {invoice.invoiceNumber && <span className="text-ink-500"> · {invoice.invoiceNumber}</span>}
+          </p>
+        </div>
+
+        <label className="block">
+          <div className="text-xs font-medium text-ink-700 mb-1">Účet</div>
+          <select
+            value={accountSyncId}
+            onChange={(e) => setAccountSyncId(e.target.value)}
+            className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm"
+          >
+            {accounts.length === 0 && <option value="">— žádný účet —</option>}
+            {accounts.map((a) => (
+              <option key={a.syncId} value={a.syncId}>
+                {a.data.name} ({a.data.currency ?? "CZK"})
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block">
+          <div className="text-xs font-medium text-ink-700 mb-1">Datum platby</div>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm"
+          />
+        </label>
+
+        <label className="block">
+          <div className="text-xs font-medium text-ink-700 mb-1">Poznámka (volitelné)</div>
+          <input
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Např. variabilní symbol, kdo platil…"
+            className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm"
+          />
+        </label>
+
+        {err && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">{err}</div>
+        )}
+
+        <div className="flex gap-3 pt-2">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="h-10 px-4 rounded-lg border border-ink-300 bg-white hover:bg-ink-50 text-sm font-medium text-ink-900"
+          >
+            Zrušit
+          </button>
+          <button
+            onClick={onSubmit}
+            disabled={saving || !accountSyncId}
+            className="flex-1 h-10 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium"
+          >
+            {saving ? "Ukládám…" : "💰 Zaplatit"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

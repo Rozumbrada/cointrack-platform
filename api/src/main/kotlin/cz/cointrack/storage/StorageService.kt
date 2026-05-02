@@ -99,4 +99,30 @@ class StorageService(private val config: StorageConfig) {
     }
 
     fun bucket(): String = config.bucket
+
+    /**
+     * Server-side přímý upload binárních dat do S3/MinIO. Vrací storage key.
+     * Používá se z workerů (např. EmailInboxWorker) které běží na serveru
+     * a nepotřebují presigned URL.
+     */
+    fun uploadDirectly(bytes: ByteArray, contentType: String, purpose: String): String {
+        val ext = when {
+            contentType.contains("pdf") -> "pdf"
+            contentType.contains("png") -> "png"
+            contentType.contains("jpeg") || contentType.contains("jpg") -> "jpg"
+            contentType.contains("webp") -> "webp"
+            contentType.contains("heic") -> "heic"
+            else -> "bin"
+        }
+        val key = "$purpose/${java.util.UUID.randomUUID()}.$ext"
+        client.putObject(
+            software.amazon.awssdk.services.s3.model.PutObjectRequest.builder()
+                .bucket(config.bucket)
+                .key(key)
+                .contentType(contentType)
+                .build(),
+            software.amazon.awssdk.core.sync.RequestBody.fromBytes(bytes),
+        )
+        return key
+    }
 }

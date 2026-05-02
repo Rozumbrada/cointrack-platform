@@ -290,6 +290,115 @@ export interface AdminUpdateUserRequest {
   locale?: string;
 }
 
+// ─── Email inbox (IMAP) ─────────────────────────────────────────────
+
+export interface EmailInboxAccountDto {
+  id: string;
+  syncId: string;
+  profileSyncId: string;
+  provider: string;
+  displayLabel?: string | null;
+  imapHost?: string | null;
+  imapPort: number;
+  imapUsername?: string | null;
+  imapSsl: boolean;
+  folder: string;
+  senderWhitelist?: string | null;
+  subjectFilter?: string | null;
+  lastSyncedAt?: string | null;
+  lastSyncError?: string | null;
+  syncIntervalHours: number;
+  enabled: boolean;
+  createdAt: string;
+}
+
+export interface EmailInboxCreateRequest {
+  displayLabel?: string;
+  provider?: string;
+  imapHost: string;
+  imapPort?: number;
+  imapUsername: string;
+  imapPassword: string;
+  imapSsl?: boolean;
+  folder?: string;
+  senderWhitelist?: string;
+  subjectFilter?: string;
+  syncIntervalHours?: number;
+}
+
+export interface EmailInboxUpdateRequest {
+  displayLabel?: string;
+  imapHost?: string;
+  imapPort?: number;
+  imapUsername?: string;
+  imapPassword?: string;
+  imapSsl?: boolean;
+  folder?: string;
+  senderWhitelist?: string;
+  subjectFilter?: string;
+  syncIntervalHours?: number;
+  enabled?: boolean;
+}
+
+export interface EmailInboxTestRequest {
+  imapHost: string;
+  imapPort?: number;
+  imapUsername: string;
+  imapPassword: string;
+  imapSsl?: boolean;
+}
+
+export interface EmailInboxTestResult {
+  ok: boolean;
+  message: string;
+  foldersFound?: string[];
+}
+
+export interface EmailInboxSyncResult {
+  ok: boolean;
+  processed: number;
+  invoicesCreated: number;
+  skipped: number;
+  error?: string | null;
+}
+
+export const emailInbox = {
+  list: (token: string, profileSyncId: string) =>
+    api<EmailInboxAccountDto[]>(
+      `/api/v1/email-inbox/accounts?profileSyncId=${encodeURIComponent(profileSyncId)}`,
+      { token },
+    ),
+
+  create: (token: string, profileSyncId: string, req: EmailInboxCreateRequest) =>
+    api<EmailInboxAccountDto>(
+      `/api/v1/email-inbox/accounts?profileSyncId=${encodeURIComponent(profileSyncId)}`,
+      { method: "POST", token, body: req },
+    ),
+
+  update: (token: string, accountId: string, profileSyncId: string, req: EmailInboxUpdateRequest) =>
+    api<EmailInboxAccountDto>(
+      `/api/v1/email-inbox/accounts/${accountId}?profileSyncId=${encodeURIComponent(profileSyncId)}`,
+      { method: "PATCH", token, body: req },
+    ),
+
+  remove: (token: string, accountId: string, profileSyncId: string) =>
+    api<{ ok: boolean }>(
+      `/api/v1/email-inbox/accounts/${accountId}?profileSyncId=${encodeURIComponent(profileSyncId)}`,
+      { method: "DELETE", token },
+    ),
+
+  sync: (token: string, accountId: string, profileSyncId: string) =>
+    api<EmailInboxSyncResult>(
+      `/api/v1/email-inbox/accounts/${accountId}/sync?profileSyncId=${encodeURIComponent(profileSyncId)}`,
+      { method: "POST", token },
+    ),
+
+  testConnection: (token: string, req: EmailInboxTestRequest) =>
+    api<EmailInboxTestResult>(`/api/v1/email-inbox/test-connection`, {
+      method: "POST", token, body: req,
+    }),
+};
+
 export const admin = {
   check: (token: string) =>
     api<{ isAdmin: boolean }>(`/api/v1/admin/check`, { token }),
