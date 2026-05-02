@@ -63,6 +63,16 @@ export default function InvoiceDetailPage() {
 
   const all = entitiesByProfile<InvoiceData>("invoices");
   const allItems = rawEntities("invoice_items");
+  // Transakce profile-scope, abychom mohli zobrazit detail spárované platby.
+  const allTransactions = entitiesByProfile<{
+    amount: string | number;
+    currency?: string;
+    date?: string;
+    description?: string;
+    merchant?: string;
+    accountId?: string;
+  }>("transactions");
+  const allAccounts = entitiesByProfile<{ name: string; type?: string; currency?: string }>("accounts");
   const [editing, setEditing] = useState(false);
   // POZOR: všechny useState/useMemo/useEffect MUSÍ být před early returny níž.
   // Předtím byl showPayDialog deklarovaný až za `if (loading)` / `if (!invoice)`,
@@ -74,6 +84,19 @@ export default function InvoiceDetailPage() {
     () => all.find((r) => r.syncId === params.syncId),
     [all, params.syncId],
   );
+
+  const linkedTx = useMemo(() => {
+    const txId = invoice?.data.linkedTransactionId;
+    if (!txId) return null;
+    return allTransactions.find((t) => t.syncId === txId) ?? null;
+  }, [invoice, allTransactions]);
+
+  const linkedTxAccount = useMemo(() => {
+    if (!linkedTx) return null;
+    const accId = linkedTx.data.accountId;
+    if (!accId) return null;
+    return allAccounts.find((a) => a.syncId === accId) ?? null;
+  }, [linkedTx, allAccounts]);
 
   const items = useMemo(() => {
     if (!invoice) return [];
@@ -240,6 +263,38 @@ export default function InvoiceDetailPage() {
           customerEmail={r.customerName ? null : null}
           onDone={reload}
         />
+      )}
+
+      {/* Spárovaná platba — zobrazí klikatelný odkaz na transakci, která fakturu uhradila. */}
+      {linkedTx && (
+        <section className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-emerald-700">✓</span>
+                <h2 className="font-semibold text-emerald-900">Spárováno s platbou</h2>
+              </div>
+              <div className="text-sm text-emerald-800">
+                {linkedTx.data.description || linkedTx.data.merchant || "Bankovní transakce"}
+              </div>
+              <div className="text-xs text-emerald-700 mt-1 flex flex-wrap gap-3">
+                {linkedTx.data.date && <span>{linkedTx.data.date}</span>}
+                {linkedTxAccount && <span>· účet: {linkedTxAccount.data.name}</span>}
+              </div>
+            </div>
+            <div className="text-right shrink-0">
+              <div className="text-lg font-semibold text-emerald-900 tabular-nums">
+                {fmtAmt(linkedTx.data.amount, linkedTx.data.currency || "CZK")}
+              </div>
+              <Link
+                href={`/app/transactions/${linkedTx.syncId}`}
+                className="text-xs text-emerald-700 hover:text-emerald-900 underline mt-1 inline-block"
+              >
+                Otevřít transakci →
+              </Link>
+            </div>
+          </div>
+        </section>
       )}
 
       {fileKeys.length > 0 && <InvoiceFiles keys={fileKeys} />}
