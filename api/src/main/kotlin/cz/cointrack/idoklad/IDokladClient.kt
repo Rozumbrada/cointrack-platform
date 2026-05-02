@@ -295,22 +295,33 @@ class IDokladClient {
      */
     suspend fun getInvoicePdf(accessToken: String, invoiceId: Int, isExpense: Boolean = false): ByteArray {
         val agendaPath = if (isExpense) "ReceivedInvoices" else "IssuedInvoices"
-        val resp = client.get("https://api.idoklad.cz/v3/$agendaPath/$invoiceId/GetPdf") {
+        val url = "https://api.idoklad.cz/v3/$agendaPath/$invoiceId/GetPdf"
+        log.info("iDoklad PDF GET {}", url)
+        val resp = client.get(url) {
             bearerAuth(accessToken)
         }
         if (!resp.status.isSuccess()) {
             val txt = resp.bodyAsText()
-            log.warn("iDoklad PDF failed ($agendaPath/{}): {} {}", invoiceId, resp.status, txt.take(200))
+            log.warn("iDoklad PDF FAIL {} → {} ({} chars): {}", url, resp.status, txt.length, txt.take(500))
             throw IDokladException("Get PDF failed: ${resp.status} — ${txt.take(200)}", resp.status)
         }
         val body = resp.bodyAsText()
+        log.info("iDoklad PDF OK {} → ${resp.status}, body ${body.length} chars", url)
         val parsed = runCatching { Json.parseToJsonElement(body) }.getOrNull()
-            ?: throw IDokladException("PDF response není JSON: ${body.take(200)}", null)
+            ?: run {
+                log.warn("iDoklad PDF response is NOT JSON, first 200 chars: {}", body.take(200))
+                throw IDokladException("PDF response není JSON: ${body.take(200)}", null)
+            }
         val dataField = parsed as? kotlinx.serialization.json.JsonObject
         val base64 = dataField?.get("Data")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
             ?: dataField?.get("data")?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
-            ?: throw IDokladException("PDF JSON chybí pole 'Data': ${body.take(200)}", null)
+            ?: run {
+                log.warn("iDoklad PDF response keys: {}", dataField?.keys?.joinToString(",") ?: "(not object)")
+                throw IDokladException("PDF JSON chybí pole 'Data': ${body.take(200)}", null)
+            }
+        log.info("iDoklad PDF base64 length: ${base64.length}")
         return runCatching { java.util.Base64.getDecoder().decode(base64) }.getOrElse {
+            log.warn("iDoklad PDF base64 decode failed: ${it.message}, first 50 chars of base64: {}", base64.take(50))
             throw IDokladException("PDF base64 decode selhal: ${it.message}", null)
         }
     }

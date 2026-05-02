@@ -402,6 +402,7 @@ class IDokladService(private val client: IDokladClient = IDokladClient()) {
      * IssuedInvoices, fallback ReceivedInvoices.
      */
     suspend fun getPdf(userId: UUID, profileSyncId: UUID, idokladId: Int): ByteArray {
+        log.info("getPdf called: user={}, profile={}, idokladId={}", userId, profileSyncId, idokladId)
         val profileRow = db { profileRowFor(userId, profileSyncId) }
         val profileDbId = profileRow[Profiles.id].value
         val token = ensureToken(profileDbId)
@@ -412,6 +413,7 @@ class IDokladService(private val client: IDokladClient = IDokladClient()) {
                 .singleOrNull()
                 ?.get(Invoices.isExpense)
         }
+        log.info("getPdf isExpense from DB: {}", knownIsExpense)
 
         return try {
             if (knownIsExpense != null) {
@@ -424,11 +426,13 @@ class IDokladService(private val client: IDokladClient = IDokladClient()) {
                 } catch (e: IDokladException) {
                     val code = e.status?.value ?: 0
                     if (code == 400 || code == 404) {
+                        log.info("getPdf issued failed with {}, trying received", code)
                         client.getInvoicePdf(token, idokladId, isExpense = true)
                     } else throw e
                 }
             }
         } catch (e: IDokladException) {
+            log.warn("getPdf FAILED for idokladId={}: ${e.message}", idokladId)
             throw ApiException(HttpStatusCode.BadGateway, "idoklad_pdf_failed",
                 "iDoklad nevrátil PDF: ${e.message}")
         }
