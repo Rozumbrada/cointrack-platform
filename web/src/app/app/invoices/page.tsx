@@ -9,6 +9,7 @@ import { withAuth } from "@/lib/auth-store";
 import { useSyncData } from "@/lib/sync-hook";
 import { ServerAccount } from "@/lib/sync-types";
 import { getPersistedSearch, setPersistedSearch } from "@/lib/persisted-search";
+import { getCachedProfileType, getCurrentProfileSyncId } from "@/lib/profile-store";
 import {
   Period,
   PeriodSelector,
@@ -40,6 +41,9 @@ interface InvoiceData {
   source?: string;
   emailSubject?: string;
   emailSender?: string;
+  /** iDoklad ID — pokud > 0, faktura pochází z iDokladu. Pro PERSONAL profil
+   *  takové faktury skryjeme (osobní účet nemá iDoklad — bug v starších verzích). */
+  idokladId?: string;
 }
 
 type AccountListEntry = { syncId: string; data: ServerAccount };
@@ -51,8 +55,25 @@ export default function InvoicesPage() {
   // soft-delete + match na profileSyncId, a reaguje na přepnutí profilu
   // (event "cointrack:profile-changed").
   const { loading, error, profileSyncId, entitiesByProfile, reload } = useSyncData();
-  const invoices = entitiesByProfile<InvoiceData>("invoices");
+  const allInvoices = entitiesByProfile<InvoiceData>("invoices");
   const accounts = entitiesByProfile<ServerAccount>("accounts");
+
+  // Pro PERSONAL profil schováme iDoklad-imported faktury (mají idokladId nebo
+  // source="idoklad"). Tyhle se nepatří do osobního profilu — vznikly z bugu
+  // ve starších verzích, kdy iDoklad fungoval globálně místo per-profile.
+  // Data zůstávají v DB (nejsou smazaná), jen se nezobrazují tady.
+  const activeProfileType = useMemo(() => {
+    return getCachedProfileType(getCurrentProfileSyncId());
+  }, [profileSyncId]);
+  const invoices = useMemo(() => {
+    if (activeProfileType !== "PERSONAL") return allInvoices;
+    return allInvoices.filter((inv) => {
+      const d = inv.data;
+      const hasIDokladId = d.idokladId != null && d.idokladId !== "" && d.idokladId !== "0";
+      const fromIDoklad = d.source === "idoklad";
+      return !hasIDokladId && !fromIDoklad;
+    });
+  }, [allInvoices, activeProfileType]);
 
   // Search v sessionStorage — přežívá navigaci na detail faktury a zpět.
   const [query, setQuery] = useState(() => getPersistedSearch("invoices"));

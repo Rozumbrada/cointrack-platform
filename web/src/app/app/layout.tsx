@@ -207,6 +207,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const profileIsExplicitlyNonBusiness =
     activeProfileType === "PERSONAL" || activeProfileType === "GROUP";
   const showMembers = isOrganizationTier && !profileIsExplicitlyNonBusiness;
+  // iDoklad: skryjeme pro PERSONAL profil (osobní účet nemá vystavené faktury,
+  // takže iDoklad je tam zbytečný). Pro BUSINESS / ORGANIZATION / null /
+  // ostatní → ukážeme. GROUP profil nemá iDoklad (sdílené výdaje, ne fakturace).
+  const showIDoklad = activeProfileType !== "PERSONAL" && activeProfileType !== "GROUP";
 
   const nav: Array<{ href: string; label: string; section?: string }> = [
     { href: "/app/dashboard", label: ts("dashboard") },
@@ -222,7 +226,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     { href: "/app/receipts", label: ts("receipts"), section: ts("section_documents") },
     { href: "/app/invoices", label: ts("invoices") },
     { href: "/app/email-inbox", label: "📧 Email schránky" },
-    { href: "/app/idoklad", label: ts("idoklad") },
+    ...(showIDoklad ? [{ href: "/app/idoklad", label: ts("idoklad") }] : []),
     // /app/fio přesunuto inline do /app/banks ("Bankovní spojení") — sjednoceno
     // s mobile patternem (BankSyncScreen). Sidebar link odstraněn.
     { href: "/app/warranties", label: ts("warranties") },
