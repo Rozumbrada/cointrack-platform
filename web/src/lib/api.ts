@@ -494,6 +494,21 @@ export interface SyncEntity {
 export interface SyncPullResponse {
   serverTime: string;
   entities: Record<string, SyncEntity[]>;
+  /**
+   * Metadata o přístupech (volitelné — staré servery nevracejí).
+   * Frontend díky tomu ví, kde má JEN per-account sharing → dashboardní souhrny
+   * je třeba omezit na účty z `sharedAccountSyncIds`.
+   */
+  accessControl?: AccessControl;
+}
+
+export interface AccessControl {
+  ownedProfileSyncIds: string[];
+  accountantProfileSyncIds: string[];
+  /** Profily, kde máme JEN per-account share — dashboard tam musí filtrovat účty. */
+  sharedOnlyProfileSyncIds: string[];
+  /** Konkrétní accountSyncIds nasdílené přes VIEWER/EDITOR share. */
+  sharedAccountSyncIds: string[];
 }
 
 export interface SyncPushRequest {

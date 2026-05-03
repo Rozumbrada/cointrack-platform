@@ -100,5 +100,7 @@ export function useSyncData() {
     entitiesByProfile,
     rawEntities,
     diagnose,
+    /** Metadata o přístupech — používá dashboard pro omezení na sdílené účty. */
+    accessControl: data?.accessControl,
   };
 }

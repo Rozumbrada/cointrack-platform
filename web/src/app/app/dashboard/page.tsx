@@ -27,7 +27,7 @@ export default function DashboardPage() {
     () => new Intl.DateTimeFormat(locale, { month: "long" }).format(new Date()),
     [locale],
   );
-  const { loading, error, entitiesByProfile, rawEntities, reload, profileSyncId } = useSyncData();
+  const { loading, error, entitiesByProfile, rawEntities, reload, profileSyncId, accessControl } = useSyncData();
   const [pickerFor, setPickerFor] = useState<{
     txSyncId: string;
     txType: "INCOME" | "EXPENSE" | "TRANSFER";
@@ -44,6 +44,21 @@ export default function DashboardPage() {
   // Default = všechny ne-Salt-Edge-zombie a ne-excludedFromTotal účty.
   // Selection se persistuje do localStorage per profile (klíč podle URL profilu).
 
+  // Pokud je aktuální profil JEN sdílený (per-account share, ne owner ani
+  // accountant), omez viditelné účty na ty, které user fakticky má sdílené.
+  // Bez tohoto by recipient s org-level přístupem viděl i ne-sdílené účty
+  // profilu a dashboard total by zahrnul všechno (bug 2026-05).
+  const isSharedOnlyProfile = useMemo(
+    () =>
+      profileSyncId != null &&
+      (accessControl?.sharedOnlyProfileSyncIds ?? []).includes(profileSyncId),
+    [profileSyncId, accessControl],
+  );
+  const sharedAccountSet = useMemo(
+    () => new Set(accessControl?.sharedAccountSyncIds ?? []),
+    [accessControl],
+  );
+
   const eligibleAccounts = useMemo(
     () =>
       accountEntitiesAll.filter((acc) => {
@@ -52,9 +67,11 @@ export default function DashboardPage() {
           const assigned = d.assignedProfileIds as string[] | undefined;
           if (!assigned || assigned.length === 0) return false;
         }
+        // Sdílený profil → ukaž jen účty, které user opravdu má přes per-account share
+        if (isSharedOnlyProfile && !sharedAccountSet.has(acc.syncId)) return false;
         return true;
       }),
-    [accountEntitiesAll],
+    [accountEntitiesAll, isSharedOnlyProfile, sharedAccountSet],
   );
 
   const [selectedAccountIds, setSelectedAccountIds] = useState<Set<string> | null>(null);

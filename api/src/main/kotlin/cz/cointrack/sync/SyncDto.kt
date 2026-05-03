@@ -27,6 +27,31 @@ data class SyncEntity(
 data class SyncPullResponse(
     val serverTime: String,
     val entities: Map<String, List<SyncEntity>>,   // "profiles" -> [...], "accounts" -> [...], ...
+    /**
+     * Metadata o přístupových úrovních pro frontend.
+     *
+     * Frontend potřebuje vědět, na kterých profilech má user JEN per-account
+     * sdílení (aby na dashboardu omezil viditelné účty), na kterých je vlastník/
+     * accountant (= vidí vše) a které konkrétní účty má sdílené (pro filtraci
+     * souhrnů per profil). Bez tohoto by sdílený user, který má i org-level
+     * přístup, viděl na dashboardu i ne-sdílené účty profilu.
+     */
+    val accessControl: AccessControl? = null,
+)
+
+@Serializable
+data class AccessControl(
+    /** Profile syncIds, kde user vlastní (= owner / B2B admin / GROUP member / per-profile permission). */
+    val ownedProfileSyncIds: List<String> = emptyList(),
+    /** Profile syncIds, kde user má roli ACCOUNTANT (vidí celý profil read-only). */
+    val accountantProfileSyncIds: List<String> = emptyList(),
+    /**
+     * Profile syncIds, kde user má JEN per-account sharing (VIEWER/EDITOR).
+     * Na dashboardu tohoto profilu by se měly zobrazit POUZE účty z [sharedAccountSyncIds].
+     */
+    val sharedOnlyProfileSyncIds: List<String> = emptyList(),
+    /** Konkrétní account syncIds, které user má přes per-account share (VIEWER/EDITOR). */
+    val sharedAccountSyncIds: List<String> = emptyList(),
 )
 
 @Serializable

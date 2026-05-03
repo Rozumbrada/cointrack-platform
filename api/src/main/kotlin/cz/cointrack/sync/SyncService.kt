@@ -617,7 +617,22 @@ class SyncService {
                     }
                     .map { groupExpenseItemToEntity(it, groupExpenseIdsForItems) }
 
-            SyncPullResponse(serverTime.toString(), result)
+            // Sestav AccessControl info pro frontend.
+            // Frontend díky tomu zjistí, které účty smí na dashboardu sdíleného
+            // profilu sčítat (= jen ty z `sharedAccountSyncIds`). Bez tohoto by
+            // recipient s org-level přístupem viděl i ne-sdílené účty profilu.
+            val ownedProfSyncs = ownedProfileIds.mapNotNull { profileIdToSync[it]?.toString() }
+            val accountantProfSyncs = accountantProfileIds.mapNotNull { profileIdToSync[it]?.toString() }
+            val sharedOnlyProfSyncs = sharedProfileIds.mapNotNull { profileIdToSync[it]?.toString() }
+            val sharedAcctSyncs = sharedAccountIds.mapNotNull { accountIdToSync[it]?.toString() }
+            val accessControl = AccessControl(
+                ownedProfileSyncIds = ownedProfSyncs,
+                accountantProfileSyncIds = accountantProfSyncs,
+                sharedOnlyProfileSyncIds = sharedOnlyProfSyncs,
+                sharedAccountSyncIds = sharedAcctSyncs,
+            )
+
+            SyncPullResponse(serverTime.toString(), result, accessControl)
         }
     }
 
