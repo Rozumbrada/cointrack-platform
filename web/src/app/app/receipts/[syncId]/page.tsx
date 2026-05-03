@@ -18,6 +18,8 @@ interface ReceiptData {
   merchantStreet?: string;
   merchantCity?: string;
   merchantZip?: string;
+  /** Provozovna — pobočka obchodu z účtenky (server-side, Pohoda XML ji ignoruje). */
+  provozovna?: string;
   date: string;
   time?: string;
   totalWithVat: string | number;
@@ -238,11 +240,12 @@ export default function ReceiptDetailPage() {
           </div>
         </div>
 
-        {(r.paymentMethod || r.merchantIco || r.merchantDic || r.merchantStreet) && (
+        {(r.paymentMethod || r.merchantIco || r.merchantDic || r.merchantStreet || r.provozovna) && (
           <div className="mt-4 pt-4 border-t border-ink-100 grid grid-cols-2 gap-2 text-sm">
             {r.paymentMethod && <Field label={t("payment")} value={labelPayment(r.paymentMethod, t)} />}
             {r.merchantIco && <Field label={t("merchant_ico")} value={r.merchantIco} />}
             {r.merchantDic && <Field label={t("merchant_dic")} value={r.merchantDic} />}
+            {r.provozovna && <Field label="Provozovna" value={r.provozovna} />}
             {r.merchantStreet && <Field label={t("merchant_street")} value={r.merchantStreet} />}
             {(r.merchantCity || r.merchantZip) && (
               <Field
@@ -429,6 +432,7 @@ function ReceiptEditDialog({
   const [merchantStreet, setMerchantStreet] = useState(r.merchantStreet ?? "");
   const [merchantCity, setMerchantCity] = useState(r.merchantCity ?? "");
   const [merchantZip, setMerchantZip] = useState(r.merchantZip ?? "");
+  const [provozovna, setProvozovna] = useState(r.provozovna ?? "");
   const [date, setDate] = useState(r.date ?? "");
   const [totalWithVat, setTotalWithVat] = useState(String(r.totalWithVat ?? ""));
   const [totalWithoutVat, setTotalWithoutVat] = useState(String(r.totalWithoutVat ?? ""));
@@ -502,6 +506,7 @@ function ReceiptEditDialog({
         merchantStreet: orNull(merchantStreet),
         merchantCity: orNull(merchantCity),
         merchantZip: orNull(merchantZip),
+        provozovna: orNull(provozovna),
         date: date.trim() || r.date,
         totalWithVat: totalWithVat.replace(",", "."),
         totalWithoutVat: totalWithoutVat ? totalWithoutVat.replace(",", ".") : null,
@@ -614,6 +619,20 @@ function ReceiptEditDialog({
                 className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm"
               />
             </div>
+          </div>
+          {/* Provozovna — pobočka obchodu z účtenky. Server-side, Pohoda XML ji ignoruje. */}
+          <div>
+            <label className="block text-xs font-medium text-ink-700 mb-1">Provozovna (pobočka)</label>
+            <input
+              type="text"
+              value={provozovna}
+              onChange={(e) => setProvozovna(e.target.value)}
+              placeholder="Např. Albert Jihlava — Náměstí Svobody"
+              className="w-full h-10 rounded-lg border border-ink-300 bg-white px-3 text-sm"
+            />
+            <p className="text-xs text-ink-500 mt-1">
+              Volitelné — neexportuje se do Pohody.
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
