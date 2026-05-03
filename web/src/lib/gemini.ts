@@ -75,6 +75,7 @@ Vrať POUZE validní JSON bez markdownu, bez dalšího textu, bez vysvětlení:
   "merchantStreet": "ulice a číslo popisné (string nebo null)",
   "merchantCity": "název města (string nebo null)",
   "merchantZip": "PSČ bez mezer, 5 číslic (string nebo null)",
+  "provozovna": "název konkrétní pobočky/provozovny tak jak je uveden na účtence — např. 'Albert Jihlava — Náměstí Svobody', 'Lidl Chodov'. POUZE pro účtenky (docType=receipt). Pokud na účtence není uveden název pobočky, vrať null (string nebo null)",
 
   // ÚČTENKA — datum + čas + EET
   "date": "datum ve formátu YYYY-MM-DD (string nebo null)",
@@ -128,6 +129,10 @@ Vrať POUZE validní JSON bez markdownu, bez dalšího textu, bez vysvětlení:
 
 Důležitá pravidla:
 - Pokud hodnota není v dokumentu, použij null (ne prázdný string "").
+- Provozovna != merchantName. merchantName je oficiální firma (např. "Albert ČR s.r.o."),
+  provozovna je název konkrétní pobočky/obchodu tak jak je vytištěn na účtence
+  (např. "Albert Jihlava — Náměstí Svobody"). Provozovnu plň POUZE u docType=receipt.
+  U faktur (docType=invoice) ji nech null. Neopisuj jen adresu — provozovna je název.
 - Částky jsou desetinná čísla — 125.90, ne "125,90" ani "125 Kč".
 - IČO je VŽDY 8 číslic — pokud najdeš méně, doplň nulami zleva (12345 → "00012345").
 - DIČ má prefix země: "CZ12345678", pro SK "SK...", apod.
@@ -160,6 +165,11 @@ export interface ParsedDocument {
   merchantStreet?: string | null;
   merchantCity?: string | null;
   merchantZip?: string | null;
+  /**
+   * Provozovna — konkrétní pobočka obchodu, jak je uvedená na účtence.
+   * Server-side pole, Pohoda XML export ji ignoruje.
+   */
+  provozovna?: string | null;
 
   date?: string | null;
   time?: string | null;

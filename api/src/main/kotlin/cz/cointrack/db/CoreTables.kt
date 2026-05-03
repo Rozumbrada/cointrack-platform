@@ -130,6 +130,13 @@ object Receipts : SyncableTable("receipts") {
     val merchantStreet  = varchar("merchant_street", 256).nullable()
     val merchantCity    = varchar("merchant_city", 128).nullable()
     val merchantZip     = varchar("merchant_zip", 16).nullable()
+    /**
+     * V32: provozovna — konkrétní pobočka/lokace obchodu, jak je uvedená na
+     * účtence (např. "Albert Jihlava — Náměstí Svobody"). Drží se POUZE na
+     * serveru (mobilní Room DB sloupec nemá), nepoužívá se v Pohoda XML
+     * exportu — jen pro lepší identifikaci v cloudovém UI.
+     */
+    val provozovna      = varchar("provozovna", 256).nullable()
     val date            = date("date")
     val time            = varchar("time", 8).nullable()
     val totalWithVat    = decimal("total_with_vat", 18, 2).default(java.math.BigDecimal.ZERO)

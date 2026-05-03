@@ -14,6 +14,8 @@ import {
 } from "@/lib/gemini";
 import { ensureCashAccount } from "@/lib/cash-account";
 import { getDefaultAccountSyncId } from "@/lib/profile-store";
+import { enqueueFile, deleteRecord } from "@/lib/scan-queue";
+import { isTransientError } from "@/lib/scan-queue-hook";
 import { FormDialog, Field, inputClass } from "./FormDialog";
 
 /**
@@ -26,9 +28,20 @@ import { FormDialog, Field, inputClass } from "./FormDialog";
 export function DocumentDialog({
   mode,
   onClose,
+  /**
+   * Volitelný pre-extrakt: pokud dialog otevíráme z queue (READY položka),
+   * dostaneme parsed data + storageKey hned, a přeskočíme file picker → AI
+   * krok. Po save smažeme záznam ve frontě (queueRecordId).
+   */
+  preExtracted,
 }: {
   mode: "scan" | "upload";
   onClose: () => void;
+  preExtracted?: {
+    parsed: ParsedDocument;
+    storageKey?: string;
+    queueRecordId: string;
+  };
 }) {
   const router = useRouter();
   const t = useTranslations("document_dialog");
@@ -58,8 +71,9 @@ export function DocumentDialog({
 
   const [file, setFile] = useState<File | null>(null);
   const [parsing, setParsing] = useState(false);
-  const [parsed, setParsed] = useState<ParsedDocument | null>(null);
-  const [storageKey, setStorageKey] = useState<string | null>(null);
+  const [parsed, setParsed] = useState<ParsedDocument | null>(preExtracted?.parsed ?? null);
+  const [storageKey, setStorageKey] = useState<string | null>(preExtracted?.storageKey ?? null);
+  const [queuedNotice, setQueuedNotice] = useState<string | null>(null);
 
   // Společná editovatelná pole
   const [docType, setDocType] = useState<"receipt" | "invoice">("receipt");
@@ -78,6 +92,11 @@ export function DocumentDialog({
   const [street, setStreet] = useState("");
   const [city, setCity] = useState("");
   const [zip, setZip] = useState("");
+  /**
+   * Provozovna — pobočka obchodu z účtenky. Posílá se jen na server (Pohoda
+   * XML export ji nepoužívá). Pro faktury (docType=invoice) zůstává prázdné.
+   */
+  const [provozovna, setProvozovna] = useState("");
 
   // Pouze pro fakturu
   const [invoiceNumber, setInvoiceNumber] = useState("");
@@ -165,10 +184,57 @@ export function DocumentDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parsed, ico]);
 
-  // Otevřít picker rovnou po mountu (lepší UX)
+  // Otevřít picker rovnou po mountu (lepší UX) — JEN pokud nemáme pre-extract
   useEffect(() => {
+    if (preExtracted) return;
     fileInputRef.current?.click();
-  }, []);
+  }, [preExtracted]);
+
+  // Když máme pre-extract (z queue), předvyplň všechna pole z parsed dat hned
+  useEffect(() => {
+    if (!preExtracted) return;
+    const p = preExtracted.parsed;
+    const detected = p.docType ?? "receipt";
+    setDocType(detected);
+    setDate(p.date ?? p.issueDate ?? new Date().toISOString().slice(0, 10));
+    setTime(p.time ?? "");
+    setTotalWithVat(p.totalWithVat?.toString() ?? "");
+    setCurrency(p.currency ?? "CZK");
+    setPaymentMethod(p.paymentMethod ?? "CARD");
+    const isExp = p.isExpense ?? true;
+    if (detected === "receipt") {
+      setMerchant(p.merchantName ?? "");
+      setIco(p.merchantIco ?? "");
+      setDic(p.merchantDic ?? "");
+      setStreet(p.merchantStreet ?? "");
+      setCity(p.merchantCity ?? "");
+      setZip(p.merchantZip ?? "");
+      setProvozovna(p.provozovna ?? "");
+    } else if (isExp) {
+      setMerchant(p.supplierName ?? "");
+      setIco(p.supplierIco ?? "");
+      setDic(p.supplierDic ?? "");
+      setStreet(p.supplierStreet ?? "");
+      setCity(p.supplierCity ?? "");
+      setZip(p.supplierZip ?? "");
+    } else {
+      setMerchant(p.customerName ?? "");
+      setIco(p.customerIco ?? "");
+      setDic(p.customerDic ?? "");
+      setStreet(p.customerStreet ?? "");
+      setCity(p.customerCity ?? "");
+      setZip(p.customerZip ?? "");
+    }
+    if (detected === "invoice") {
+      setInvoiceNumber(p.invoiceNumber ?? "");
+      setIsExpense(isExp);
+      setDueDate(p.dueDate ?? "");
+      setVariableSymbol(p.variableSymbol ?? "");
+      const ba = p.bankAccount ?? "";
+      const bc = p.bankCode ?? "";
+      setBankAccount(ba && bc && !ba.includes("/") ? `${ba}/${bc}` : ba);
+    }
+  }, [preExtracted]);
 
   async function onParse() {
     if (!file) return;
@@ -200,6 +266,7 @@ export function DocumentDialog({
         setStreet(p.merchantStreet ?? "");
         setCity(p.merchantCity ?? "");
         setZip(p.merchantZip ?? "");
+        setProvozovna(p.provozovna ?? "");
       } else if (isExp) {
         // Přijatá: merchant = supplier
         setMerchant(p.supplierName ?? "");
@@ -229,7 +296,23 @@ export function DocumentDialog({
         setBankAccount(ba && bc && !ba.includes("/") ? `${ba}/${bc}` : ba);
       }
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      // Pokud je chyba transient (síť, 5xx, 429), uložíme soubor do scan-fronty
+      // a zavřeme dialog. User uvidí queue card na home a zpracuje to později.
+      if (file && profileSyncId && isTransientError(msg)) {
+        try {
+          await enqueueFile({ profileSyncId, file, initialError: msg });
+          setQueuedNotice(
+            "AI zrovna neodpovídá. Doklad jsme uložili do fronty — zpracujeme ho hned, jak to půjde.",
+          );
+          // Krátká prodleva, ať user uvidí hlášku, pak zavři
+          setTimeout(() => onClose(), 1500);
+        } catch (enqErr) {
+          setErr(`${msg} · Selhalo i uložení do fronty: ${enqErr instanceof Error ? enqErr.message : String(enqErr)}`);
+        }
+      } else {
+        setErr(msg);
+      }
     } finally {
       setParsing(false);
     }
@@ -279,6 +362,8 @@ export function DocumentDialog({
           merchantStreet: orNull(street),
           merchantCity: orNull(city),
           merchantZip: orNull(zip),
+          // Provozovna — server-side pole (Pohoda XML ji ignoruje)
+          provozovna: orNull(provozovna),
           date,
           time: time || null,
           totalWithVat: total.toFixed(2),
@@ -429,6 +514,10 @@ export function DocumentDialog({
         );
         router.push(`/app/invoices/${entitySyncId}`);
       }
+      // Pokud doklad pochází ze scan-fronty, smaž záznam — už je v hlavní DB
+      if (preExtracted?.queueRecordId) {
+        try { await deleteRecord(preExtracted.queueRecordId); } catch (_) { /* ignore */ }
+      }
       onClose();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -489,6 +578,11 @@ export function DocumentDialog({
         {parsing && (
           <div className="text-sm text-brand-600">
             ⏳ Nahrávám a posílám do AI…
+          </div>
+        )}
+        {queuedNotice && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            ⏳ {queuedNotice}
           </div>
         )}
       </FormDialog>
@@ -659,6 +753,23 @@ export function DocumentDialog({
           </div>
         </div>
       </details>
+
+      {/* Provozovna — pouze pro účtenky. Server-side pole (Pohoda XML export
+          ji ignoruje); slouží pro lepší identifikaci konkrétní pobočky. */}
+      {docType === "receipt" && (
+        <Field label="Provozovna (pobočka)">
+          <input
+            type="text"
+            value={provozovna}
+            onChange={(e) => setProvozovna(e.target.value)}
+            placeholder="Např. Albert Jihlava — Náměstí Svobody"
+            className={inputClass}
+          />
+          <p className="text-xs text-ink-500 mt-1">
+            Volitelné — konkrétní pobočka, jak je na účtence. Neexportuje se do Pohody.
+          </p>
+        </Field>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <Field label={docType === "receipt" ? t("date") : t("issue_date")}>

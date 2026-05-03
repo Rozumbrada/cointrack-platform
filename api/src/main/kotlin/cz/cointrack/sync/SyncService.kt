@@ -1067,6 +1067,7 @@ class SyncService {
             s[Receipts.merchantStreet] = d.strOrNull("merchantStreet")
             s[Receipts.merchantCity] = d.strOrNull("merchantCity")
             s[Receipts.merchantZip] = d.strOrNull("merchantZip")
+            s[Receipts.provozovna] = d.strOrNull("provozovna")
             s[Receipts.time] = d.strOrNull("time")
             s[Receipts.totalWithoutVat] = d.decimalOrNull("totalWithoutVat")
             s[Receipts.paymentMethod] = d.strOrNull("paymentMethod")
@@ -1079,6 +1080,7 @@ class SyncService {
             if (d.containsKey("merchantStreet")) s[Receipts.merchantStreet] = d.strOrNull("merchantStreet")
             if (d.containsKey("merchantCity")) s[Receipts.merchantCity] = d.strOrNull("merchantCity")
             if (d.containsKey("merchantZip")) s[Receipts.merchantZip] = d.strOrNull("merchantZip")
+            if (d.containsKey("provozovna")) s[Receipts.provozovna] = d.strOrNull("provozovna")
             if (d.containsKey("time")) s[Receipts.time] = d.strOrNull("time")
             if (d.containsKey("totalWithoutVat")) s[Receipts.totalWithoutVat] = d.decimalOrNull("totalWithoutVat")
             if (d.containsKey("paymentMethod")) s[Receipts.paymentMethod] = d.strOrNull("paymentMethod")
@@ -1467,6 +1469,7 @@ class SyncService {
             r[Receipts.merchantStreet]?.let { put("merchantStreet", it) }
             r[Receipts.merchantCity]?.let { put("merchantCity", it) }
             r[Receipts.merchantZip]?.let { put("merchantZip", it) }
+            r[Receipts.provozovna]?.let { put("provozovna", it) }
             put("date", r[Receipts.date].toString())
             r[Receipts.time]?.let { put("time", it) }
             put("totalWithVat", r[Receipts.totalWithVat].toPlainString())

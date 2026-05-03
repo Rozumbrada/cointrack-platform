@@ -17,6 +17,7 @@ import {
 import { CategoryIcon, colorFromInt } from "@/components/app/CategoryIcon";
 import { CategoryPicker } from "@/components/app/CategoryPicker";
 import { ExpenseDonut, categoryColor } from "@/components/app/ExpenseDonut";
+import { ScanQueueCard } from "@/components/app/ScanQueueCard";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -26,7 +27,7 @@ export default function DashboardPage() {
     () => new Intl.DateTimeFormat(locale, { month: "long" }).format(new Date()),
     [locale],
   );
-  const { loading, error, entitiesByProfile, rawEntities, reload } = useSyncData();
+  const { loading, error, entitiesByProfile, rawEntities, reload, profileSyncId } = useSyncData();
   const [pickerFor, setPickerFor] = useState<{
     txSyncId: string;
     txType: "INCOME" | "EXPENSE" | "TRANSFER";
@@ -344,6 +345,11 @@ export default function DashboardPage() {
         <h1 className="text-2xl font-semibold text-ink-900">{t("title")}</h1>
         <p className="text-sm text-ink-600 mt-1">{t("subtitle")}</p>
       </div>
+
+      {/* Scan-fronta (úplně nahoře) — vykreslí se sama jen když má položky.
+          Background processor v useScanQueue retryuje pending položky každých
+          30s + na window.online eventu. */}
+      {profileSyncId && <ScanQueueCard profileSyncId={profileSyncId} />}
 
       {/* Account selector chips — uživatel si volí, které účty se započítávají
           do přehledu, statistik a recent tx. Default = všechny ne-Salt-Edge-zombie
