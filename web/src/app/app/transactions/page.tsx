@@ -30,6 +30,13 @@ export default function TransactionsPage() {
   const [filter, setFilter] = useState<"ALL" | "INCOME" | "EXPENSE">("ALL");
   /** "ALL" = vše, "CASH" = bez vazby na účet, jinak account syncId */
   const [accountFilter, setAccountFilter] = useState<string>("ALL");
+  /**
+   * Category filter — multi-select. Empty set = vše. Sentinel "__none__" =
+   * tx bez kategorie (categoryId == null).
+   */
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<Set<string>>(new Set());
+  const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
+  const UNCATEGORIZED_SENTINEL = "__none__";
   // Search persistovaný v sessionStorage — přežívá navigaci v rámci tabu
   // (klik na řádek → detail tx → zpět zachová text v search inputu).
   const [query, setQuery] = useState(() => getPersistedSearch("transactions"));
@@ -125,6 +132,13 @@ export default function TransactionsPage() {
         return true;
       })
       .filter((r) => {
+        // Kategorie filter — pokud není nic vybráno, pusť vše. Jinak match
+        // proti syncId nebo sentinelu pro tx bez kategorie.
+        if (selectedCategoryIds.size === 0) return true;
+        if (!r.categorySyncId) return selectedCategoryIds.has(UNCATEGORIZED_SENTINEL);
+        return selectedCategoryIds.has(r.categorySyncId);
+      })
+      .filter((r) => {
         if (!ql) return true;
         // Match napříč poli z detailu transakce.
         //   - Numerický dotaz (samé číslice): exact match na VS / bankTxId,
@@ -164,7 +178,7 @@ export default function TransactionsPage() {
         return false;
       })
       .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
-  }, [uiTxs, filter, accountFilter, query, range, rawTxMap, accountNameMap, accountTypeMap, catMap]);
+  }, [uiTxs, filter, accountFilter, query, range, rawTxMap, accountNameMap, accountTypeMap, catMap, selectedCategoryIds]);
 
   const allSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.syncId));
 
@@ -363,6 +377,93 @@ export default function TransactionsPage() {
             </option>
           ))}
         </select>
+
+        {/* Multi-select category dropdown.
+            Klik otevře menu, checkbox toggle. Mimoklik close handlovaný
+            backdrop overlay div absolutně-poziciovaným pod menu. */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setCategoryMenuOpen((v) => !v)}
+            className={`h-10 px-3 rounded-lg border text-sm flex items-center gap-1.5 ${
+              selectedCategoryIds.size > 0
+                ? "bg-brand-50 border-brand-300 text-brand-700"
+                : "bg-white border-ink-300 text-ink-700 hover:bg-ink-50"
+            }`}
+            title="Filtrovat podle kategorie"
+          >
+            <span>
+              {selectedCategoryIds.size === 0
+                ? "Kategorie"
+                : selectedCategoryIds.size === 1
+                ? (() => {
+                    const id = [...selectedCategoryIds][0];
+                    if (id === UNCATEGORIZED_SENTINEL) return "Bez kategorie";
+                    return catMap.get(id)?.name ?? "1 kategorie";
+                  })()
+                : `${selectedCategoryIds.size} kategorií`}
+            </span>
+            <span className="text-xs">▾</span>
+          </button>
+
+          {categoryMenuOpen && (
+            <>
+              {/* Backdrop pro mimoklik close */}
+              <div
+                className="fixed inset-0 z-10"
+                onClick={() => setCategoryMenuOpen(false)}
+              />
+              <div className="absolute right-0 mt-1 z-20 w-64 max-h-80 overflow-auto rounded-lg border border-ink-200 bg-white shadow-lg p-1.5 text-sm">
+                {selectedCategoryIds.size > 0 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCategoryIds(new Set());
+                        setCategoryMenuOpen(false);
+                      }}
+                      className="w-full text-left px-2 py-1.5 rounded hover:bg-ink-50 text-red-600"
+                    >
+                      ✕ Zrušit filtr
+                    </button>
+                    <div className="border-t border-ink-100 my-1" />
+                  </>
+                )}
+                {/* "Bez kategorie" sentinel */}
+                <CatFilterRow
+                  label="Bez kategorie"
+                  color="#94a3b8"
+                  checked={selectedCategoryIds.has(UNCATEGORIZED_SENTINEL)}
+                  onToggle={() => {
+                    setSelectedCategoryIds((prev) => {
+                      const n = new Set(prev);
+                      if (n.has(UNCATEGORIZED_SENTINEL)) n.delete(UNCATEGORIZED_SENTINEL);
+                      else n.add(UNCATEGORIZED_SENTINEL);
+                      return n;
+                    });
+                  }}
+                />
+                <div className="border-t border-ink-100 my-1" />
+                {cats.map((c) => (
+                  <CatFilterRow
+                    key={c.syncId}
+                    label={c.data.name}
+                    color={colorFromInt(c.data.color ?? undefined)}
+                    checked={selectedCategoryIds.has(c.syncId)}
+                    onToggle={() => {
+                      setSelectedCategoryIds((prev) => {
+                        const n = new Set(prev);
+                        if (n.has(c.syncId)) n.delete(c.syncId);
+                        else n.add(c.syncId);
+                        return n;
+                      });
+                    }}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {inSelectionMode && (
@@ -547,4 +648,36 @@ function formatDate(iso: string, locale: string = "cs-CZ"): string {
   } catch {
     return iso;
   }
+}
+
+function CatFilterRow({
+  label,
+  color,
+  checked,
+  onToggle,
+}: {
+  label: string;
+  color: string;
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-ink-50 text-left"
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        readOnly
+        className="w-4 h-4 accent-brand-600 pointer-events-none"
+      />
+      <span
+        className="w-3 h-3 rounded-full flex-shrink-0"
+        style={{ backgroundColor: color }}
+      />
+      <span className="flex-1 truncate text-ink-800">{label}</span>
+    </button>
+  );
 }

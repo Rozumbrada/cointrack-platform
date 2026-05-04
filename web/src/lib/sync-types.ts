@@ -79,7 +79,15 @@ export interface ServerTransaction {
   transferPairId?: string | null;
   bankTxId?: string | null;
   bankVs?: string | null;
+  /** Konstantní symbol (KS) — z Fio column4. */
+  bankCs?: string | null;
+  /** Specifický symbol (SS) — z Fio column6. */
+  bankSs?: string | null;
   bankCounterparty?: string | null;
+  /** Kód banky protiúčtu — Fio column3 (V33). */
+  bankCounterpartyCode?: string | null;
+  /** BIC kód protibanky — Fio column26 (V33). */
+  bankBic?: string | null;
   bankCounterpartyName?: string | null;
 }
 

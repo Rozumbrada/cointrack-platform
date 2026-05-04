@@ -80,8 +80,24 @@ export default function TransactionDetailPage() {
   const headerText =
     txType === "EXPENSE" ? "text-red-700" : txType === "INCOME" ? "text-emerald-700" : "text-brand-700";
 
-  const hasBankInfo =
-    !!(d.bankVs || d.bankCounterparty || d.bankCounterpartyName || d.bankTxId);
+  const hasBankInfo = !!(
+    d.bankVs ||
+    d.bankCs ||
+    d.bankSs ||
+    d.bankCounterparty ||
+    d.bankCounterpartyCode ||
+    d.bankBic ||
+    d.bankCounterpartyName ||
+    d.bankTxId
+  );
+
+  // Pokud máme protiúčet i kód banky, slož to do "číslo/kód";
+  // pokud máme jen jedno, zobraz samostatně, ať user neztratí informaci.
+  const protiucetFull =
+    d.bankCounterparty && d.bankCounterpartyCode
+      ? `${d.bankCounterparty}/${d.bankCounterpartyCode}`
+      : d.bankCounterparty || null;
+  const kodBankyStandalone = d.bankCounterparty ? null : d.bankCounterpartyCode;
 
   async function pushUpdate(patch: Partial<ServerTransaction>) {
     if (!tx) return;
@@ -282,8 +298,12 @@ export default function TransactionDetailPage() {
           </div>
           <div className="border-t border-ink-100 pt-2 space-y-1.5 text-sm">
             {d.bankVs && <BankRow label={t("bank_vs")} value={d.bankVs} />}
-            {d.bankCounterparty && <BankRow label={t("bank_counterparty")} value={d.bankCounterparty} />}
+            {d.bankCs && <BankRow label={t("bank_cs")} value={d.bankCs} />}
+            {d.bankSs && <BankRow label={t("bank_ss")} value={d.bankSs} />}
+            {protiucetFull && <BankRow label={t("bank_counterparty")} value={protiucetFull} />}
+            {kodBankyStandalone && <BankRow label={t("bank_counterparty_code")} value={kodBankyStandalone} />}
             {d.bankCounterpartyName && <BankRow label={t("bank_counterparty_name")} value={d.bankCounterpartyName} />}
+            {d.bankBic && <BankRow label={t("bank_bic")} value={d.bankBic} />}
             {d.bankTxId && <BankRow label={t("bank_tx_id")} value={d.bankTxId} />}
             {d.transferPairId && <BankRow label={t("bank_transfer_pair")} value={d.transferPairId} />}
           </div>
