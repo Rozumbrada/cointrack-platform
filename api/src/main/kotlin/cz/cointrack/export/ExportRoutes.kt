@@ -1,5 +1,6 @@
 package cz.cointrack.export
 
+import cz.cointrack.access.profilesUserCanRead
 import cz.cointrack.db.Invoices
 import cz.cointrack.db.Profiles
 import cz.cointrack.db.Receipts
@@ -163,16 +164,20 @@ private suspend fun parseExportParams(call: io.ktor.server.application.Applicati
         throw ApiException(HttpStatusCode.BadRequest, "invalid_profile", "Neplatný 'profileId'.")
     }
 
-    val profile = db {
-        Profiles.selectAll().where { Profiles.syncId eq profileSyncUuid }.singleOrNull()
-    } ?: throw ApiException(HttpStatusCode.NotFound, "profile_not_found", "Profil nenalezen.")
-
-    val profileOwner = profile[Profiles.ownerUserId].value
-    if (profileOwner != userId) {
-        throw ApiException(HttpStatusCode.Forbidden, "forbidden", "K tomuto profilu nemáš přístup.")
+    val profileDbId = db {
+        val profile = Profiles.selectAll().where { Profiles.syncId eq profileSyncUuid }.singleOrNull()
+            ?: throw ApiException(HttpStatusCode.NotFound, "profile_not_found", "Profil nenalezen.")
+        val pid = profile[Profiles.id].value
+        // Authorize: owner / org admin / GROUP member / ProfilePermission view+ /
+        // ACCOUNTANT (per-account share s role=ACCOUNTANT). Před opravou (V37)
+        // endpoint dovolil JEN owner — účetní a B2B admin dostali 403 i když
+        // měli plný read access k profilu přes sync.
+        val accessible = profilesUserCanRead(userId)
+        if (pid !in accessible) {
+            throw ApiException(HttpStatusCode.Forbidden, "forbidden", "K tomuto profilu nemáš přístup.")
+        }
+        pid
     }
-
-    val profileDbId = profile[Profiles.id].value
 
     val from = call.request.queryParameters["from"]?.let {
         runCatching { LocalDate.parse(it) }.getOrElse {
