@@ -154,7 +154,9 @@ class SyncService {
         val catFilter = spec.visibilityCategories ?: return true
         if (catFilter.isEmpty()) return false  // explicit "nic"
         val catId = row[Transactions.categoryId]?.value
-            ?: return true  // tx bez kategorie — tolerantně pouštíme
+            ?: return false  // tx bez kategorie nemá co matchovat ve whitelistu → reject
+                              // (pre-fix tolerantně pouštěla — leak; recipient s prázdným
+                              // whitelistem nebo whitelist={X,Y} by viděl uncategorized tx)
         val catSyncId = categoryIdToSync[catId]?.toString() ?: return false
         return catFilter.contains(catSyncId)
     }
@@ -360,12 +362,24 @@ class SyncService {
                     Categories.selectAll()
                         .where { (Categories.profileId inList ownedProfileIds) and (Categories.updatedAt greater effectiveSince) }
                         .map { categoryToEntity(it, profileIdToSync) }
-                val sharedPids = (accountantProfileIds + sharedProfileIds).distinct()
-                val shared = if (sharedPids.isEmpty()) emptyList() else
+                // Accountant vidí celý profil, takže potřebuje všechny kategorie.
+                val accountant = if (accountantProfileIds.isEmpty()) emptyList() else
                     Categories.selectAll()
-                        .where { (Categories.profileId inList sharedPids) and (Categories.updatedAt greater effectiveSinceForShared) }
+                        .where { (Categories.profileId inList accountantProfileIds) and (Categories.updatedAt greater effectiveSinceForShared) }
                         .map { categoryToEntity(it, profileIdToSync) }
-                owned + shared
+                // Per-account share (VIEWER/EDITOR): NESMÍ vidět všechny kategorie profilu
+                // (= leak — odhalí strukturu financí vlastníka, např. "Lék na implantáty",
+                // "Hypotéka", "Mzda Petra"). Posíláme JEN ty kategorie, které jsou
+                // referencované ve viditelných transakcích recipientovi (sharedTxRowsAllVisible
+                // už prošly visibility filtrem).
+                val sharedCategoryDbIds: Set<UUID> = sharedTxRowsAllVisible
+                    .mapNotNull { it[Transactions.categoryId]?.value }
+                    .toSet()
+                val sharedCats = if (sharedCategoryDbIds.isEmpty()) emptyList() else
+                    Categories.selectAll()
+                        .where { (Categories.id inList sharedCategoryDbIds.toList()) and (Categories.updatedAt greater effectiveSinceForShared) }
+                        .map { categoryToEntity(it, profileIdToSync) }
+                (owned + accountant + sharedCats).distinctBy { it.syncId }
             }
 
             result["transactions"] = run {
