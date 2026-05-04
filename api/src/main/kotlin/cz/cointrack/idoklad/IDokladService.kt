@@ -1,5 +1,6 @@
 package cz.cointrack.idoklad
 
+import cz.cointrack.access.profilesUserCanRead
 import cz.cointrack.db.Invoices
 import cz.cointrack.db.Profiles
 import cz.cointrack.db.db
@@ -81,9 +82,13 @@ class IDokladService(private val client: IDokladClient = IDokladClient()) {
         val cointrackInvoiceSyncId: String,
     )
 
-    /** Vrátí status iDoklad připojení pro daný profil. */
+    /**
+     * Vrátí status iDoklad připojení pro daný profil. Read-only — povolen
+     * i účetnímu (ACCOUNTANT) a B2B adminům, aby viděli, jestli je profil
+     * propojený s iDoklad.
+     */
     suspend fun status(userId: UUID, profileSyncId: UUID): Status = db {
-        val row = profileRowFor(userId, profileSyncId)
+        val row = profileRowForRead(userId, profileSyncId)
         Status(
             configured = !row[Profiles.idokladClientSecretEnc].isNullOrBlank(),
             clientId = row[Profiles.idokladClientId]?.let { mask(it) },
@@ -446,7 +451,10 @@ class IDokladService(private val client: IDokladClient = IDokladClient()) {
      */
     suspend fun getPdf(userId: UUID, profileSyncId: UUID, idokladId: Int): ByteArray {
         log.info("getPdf called: user={}, profile={}, idokladId={}", userId, profileSyncId, idokladId)
-        val profileRow = db { profileRowFor(userId, profileSyncId) }
+        // Read access — povolen i ACCOUNTANT/B2B admin/group member, aby
+        // si stáhli PDF faktury z iDoklad. PDF se fetchuje přes owner's
+        // credentials (uložené v DB), volajícímu se vrátí pouze byty.
+        val profileRow = db { profileRowForRead(userId, profileSyncId) }
         val profileDbId = profileRow[Profiles.id].value
         val token = ensureToken(profileDbId)
 
@@ -498,6 +506,24 @@ class IDokladService(private val client: IDokladClient = IDokladClient()) {
             ?: throw ApiException(HttpStatusCode.NotFound, "profile_not_found", "Profil nenalezen.")
         if (row[Profiles.ownerUserId].value != userId) {
             throw ApiException(HttpStatusCode.Forbidden, "not_profile_owner", "Profil nepatří přihlášenému uživateli.")
+        }
+        return row
+    }
+
+    /**
+     * Read-access varianta — povolen owner / B2B admin / GROUP member /
+     * ProfilePermission view+ / ACCOUNTANT. Pro INFO a STAHOVÁNÍ DOKUMENTŮ
+     * (status, getPdf), ne pro úpravy credentials nebo iDoklad sync trigger.
+     */
+    private fun org.jetbrains.exposed.sql.Transaction.profileRowForRead(
+        userId: UUID, profileSyncId: UUID,
+    ): org.jetbrains.exposed.sql.ResultRow {
+        val row = Profiles.selectAll().where { Profiles.syncId eq profileSyncId }.singleOrNull()
+            ?: throw ApiException(HttpStatusCode.NotFound, "profile_not_found", "Profil nenalezen.")
+        val pid = row[Profiles.id].value
+        val accessible = profilesUserCanRead(userId)
+        if (pid !in accessible) {
+            throw ApiException(HttpStatusCode.Forbidden, "no_access", "K tomuto profilu nemáš přístup.")
         }
         return row
     }
