@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { useSyncData } from "@/lib/sync-hook";
 import {
+  ServerAccount,
   ServerCategory,
   ServerTransaction,
   toUiTransaction,
@@ -30,9 +31,16 @@ export default function StatisticsPage() {
   });
   const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(new Set());
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  /**
+   * Filter dle účtů — multi-select. Empty = všechny účty (default). Stejný
+   * pattern jako mobile StatisticsScreen + dashboard. Persistuje se v paměti
+   * (resetuje při navigaci pryč).
+   */
+  const [selectedAccountIds, setSelectedAccountIds] = useState<Set<string>>(new Set());
 
   const txEntities = entitiesByProfile<ServerTransaction>("transactions");
   const categoryEntities = entitiesByProfile<ServerCategory>("categories");
+  const accountEntities = entitiesByProfile<ServerAccount>("accounts");
 
   const catMap = useMemo(() => {
     const m = new Map<string, ServerCategory>();
@@ -51,9 +59,14 @@ export default function StatisticsPage() {
     return uiTxs.filter((tx) => {
       if (range.from && tx.date < range.from) return false;
       if (range.to && tx.date > range.to) return false;
+      // Account filter — empty set = všechny účty pusť
+      if (selectedAccountIds.size > 0) {
+        if (!tx.accountSyncId) return false;
+        if (!selectedAccountIds.has(tx.accountSyncId)) return false;
+      }
       return true;
     });
-  }, [uiTxs, range]);
+  }, [uiTxs, range, selectedAccountIds]);
 
   const totals = useMemo(() => {
     let income = 0;
@@ -63,6 +76,71 @@ export default function StatisticsPage() {
       else if (tx.type === "EXPENSE") expense += tx.amount;
     }
     return { income, expense, net: income - expense };
+  }, [inPeriod]);
+
+  /**
+   * Savings rate = (income − expense) / income, ve %. Null pokud income=0
+   * (rate je nedefinovaný). Klíčový ukazatel finančního zdraví.
+   */
+  const savingsRate = useMemo(() => {
+    if (totals.income <= 0) return null;
+    return ((totals.income - totals.expense) / totals.income) * 100;
+  }, [totals]);
+
+  /**
+   * Period-over-period comparison. Bere stejně dlouhé období BEZPROSTŘEDNĚ
+   * před aktuálním (např. aktuální 30D zpět vs předchozích 30D).
+   *
+   * Používá `range` z PeriodSelector (může být custom). Pokud range nemá
+   * `from` (= žádný start), vrací null (např. pro all-time period).
+   */
+  const previousPeriodComparison = useMemo(() => {
+    if (!range.from || !range.to) return null;
+    const fromDate = new Date(range.from);
+    const toDate = new Date(range.to);
+    const periodMs = toDate.getTime() - fromDate.getTime();
+    if (periodMs <= 0) return null;
+    const prevTo = new Date(fromDate.getTime() - 1);
+    const prevFrom = new Date(prevTo.getTime() - periodMs);
+    const prevToStr = prevTo.toISOString().slice(0, 10);
+    const prevFromStr = prevFrom.toISOString().slice(0, 10);
+    let prevIncome = 0;
+    let prevExpense = 0;
+    for (const tx of uiTxs) {
+      if (tx.date < prevFromStr || tx.date > prevToStr) continue;
+      if (selectedAccountIds.size > 0) {
+        if (!tx.accountSyncId || !selectedAccountIds.has(tx.accountSyncId)) continue;
+      }
+      if (tx.type === "INCOME") prevIncome += tx.amount;
+      else if (tx.type === "EXPENSE") prevExpense += tx.amount;
+    }
+    const expensePct = prevExpense > 0 ? ((totals.expense - prevExpense) / prevExpense) * 100 : null;
+    const incomePct = prevIncome > 0 ? ((totals.income - prevIncome) / prevIncome) * 100 : null;
+    return { prevIncome, prevExpense, expensePct, incomePct };
+  }, [range, uiTxs, selectedAccountIds, totals]);
+
+  /**
+   * Top 10 obchodníků/protistran dle součtu výdajů. Sjednocuje:
+   *   - merchant (web doc dialog)
+   *   - description (Cointrack manual / Fio import často píše do description
+   *     nazevProtiuctu nebo merchant name)
+   * Normalizuje (trim, max 60) a sčítá.
+   */
+  const topMerchants = useMemo(() => {
+    const sums = new Map<string, { amount: number; count: number }>();
+    for (const tx of inPeriod) {
+      if (tx.type !== "EXPENSE") continue;
+      const raw = tx.merchant?.trim() || tx.description?.trim() || "(neznámý)";
+      const name = raw.replace(/\s+/g, " ").slice(0, 60);
+      const cur = sums.get(name) ?? { amount: 0, count: 0 };
+      cur.amount += tx.amount;
+      cur.count += 1;
+      sums.set(name, cur);
+    }
+    return Array.from(sums.entries())
+      .map(([name, v]) => ({ name, ...v }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 10);
   }, [inPeriod]);
 
   // Kategorie pro výdaje
@@ -120,6 +198,56 @@ export default function StatisticsPage() {
         />
       </div>
 
+      {/* Account filter — multi-select chips. Empty = všechny účty.
+          Stejný UX pattern jako Dashboard a TransactionsScreen v mobile,
+          aby user měl konzistentní filtrování napříč obrazovkami. */}
+      {accountEntities.length > 1 && (
+        <section className="bg-white rounded-2xl border border-ink-200 p-4">
+          <div className="flex items-baseline justify-between mb-3">
+            <h2 className="text-xs font-medium text-ink-500 uppercase tracking-wide">
+              Filtrované účty
+            </h2>
+            {selectedAccountIds.size > 0 && (
+              <button
+                type="button"
+                onClick={() => setSelectedAccountIds(new Set())}
+                className="text-xs text-ink-500 hover:text-ink-700 font-medium"
+              >
+                Vybrat vše
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {accountEntities.map((acc) => {
+              const isSel = selectedAccountIds.has(acc.syncId);
+              return (
+                <button
+                  key={acc.syncId}
+                  type="button"
+                  onClick={() => {
+                    setSelectedAccountIds((prev) => {
+                      const n = new Set(prev);
+                      if (n.has(acc.syncId)) n.delete(acc.syncId);
+                      else n.add(acc.syncId);
+                      return n;
+                    });
+                  }}
+                  className={`px-3 py-1.5 rounded-full border text-xs transition-colors ${
+                    isSel
+                      ? "bg-brand-600 border-brand-600 text-white"
+                      : "bg-white border-ink-300 text-ink-700 hover:border-ink-400"
+                  }`}
+                  title={`${acc.data.name} (${acc.data.currency})`}
+                >
+                  {isSel && <span className="mr-1">✓</span>}
+                  {acc.data.name}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {/* KPI tiles */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Tile label={t("income")} amount={totals.income} color="text-emerald-700" sign="+" locale={locale} />
@@ -132,6 +260,34 @@ export default function StatisticsPage() {
           absoluteAmount
           locale={locale}
         />
+      </div>
+
+      {/* Insight chips: savings rate + period-over-period comparison.
+          Sjednocené s mobile StatisticsScreen (V35). */}
+      <div className="flex flex-wrap gap-3">
+        {savingsRate !== null && (
+          <InsightChip
+            label="Míra spoření"
+            value={`${savingsRate.toFixed(0)} %`}
+            isPositive={savingsRate >= 10}
+          />
+        )}
+        {previousPeriodComparison?.expensePct !== null &&
+          previousPeriodComparison?.expensePct !== undefined && (
+            <InsightChip
+              label="Výdaje vs předchozí"
+              value={`${previousPeriodComparison.expensePct >= 0 ? "+" : ""}${previousPeriodComparison.expensePct.toFixed(0)} %`}
+              isPositive={previousPeriodComparison.expensePct < 0}
+            />
+          )}
+        {previousPeriodComparison?.incomePct !== null &&
+          previousPeriodComparison?.incomePct !== undefined && (
+            <InsightChip
+              label="Příjmy vs předchozí"
+              value={`${previousPeriodComparison.incomePct >= 0 ? "+" : ""}${previousPeriodComparison.incomePct.toFixed(0)} %`}
+              isPositive={previousPeriodComparison.incomePct > 0}
+            />
+          )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -303,6 +459,65 @@ export default function StatisticsPage() {
           )}
         </section>
       </div>
+
+      {/* Top merchanti — kde nejvíc utrácíš.
+          V35: sjednoceno s mobile StatisticsScreen.topMerchants. */}
+      {topMerchants.length > 0 && (
+        <section className="bg-white rounded-2xl border border-ink-200 p-5">
+          <h2 className="font-semibold text-ink-900 mb-4">
+            Top obchodníci (kde nejvíc utratíš)
+          </h2>
+          <div className="space-y-3">
+            {topMerchants.map((m) => {
+              const maxAmount = topMerchants[0].amount;
+              const fraction = maxAmount > 0 ? m.amount / maxAmount : 0;
+              return (
+                <div key={m.name} className="space-y-1">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <div className="text-sm font-medium text-ink-900 truncate flex-1">
+                      {m.name}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-sm font-semibold text-red-700 tabular-nums">
+                        {fmt(m.amount, "CZK", locale)}
+                      </div>
+                      <div className="text-[10px] text-ink-500">{m.count}×</div>
+                    </div>
+                  </div>
+                  <div className="h-1 bg-ink-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-red-500/70 rounded-full"
+                      style={{ width: `${fraction * 100}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function InsightChip({
+  label,
+  value,
+  isPositive,
+}: {
+  label: string;
+  value: string;
+  isPositive: boolean;
+}) {
+  const bg = isPositive ? "bg-emerald-50" : "bg-red-50";
+  const fg = isPositive ? "text-emerald-700" : "text-red-700";
+  const fgMuted = isPositive ? "text-emerald-600" : "text-red-600";
+  return (
+    <div className={`${bg} rounded-xl px-4 py-2.5 inline-flex flex-col`}>
+      <div className={`text-[10px] uppercase tracking-wide font-medium ${fgMuted}`}>
+        {label}
+      </div>
+      <div className={`text-lg font-bold ${fg} tabular-nums`}>{value}</div>
     </div>
   );
 }
