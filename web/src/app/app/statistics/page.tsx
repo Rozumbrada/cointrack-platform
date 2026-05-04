@@ -11,6 +11,19 @@ import {
   toUiTransaction,
   UiTransaction,
 } from "@/lib/sync-types";
+
+/**
+ * Server Budget shape — sjednocený s budgets/page.tsx pro statistiky.
+ * `limit` je string (server konvence pro decimal).
+ */
+interface ServerBudget {
+  profileId: string;
+  categoryId?: string;
+  name: string;
+  limit: string;
+  period: string;
+  currency: string;
+}
 import {
   Period,
   PeriodSelector,
@@ -41,6 +54,7 @@ export default function StatisticsPage() {
   const txEntities = entitiesByProfile<ServerTransaction>("transactions");
   const categoryEntities = entitiesByProfile<ServerCategory>("categories");
   const accountEntities = entitiesByProfile<ServerAccount>("accounts");
+  const budgetEntities = entitiesByProfile<ServerBudget>("budgets");
 
   const catMap = useMemo(() => {
     const m = new Map<string, ServerCategory>();
@@ -142,6 +156,199 @@ export default function StatisticsPage() {
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 10);
   }, [inPeriod]);
+
+  /**
+   * Budget vs Actual progress per kategorii. Pokud rozpočet má kategorii,
+   * sčítá jen výdaje z dané kategorie; jinak všechny výdaje období.
+   */
+  const budgetProgress = useMemo(() => {
+    if (budgetEntities.length === 0) return [];
+    return budgetEntities
+      .map((b) => {
+        const limit = parseFloat(b.data.limit) || 0;
+        const matching = inPeriod.filter(
+          (tx) =>
+            tx.type === "EXPENSE" &&
+            (!b.data.categoryId || tx.categorySyncId === b.data.categoryId),
+        );
+        // Skip uncategorized rozpočet pokud žádné tx
+        if (matching.length === 0 && b.data.categoryId) return null;
+        const spent = matching.reduce((s, tx) => s + tx.amount, 0);
+        const cat = b.data.categoryId ? catMap.get(b.data.categoryId) : undefined;
+        return {
+          name: b.data.name,
+          category: cat,
+          limit,
+          spent,
+          percent: limit > 0 ? (spent / limit) * 100 : 0,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null)
+      .sort((a, b) => b.percent - a.percent);
+  }, [budgetEntities, inPeriod, catMap]);
+
+  /**
+   * Heuristická detekce pravidelných plateb (předplatné, nájem, splátky).
+   * Stejná logika jako mobile StatisticsViewModel.recurringPayments.
+   * Bere posledních 180 dní z uiTxs (bez ohledu na filter), respektuje
+   * jen account filter.
+   */
+  const recurringPayments = useMemo(() => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 180);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    const candidates = uiTxs.filter((tx) => {
+      if (tx.type !== "EXPENSE") return false;
+      if (tx.date < cutoffStr) return false;
+      if (selectedAccountIds.size > 0) {
+        if (!tx.accountSyncId || !selectedAccountIds.has(tx.accountSyncId)) return false;
+      }
+      return true;
+    });
+    const byMerchant = new Map<string, UiTransaction[]>();
+    for (const tx of candidates) {
+      const raw = tx.merchant?.trim() || tx.description?.trim();
+      if (!raw) continue;
+      const key = raw.replace(/\s+/g, " ").slice(0, 60).toLowerCase();
+      if (!byMerchant.has(key)) byMerchant.set(key, []);
+      byMerchant.get(key)!.push(tx);
+    }
+    const result: Array<{
+      merchant: string;
+      avgAmount: number;
+      occurrences: number;
+      frequency: string;
+      lastDate: string;
+    }> = [];
+    byMerchant.forEach((group) => {
+      if (group.length < 3) return;
+      const sorted = [...group].sort((a, b) => a.date.localeCompare(b.date));
+      // Median interval (days) mezi consecutive
+      const intervals: number[] = [];
+      for (let i = 1; i < sorted.length; i++) {
+        const a = new Date(sorted[i - 1].date);
+        const b = new Date(sorted[i].date);
+        intervals.push(Math.round((b.getTime() - a.getTime()) / 86400000));
+      }
+      if (intervals.length === 0) return;
+      const sortedInt = [...intervals].sort((a, b) => a - b);
+      const median = sortedInt[Math.floor(sortedInt.length / 2)];
+      let frequency: string;
+      if (median >= 5 && median <= 9) frequency = "weekly";
+      else if (median >= 12 && median <= 16) frequency = "biweekly";
+      else if (median >= 25 && median <= 35) frequency = "monthly";
+      else if (median >= 80 && median <= 100) frequency = "quarterly";
+      else return; // nepravidelné
+
+      const amounts = sorted.map((t) => t.amount);
+      const mean = amounts.reduce((s, v) => s + v, 0) / amounts.length;
+      const variance = amounts.reduce((s, v) => s + (v - mean) ** 2, 0) / amounts.length;
+      const stdDev = Math.sqrt(variance);
+      const cv = mean > 0 ? stdDev / mean : Infinity;
+      if (cv > 0.20) return; // moc kolísá
+
+      const displayName =
+        sorted[0].merchant?.trim() || sorted[0].description?.trim() || "(neznámý)";
+      result.push({
+        merchant: displayName.replace(/\s+/g, " ").slice(0, 60),
+        avgAmount: mean,
+        occurrences: sorted.length,
+        frequency,
+        lastDate: sorted[sorted.length - 1].date,
+      });
+    });
+    return result.sort((a, b) => b.occurrences - a.occurrences).slice(0, 20);
+  }, [uiTxs, selectedAccountIds]);
+
+  /**
+   * Cashflow line — kumulativní zůstatek od počátku období.
+   * Starting balance = signed sum všech tx před period.from (account-filtered).
+   */
+  const cashflow = useMemo(() => {
+    if (!range.from || !range.to) return [];
+    const fromStr = range.from;
+    const toStr = range.to;
+    // Filter helper
+    const passes = (tx: UiTransaction): boolean => {
+      if (selectedAccountIds.size === 0) return true;
+      return !!tx.accountSyncId && selectedAccountIds.has(tx.accountSyncId);
+    };
+    const signedDelta = (tx: UiTransaction): number => {
+      if (tx.type === "INCOME") return tx.amount;
+      if (tx.type === "EXPENSE") return -tx.amount;
+      return 0; // TRANSFER nemění total
+    };
+    let startingBalance = 0;
+    for (const tx of uiTxs) {
+      if (!passes(tx)) continue;
+      if (tx.date < fromStr) startingBalance += signedDelta(tx);
+    }
+    // Group per den
+    const perDay = new Map<string, number>();
+    for (const tx of uiTxs) {
+      if (!passes(tx)) continue;
+      if (tx.date < fromStr || tx.date > toStr) continue;
+      perDay.set(tx.date, (perDay.get(tx.date) ?? 0) + signedDelta(tx));
+    }
+    const fromDate = new Date(fromStr);
+    const toDate = new Date(toStr);
+    const days = Math.round((toDate.getTime() - fromDate.getTime()) / 86400000);
+    const granularity: "day" | "week" | "month" =
+      days <= 31 ? "day" : days <= 120 ? "week" : "month";
+
+    const points: { label: string; balance: number }[] = [];
+    let running = startingBalance;
+    if (granularity === "day") {
+      const cur = new Date(fromDate);
+      while (cur <= toDate) {
+        const key = cur.toISOString().slice(0, 10);
+        running += perDay.get(key) ?? 0;
+        points.push({
+          label: `${cur.getDate()}.${cur.getMonth() + 1}.`,
+          balance: running,
+        });
+        cur.setDate(cur.getDate() + 1);
+      }
+    } else if (granularity === "week") {
+      const cur = new Date(fromDate);
+      // Move to Monday
+      const dayOfWeek = cur.getDay() || 7;
+      cur.setDate(cur.getDate() - dayOfWeek + 1);
+      while (cur <= toDate) {
+        let weekSum = 0;
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(cur);
+          d.setDate(d.getDate() + i);
+          const key = d.toISOString().slice(0, 10);
+          weekSum += perDay.get(key) ?? 0;
+        }
+        running += weekSum;
+        points.push({
+          label: `${cur.getDate()}.${cur.getMonth() + 1}.`,
+          balance: running,
+        });
+        cur.setDate(cur.getDate() + 7);
+      }
+    } else {
+      const cur = new Date(fromDate.getFullYear(), fromDate.getMonth(), 1);
+      while (cur <= toDate) {
+        const next = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+        let monthSum = 0;
+        for (const [key, val] of perDay.entries()) {
+          const d = new Date(key);
+          if (d >= cur && d < next) monthSum += val;
+        }
+        running += monthSum;
+        const labels = ["Led", "Úno", "Bře", "Dub", "Kvě", "Čvn", "Čvc", "Srp", "Zář", "Říj", "Lis", "Pro"];
+        points.push({
+          label: labels[cur.getMonth()],
+          balance: running,
+        });
+        cur.setMonth(cur.getMonth() + 1);
+      }
+    }
+    return points;
+  }, [uiTxs, range, selectedAccountIds]);
 
   // Kategorie pro výdaje
   const categoryStats = useMemo(() => {
@@ -460,6 +667,136 @@ export default function StatisticsPage() {
         </section>
       </div>
 
+      {/* Cashflow line — kumulativní zůstatek v čase. V36: sjednoceno
+          s mobile StatisticsScreen.cashflowPoints. */}
+      {cashflow.length >= 2 && (
+        <section className="bg-white rounded-2xl border border-ink-200 p-5">
+          <h2 className="font-semibold text-ink-900 mb-4">
+            Vývoj zůstatku v čase
+          </h2>
+          <CashflowLineChart points={cashflow} locale={locale} />
+          <div className="flex justify-between mt-3 text-xs text-ink-500">
+            <span>
+              Začátek: {fmt(cashflow[0].balance, "CZK", locale)}
+            </span>
+            <span
+              className={`font-semibold ${
+                cashflow[cashflow.length - 1].balance >= cashflow[0].balance
+                  ? "text-emerald-700"
+                  : "text-red-700"
+              }`}
+            >
+              Konec: {fmt(cashflow[cashflow.length - 1].balance, "CZK", locale)}
+            </span>
+          </div>
+        </section>
+      )}
+
+      {/* Budget vs actual — sjednoceno s mobile StatisticsScreen.budgetProgress. */}
+      {budgetProgress.length > 0 && (
+        <section className="bg-white rounded-2xl border border-ink-200 p-5">
+          <h2 className="font-semibold text-ink-900 mb-4">
+            Rozpočty (skutečnost vs limit)
+          </h2>
+          <div className="space-y-3">
+            {budgetProgress.map((bp) => {
+              const pct = bp.percent;
+              const colorClass =
+                pct < 70 ? "bg-emerald-500" : pct < 90 ? "bg-amber-500" : "bg-red-500";
+              const textColor =
+                pct < 70 ? "text-emerald-700" : pct < 90 ? "text-amber-700" : "text-red-700";
+              return (
+                <div key={bp.name} className="space-y-1">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <div className="text-sm font-medium text-ink-900 flex-1 truncate">
+                      {bp.name}
+                    </div>
+                    <div className={`text-sm font-semibold ${textColor} tabular-nums`}>
+                      {fmt(bp.spent, "CZK", locale)} / {fmt(bp.limit, "CZK", locale)}
+                    </div>
+                  </div>
+                  <div className="h-2 bg-ink-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full ${colorClass} rounded-full transition-all`}
+                      style={{ width: `${Math.min(pct, 100)}%` }}
+                    />
+                  </div>
+                  <div className={`text-xs ${textColor}`}>
+                    {Math.round(pct)} %
+                    {pct > 100 && " (přes limit!)"}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Recurring payments — pravidelné platby (předplatné, nájem, splátky).
+          V36: sjednoceno s mobile StatisticsScreen.recurringPayments. */}
+      {recurringPayments.length > 0 && (
+        <section className="bg-white rounded-2xl border border-ink-200 p-5">
+          {(() => {
+            const monthlyEq = recurringPayments.reduce((s, r) => {
+              const m =
+                r.frequency === "weekly"
+                  ? r.avgAmount * 4.33
+                  : r.frequency === "biweekly"
+                  ? r.avgAmount * 2.17
+                  : r.frequency === "monthly"
+                  ? r.avgAmount
+                  : r.frequency === "quarterly"
+                  ? r.avgAmount / 3
+                  : 0;
+              return s + m;
+            }, 0);
+            return (
+              <div className="flex items-baseline justify-between mb-4">
+                <h2 className="font-semibold text-ink-900">Pravidelné platby</h2>
+                <div className="text-xs font-semibold text-brand-600">
+                  ≈ {fmt(monthlyEq, "CZK", locale)}/měs
+                </div>
+              </div>
+            );
+          })()}
+          <div className="divide-y divide-ink-100">
+            {recurringPayments.slice(0, 10).map((r) => {
+              const freqLabel =
+                r.frequency === "weekly"
+                  ? "týdně"
+                  : r.frequency === "biweekly"
+                  ? "2× měsíc"
+                  : r.frequency === "monthly"
+                  ? "měsíčně"
+                  : "kvartálně";
+              return (
+                <div
+                  key={r.merchant}
+                  className="flex items-center justify-between py-2"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-ink-900 truncate">
+                      {r.merchant}
+                    </div>
+                    <div className="text-[11px] text-ink-500">
+                      {freqLabel} · {r.occurrences}× · od {r.lastDate}
+                    </div>
+                  </div>
+                  <div className="text-sm font-bold text-ink-900 tabular-nums">
+                    {fmt(r.avgAmount, "CZK", locale)}
+                  </div>
+                </div>
+              );
+            })}
+            {recurringPayments.length > 10 && (
+              <div className="text-xs text-ink-500 pt-2">
+                + {recurringPayments.length - 10} dalších
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* Top merchanti — kde nejvíc utrácíš.
           V35: sjednoceno s mobile StatisticsScreen.topMerchants. */}
       {topMerchants.length > 0 && (
@@ -496,6 +833,78 @@ export default function StatisticsPage() {
           </div>
         </section>
       )}
+    </div>
+  );
+}
+
+function CashflowLineChart({
+  points,
+  locale,
+}: {
+  points: { label: string; balance: number }[];
+  locale: string;
+}) {
+  if (points.length < 2) return null;
+  const W = 600;
+  const H = 160;
+  const PAD = 8;
+  const minBal = Math.min(...points.map((p) => p.balance));
+  const maxBal = Math.max(...points.map((p) => p.balance));
+  const range = maxBal - minBal || 1;
+  const stepX = (W - 2 * PAD) / (points.length - 1);
+  const yFor = (b: number) => PAD + ((maxBal - b) / range) * (H - 2 * PAD);
+  const pathD = points
+    .map((p, i) => `${i === 0 ? "M" : "L"} ${PAD + i * stepX} ${yFor(p.balance)}`)
+    .join(" ");
+  const fillD =
+    `M ${PAD} ${H - PAD} ` +
+    points
+      .map((p, i) => `L ${PAD + i * stepX} ${yFor(p.balance)}`)
+      .join(" ") +
+    ` L ${PAD + (points.length - 1) * stepX} ${H - PAD} Z`;
+  const zeroY = minBal < 0 && maxBal > 0 ? yFor(0) : null;
+  const last = points[points.length - 1];
+  return (
+    <div className="w-full">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        className="w-full h-40"
+      >
+        {zeroY !== null && (
+          <line
+            x1={PAD}
+            y1={zeroY}
+            x2={W - PAD}
+            y2={zeroY}
+            stroke="#cbd5e1"
+            strokeWidth="1"
+            strokeDasharray="3 3"
+          />
+        )}
+        <path d={fillD} fill="rgba(99, 102, 241, 0.12)" />
+        <path
+          d={pathD}
+          stroke="rgb(99, 102, 241)"
+          strokeWidth="2"
+          fill="none"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <circle
+          cx={PAD + (points.length - 1) * stepX}
+          cy={yFor(last.balance)}
+          r="4"
+          fill="rgb(99, 102, 241)"
+        />
+      </svg>
+      <div className="flex justify-between text-[10px] text-ink-500 mt-1">
+        <span>{points[0].label}</span>
+        {points.length >= 5 && (
+          <span>{points[Math.floor(points.length / 2)].label}</span>
+        )}
+        <span>{last.label}</span>
+      </div>
     </div>
   );
 }
