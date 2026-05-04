@@ -107,6 +107,10 @@ object Transactions : SyncableTable("transactions") {
     val bankSs                = varchar("bank_ss", 32).nullable()
     val bankCounterparty      = varchar("bank_counterparty", 128).nullable()
     val bankCounterpartyName  = varchar("bank_counterparty_name", 256).nullable()
+    /** V33: kód banky protiúčtu (Fio column3) — pro úplné zobrazení v detailu tx. */
+    val bankCounterpartyCode  = varchar("bank_counterparty_code", 16).nullable()
+    /** V33: BIC kód protibanky (Fio column26) — pro úplné zobrazení. */
+    val bankBic               = varchar("bank_bic", 16).nullable()
 
     val isTransfer     = bool("is_transfer").default(false)
     val transferPairId = uuid("transfer_pair_id").nullable()

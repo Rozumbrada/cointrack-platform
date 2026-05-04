@@ -1018,16 +1018,24 @@ class SyncService {
             s[Transactions.merchant] = d.strOrNull("merchant")
             s[Transactions.bankTxId] = d.strOrNull("bankTxId")
             s[Transactions.bankVs] = d.strOrNull("bankVs")
+            s[Transactions.bankCs] = d.strOrNull("bankCs")
+            s[Transactions.bankSs] = d.strOrNull("bankSs")
             s[Transactions.bankCounterparty] = d.strOrNull("bankCounterparty")
             s[Transactions.bankCounterpartyName] = d.strOrNull("bankCounterpartyName")
+            s[Transactions.bankCounterpartyCode] = d.strOrNull("bankCounterpartyCode")
+            s[Transactions.bankBic] = d.strOrNull("bankBic")
             s[Transactions.transferPairId] = d.uuidOrNull("transferPairId")
         } else {
             if (d.containsKey("description")) s[Transactions.description] = d.strOrNull("description")
             if (d.containsKey("merchant")) s[Transactions.merchant] = d.strOrNull("merchant")
             if (d.containsKey("bankTxId")) s[Transactions.bankTxId] = d.strOrNull("bankTxId")
             if (d.containsKey("bankVs")) s[Transactions.bankVs] = d.strOrNull("bankVs")
+            if (d.containsKey("bankCs")) s[Transactions.bankCs] = d.strOrNull("bankCs")
+            if (d.containsKey("bankSs")) s[Transactions.bankSs] = d.strOrNull("bankSs")
             if (d.containsKey("bankCounterparty")) s[Transactions.bankCounterparty] = d.strOrNull("bankCounterparty")
             if (d.containsKey("bankCounterpartyName")) s[Transactions.bankCounterpartyName] = d.strOrNull("bankCounterpartyName")
+            if (d.containsKey("bankCounterpartyCode")) s[Transactions.bankCounterpartyCode] = d.strOrNull("bankCounterpartyCode")
+            if (d.containsKey("bankBic")) s[Transactions.bankBic] = d.strOrNull("bankBic")
             if (d.containsKey("transferPairId")) s[Transactions.transferPairId] = d.uuidOrNull("transferPairId")
         }
         s[Transactions.clientVersion] = cv
@@ -1463,7 +1471,11 @@ class SyncService {
             put("date", r[Transactions.date].toString())
             r[Transactions.bankTxId]?.let { put("bankTxId", it) }
             r[Transactions.bankVs]?.let { put("bankVs", it) }
+            r[Transactions.bankCs]?.let { put("bankCs", it) }
+            r[Transactions.bankSs]?.let { put("bankSs", it) }
             r[Transactions.bankCounterparty]?.let { put("bankCounterparty", it) }
+            r[Transactions.bankCounterpartyCode]?.let { put("bankCounterpartyCode", it) }
+            r[Transactions.bankBic]?.let { put("bankBic", it) }
             r[Transactions.bankCounterpartyName]?.let { put("bankCounterpartyName", it) }
             put("isTransfer", r[Transactions.isTransfer])
             r[Transactions.transferPairId]?.let { put("transferPairId", it.toString()) }
