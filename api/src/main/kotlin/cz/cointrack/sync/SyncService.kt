@@ -191,6 +191,12 @@ class SyncService {
      *   - admin/owner B2B orgu kam profil patří, nebo
      *   - ANY member GROUP orgu kam profil patří (ve skupinách všichni píšou), nebo
      *   - per-profile permission 'edit' (Sprint 5f)
+     *
+     * POZNÁMKA: ACCOUNTANT NENÍ v tomto seznamu úmyslně. Účetní má omezený
+     * write subset (receipts, invoices, transactions, categories) — čeká je
+     * separátní check [canAccountantWriteEntity]. Kdyby tu byl, dostal by
+     * právo editovat i profilová metadata, což není záměr (jen owner edituje
+     * IČO, název firmy, atd.).
      */
     private fun Transaction.canWriteProfile(userId: UUID, profileRow: ResultRow): Boolean {
         if (profileRow[Profiles.ownerUserId].value == userId) return true
@@ -206,6 +212,37 @@ class SyncService {
                     (ProfilePermissions.userId eq userId) and
                     (ProfilePermissions.permission eq "edit")
             }.any()
+    }
+
+    /**
+     * V37 — ACCOUNTANT může editovat účetně relevantní entity, ne profilová
+     * metadata. Pokrývá:
+     *   • receipts + receipt_items
+     *   • invoices + invoice_items
+     *   • transactions (kategorizace, oprava poznámek)
+     *   • categories (vytvořit novou účetní kategorii)
+     *   • merchant_rules (auto-kategorizace bankovních importů)
+     *
+     * NE pokrývá: profiles (metadata, IČO), accounts (zůstatky, banking),
+     * budgets/debts/goals/warranties (vlastníkovo plánování), shopping,
+     * investment_positions, fio_accounts, group_*.
+     */
+    private fun Transaction.canAccountantWriteEntity(
+        userId: UUID,
+        profileId: UUID,
+        entityType: SyncEntityType,
+    ): Boolean {
+        val isAccountant = profileId in accountantSharedProfileIds(userId)
+        if (!isAccountant) return false
+        return entityType in setOf(
+            SyncEntityType.RECEIPTS,
+            SyncEntityType.RECEIPT_ITEMS,
+            SyncEntityType.INVOICES,
+            SyncEntityType.INVOICE_ITEMS,
+            SyncEntityType.TRANSACTIONS,
+            SyncEntityType.CATEGORIES,
+            SyncEntityType.MERCHANT_RULES,
+        )
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -715,6 +752,24 @@ class SyncService {
         return if (canWriteProfile(userId, row)) row[Profiles.id].value else null
     }
 
+    /**
+     * V37 — varianta [resolveProfileDbId] pro entity, kde má i ACCOUNTANT
+     * write přístup. Kontroluje [canWriteProfile] (owner/admin/group/perm),
+     * a navíc [canAccountantWriteEntity] pro účetní.
+     */
+    private fun Transaction.resolveProfileDbIdAllowingAccountant(
+        syncIdStr: String,
+        userId: UUID,
+        entityType: SyncEntityType,
+    ): UUID? {
+        val syncId = runCatching { UUID.fromString(syncIdStr) }.getOrNull() ?: return null
+        val row = Profiles.selectAll().where { Profiles.syncId eq syncId }.singleOrNull() ?: return null
+        val pid = row[Profiles.id].value
+        if (canWriteProfile(userId, row)) return pid
+        if (canAccountantWriteEntity(userId, pid, entityType)) return pid
+        return null
+    }
+
     private fun Transaction.resolveAccountDbId(syncIdStr: String?): UUID? {
         if (syncIdStr == null) return null
         val syncId = runCatching { UUID.fromString(syncIdStr) }.getOrNull() ?: return null
@@ -924,7 +979,9 @@ class SyncService {
     private fun Transaction.upsertCategory(
         userId: UUID, syncId: UUID, e: SyncEntity, updatedAt: Instant, deletedAt: Instant?
     ): UpsertResult {
-        val profileDbId = resolveProfileDbId(e.data.str("profileId"), userId) ?: return UpsertResult.Forbidden
+        val profileDbId = resolveProfileDbIdAllowingAccountant(
+            e.data.str("profileId"), userId, SyncEntityType.CATEGORIES,
+        ) ?: return UpsertResult.Forbidden
         val existing = Categories.selectAll().where { Categories.syncId eq syncId }.singleOrNull()
 
         if (existing != null) {
@@ -973,7 +1030,9 @@ class SyncService {
     private fun Transaction.upsertTransaction(
         userId: UUID, syncId: UUID, e: SyncEntity, updatedAt: Instant, deletedAt: Instant?
     ): UpsertResult {
-        val profileDbId = resolveProfileDbId(e.data.str("profileId"), userId) ?: return UpsertResult.Forbidden
+        val profileDbId = resolveProfileDbIdAllowingAccountant(
+            e.data.str("profileId"), userId, SyncEntityType.TRANSACTIONS,
+        ) ?: return UpsertResult.Forbidden
         val accountDbId = resolveAccountDbId(e.data.strOrNull("accountId"))
         val categoryDbId = resolveCategoryDbId(e.data.strOrNull("categoryId"))
         val existing = Transactions.selectAll().where { Transactions.syncId eq syncId }.singleOrNull()
@@ -1048,7 +1107,9 @@ class SyncService {
     private fun Transaction.upsertReceipt(
         userId: UUID, syncId: UUID, e: SyncEntity, updatedAt: Instant, deletedAt: Instant?
     ): UpsertResult {
-        val profileDbId = resolveProfileDbId(e.data.str("profileId"), userId) ?: return UpsertResult.Forbidden
+        val profileDbId = resolveProfileDbIdAllowingAccountant(
+            e.data.str("profileId"), userId, SyncEntityType.RECEIPTS,
+        ) ?: return UpsertResult.Forbidden
         val categoryDbId = resolveCategoryDbId(e.data.strOrNull("categoryId"))
         val transactionDbId = resolveTransactionDbId(e.data.strOrNull("transactionId"))
         // V29: linkedAccountId pro Pohoda export — ručně přiřazený účet (CARD platby).
@@ -1134,7 +1195,9 @@ class SyncService {
     private fun Transaction.upsertInvoice(
         userId: UUID, syncId: UUID, e: SyncEntity, updatedAt: Instant, deletedAt: Instant?
     ): UpsertResult {
-        val profileDbId = resolveProfileDbId(e.data.str("profileId"), userId) ?: return UpsertResult.Forbidden
+        val profileDbId = resolveProfileDbIdAllowingAccountant(
+            e.data.str("profileId"), userId, SyncEntityType.INVOICES,
+        ) ?: return UpsertResult.Forbidden
         val categoryDbId = resolveCategoryDbId(e.data.strOrNull("categoryId"))
         val accountDbId = resolveAccountDbId(e.data.strOrNull("linkedAccountId"))
         val transactionDbId = resolveTransactionDbId(e.data.strOrNull("linkedTransactionId"))
@@ -1233,10 +1296,15 @@ class SyncService {
         userId: UUID, syncId: UUID, e: SyncEntity, updatedAt: Instant, deletedAt: Instant?
     ): UpsertResult {
         val receiptDbId = resolveReceiptDbId(e.data.str("receiptId")) ?: return UpsertResult.Forbidden
-        // Ověř ownership přes receipt.profile
+        // Ověř ownership přes receipt.profile (V37: účetní také smí editovat
+        // položky účtenky, jako celou účtenku)
         val receipt = Receipts.selectAll().where { Receipts.id eq receiptDbId }.singleOrNull() ?: return UpsertResult.Forbidden
         val profile = Profiles.selectAll().where { Profiles.id eq receipt[Receipts.profileId].value }.singleOrNull() ?: return UpsertResult.Forbidden
-        if (!canWriteProfile(userId, profile)) return UpsertResult.Forbidden
+        val pid = profile[Profiles.id].value
+        if (!canWriteProfile(userId, profile) &&
+            !canAccountantWriteEntity(userId, pid, SyncEntityType.RECEIPT_ITEMS)) {
+            return UpsertResult.Forbidden
+        }
 
         val existing = ReceiptItems.selectAll().where { ReceiptItems.syncId eq syncId }.singleOrNull()
         if (existing != null) {
@@ -1286,7 +1354,12 @@ class SyncService {
         val invoiceDbId = resolveInvoiceDbId(e.data.str("invoiceId")) ?: return UpsertResult.Forbidden
         val invoice = Invoices.selectAll().where { Invoices.id eq invoiceDbId }.singleOrNull() ?: return UpsertResult.Forbidden
         val profile = Profiles.selectAll().where { Profiles.id eq invoice[Invoices.profileId].value }.singleOrNull() ?: return UpsertResult.Forbidden
-        if (!canWriteProfile(userId, profile)) return UpsertResult.Forbidden
+        val pid = profile[Profiles.id].value
+        // V37: účetní také smí editovat položky faktury
+        if (!canWriteProfile(userId, profile) &&
+            !canAccountantWriteEntity(userId, pid, SyncEntityType.INVOICE_ITEMS)) {
+            return UpsertResult.Forbidden
+        }
 
         val existing = InvoiceItems.selectAll().where { InvoiceItems.syncId eq syncId }.singleOrNull()
         if (existing != null) {
@@ -1841,7 +1914,9 @@ class SyncService {
     }
 
     private fun Transaction.upsertMerchantRule(userId: UUID, syncId: UUID, e: SyncEntity, updatedAt: Instant, deletedAt: Instant?): UpsertResult {
-        val profileDbId = resolveProfileDbId(e.data.str("profileId"), userId) ?: return UpsertResult.Forbidden
+        val profileDbId = resolveProfileDbIdAllowingAccountant(
+            e.data.str("profileId"), userId, SyncEntityType.MERCHANT_RULES,
+        ) ?: return UpsertResult.Forbidden
         val categoryDbId = resolveCategoryDbId(e.data.strOrNull("categoryId")) ?: return UpsertResult.Forbidden
         val existing = MerchantRules.selectAll().where { MerchantRules.syncId eq syncId }.singleOrNull()
         if (existing != null) {
