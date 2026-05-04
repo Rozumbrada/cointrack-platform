@@ -29,7 +29,7 @@ import {
   PeriodSelector,
   periodRange,
 } from "@/components/app/PeriodSelector";
-import { CategoryIcon } from "@/components/app/CategoryIcon";
+import { CategoryIcon, colorFromInt } from "@/components/app/CategoryIcon";
 import { ExpenseDonut, categoryColor } from "@/components/app/ExpenseDonut";
 import { ChevronDown, ChevronRight, Eye, EyeOff } from "lucide-react";
 
@@ -50,6 +50,10 @@ export default function StatisticsPage() {
    * (resetuje při navigaci pryč).
    */
   const [selectedAccountIds, setSelectedAccountIds] = useState<Set<string>>(new Set());
+  /** V37: donut toggle Výdaje ↔ Příjmy. */
+  const [donutMode, setDonutMode] = useState<"EXPENSE" | "INCOME">("EXPENSE");
+  /** V37: vybraná kategorie pro MoM trend. */
+  const [trendCategoryId, setTrendCategoryId] = useState<string | null>(null);
 
   const txEntities = entitiesByProfile<ServerTransaction>("transactions");
   const categoryEntities = entitiesByProfile<ServerCategory>("categories");
@@ -350,11 +354,204 @@ export default function StatisticsPage() {
     return points;
   }, [uiTxs, range, selectedAccountIds]);
 
-  // Kategorie pro výdaje
+  /**
+   * V37 — Spending forecast. Lineární projekce výdajů do konce období.
+   * Vrací null pokud období skončilo v minulosti.
+   */
+  const forecast = useMemo(() => {
+    if (!range.from || !range.to) return null;
+    const fromDate = new Date(range.from);
+    const toDate = new Date(range.to);
+    const now = new Date();
+    if (toDate < now) return null; // období skončilo
+    const totalDays = Math.max(
+      1,
+      Math.round((toDate.getTime() - fromDate.getTime()) / 86400000),
+    );
+    const elapsedDays = Math.max(
+      1,
+      Math.round(
+        ((now < toDate ? now.getTime() : toDate.getTime()) - fromDate.getTime()) /
+          86400000,
+      ),
+    );
+    const todayStr = now.toISOString().slice(0, 10);
+    const spentSoFar = inPeriod
+      .filter((tx) => tx.type === "EXPENSE" && tx.date <= todayStr)
+      .reduce((s, tx) => s + tx.amount, 0);
+    const avgPerDay = spentSoFar / elapsedDays;
+    return {
+      spentSoFar,
+      projected: avgPerDay * totalDays,
+      avgPerDay,
+      periodProgress: Math.min(1, elapsedDays / totalDays),
+    };
+  }, [inPeriod, range]);
+
+  /**
+   * V37 — Heatmap weekday × hour všech výdajů. 7×24 grid intensity.
+   */
+  const heatmapData = useMemo(() => {
+    const grid = new Map<string, number>();
+    let maxAmount = 0;
+    for (const tx of inPeriod) {
+      if (tx.type !== "EXPENSE") continue;
+      // tx.date is yyyy-MM-dd; date.getDay() returns 0=Sun..6=Sat
+      // We need 1=Mon..7=Sun for parity with mobile DayOfWeek
+      // Pokud tx má jen date (bez času), JS Date dá hour=0 — to je OK.
+      const d = new Date(tx.date);
+      const dow = d.getDay() === 0 ? 7 : d.getDay();
+      // Tx z Cointrack syncu má jen date, takže hour=0 (půlnoc).
+      // Pokud někdy server začne posílat hour, lze rozšířit.
+      const hour = 0;
+      const key = `${dow}-${hour}`;
+      const cur = (grid.get(key) ?? 0) + tx.amount;
+      grid.set(key, cur);
+      if (cur > maxAmount) maxAmount = cur;
+    }
+    return { grid, maxAmount };
+  }, [inPeriod]);
+
+  /**
+   * V37 — Per-account trajectory (zůstatek v čase). Každý vybraný účet
+   * jako samostatná sparkline. Starting balance = account.initialBalance
+   * + signed sum všech tx před period.from pro daný účet.
+   */
+  const accountTrajectories = useMemo(() => {
+    if (!range.from || !range.to) return [];
+    const fromStr = range.from;
+    const toStr = range.to;
+    const visibleAccounts =
+      selectedAccountIds.size === 0
+        ? accountEntities
+        : accountEntities.filter((a) => selectedAccountIds.has(a.syncId));
+    return visibleAccounts.map((acc) => {
+      // Helper: signed delta
+      const signed = (tx: UiTransaction) => {
+        if (tx.accountSyncId !== acc.syncId) return 0;
+        if (tx.type === "INCOME") return tx.amount;
+        if (tx.type === "EXPENSE") return -tx.amount;
+        return 0;
+      };
+      const initialBalance = parseFloat(
+        (acc.data as unknown as Record<string, unknown>).initialBalance as string ?? "0",
+      ) || 0;
+      let starting = initialBalance;
+      for (const tx of uiTxs) {
+        if (tx.date < fromStr) starting += signed(tx);
+      }
+      // Per-day sums in period
+      const perDay = new Map<string, number>();
+      for (const tx of uiTxs) {
+        if (tx.date < fromStr || tx.date > toStr) continue;
+        perDay.set(tx.date, (perDay.get(tx.date) ?? 0) + signed(tx));
+      }
+      // Generate points
+      const fromDate = new Date(fromStr);
+      const toDate = new Date(toStr);
+      const days = Math.round((toDate.getTime() - fromDate.getTime()) / 86400000);
+      const granularity: "day" | "week" | "month" =
+        days <= 31 ? "day" : days <= 120 ? "week" : "month";
+      const points: { label: string; balance: number }[] = [];
+      let running = starting;
+      if (granularity === "day") {
+        const cur = new Date(fromDate);
+        while (cur <= toDate) {
+          const key = cur.toISOString().slice(0, 10);
+          running += perDay.get(key) ?? 0;
+          points.push({
+            label: `${cur.getDate()}.${cur.getMonth() + 1}.`,
+            balance: running,
+          });
+          cur.setDate(cur.getDate() + 1);
+        }
+      } else if (granularity === "week") {
+        const cur = new Date(fromDate);
+        const dayOfWeek = cur.getDay() || 7;
+        cur.setDate(cur.getDate() - dayOfWeek + 1);
+        while (cur <= toDate) {
+          let weekSum = 0;
+          for (let i = 0; i < 7; i++) {
+            const d = new Date(cur);
+            d.setDate(d.getDate() + i);
+            weekSum += perDay.get(d.toISOString().slice(0, 10)) ?? 0;
+          }
+          running += weekSum;
+          points.push({
+            label: `${cur.getDate()}.${cur.getMonth() + 1}.`,
+            balance: running,
+          });
+          cur.setDate(cur.getDate() + 7);
+        }
+      } else {
+        const cur = new Date(fromDate.getFullYear(), fromDate.getMonth(), 1);
+        const labels = ["Led", "Úno", "Bře", "Dub", "Kvě", "Čvn", "Čvc", "Srp", "Zář", "Říj", "Lis", "Pro"];
+        while (cur <= toDate) {
+          const next = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+          let monthSum = 0;
+          for (const [key, val] of perDay.entries()) {
+            const d = new Date(key);
+            if (d >= cur && d < next) monthSum += val;
+          }
+          running += monthSum;
+          points.push({ label: labels[cur.getMonth()], balance: running });
+          cur.setMonth(cur.getMonth() + 1);
+        }
+      }
+      return { account: acc, points };
+    });
+  }, [accountEntities, selectedAccountIds, uiTxs, range]);
+
+  /**
+   * V37 — Pro vybranou kategorii: 12 měsíců trend výdajů.
+   */
+  const categoryMonthlyTrend = useMemo(() => {
+    if (!trendCategoryId) return [];
+    const labels = ["Led", "Úno", "Bře", "Dub", "Kvě", "Čvn", "Čvc", "Srp", "Zář", "Říj", "Lis", "Pro"];
+    const now = new Date();
+    const result: { yearMonth: string; label: string; amount: number }[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const nextMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1);
+      const fromStr = monthStart.toISOString().slice(0, 10);
+      const toStr = nextMonth.toISOString().slice(0, 10);
+      const amount = uiTxs
+        .filter(
+          (tx) =>
+            tx.type === "EXPENSE" &&
+            tx.categorySyncId === trendCategoryId &&
+            (selectedAccountIds.size === 0 ||
+              (tx.accountSyncId && selectedAccountIds.has(tx.accountSyncId))) &&
+            tx.date >= fromStr &&
+            tx.date < toStr,
+        )
+        .reduce((s, tx) => s + tx.amount, 0);
+      result.push({
+        yearMonth: `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, "0")}`,
+        label: labels[monthStart.getMonth()],
+        amount,
+      });
+    }
+    return result;
+  }, [uiTxs, trendCategoryId, selectedAccountIds]);
+
+  /** Kategorie použité v expense txs (pro MoM picker dropdown). */
+  const expenseCategoryOptions = useMemo(() => {
+    const ids = new Set<string>();
+    uiTxs.forEach((tx) => {
+      if (tx.type === "EXPENSE" && tx.categorySyncId) ids.add(tx.categorySyncId);
+    });
+    return Array.from(ids)
+      .map((id) => ({ id, data: catMap.get(id) }))
+      .filter((c): c is { id: string; data: ServerCategory } => !!c.data)
+      .sort((a, b) => a.data.name.localeCompare(b.data.name));
+  }, [uiTxs, catMap]);
+
+  // Kategorie pro donut — respektuje donutMode (Výdaje ↔ Příjmy).
   const categoryStats = useMemo(() => {
     const sums = new Map<string, number>();
     for (const tx of inPeriod) {
-      if (tx.type !== "EXPENSE") continue;
+      if (tx.type !== donutMode) continue;
       const cid = tx.categorySyncId ?? "__uncategorized__";
       sums.set(cid, (sums.get(cid) ?? 0) + tx.amount);
     }
@@ -366,7 +563,7 @@ export default function StatisticsPage() {
       }))
       .sort((a, b) => b.amount - a.amount);
     return arr;
-  }, [inPeriod, catMap]);
+  }, [inPeriod, catMap, donutMode]);
 
   const visibleCategoryStats = categoryStats.filter((c) => !hiddenCategories.has(c.cid));
   const totalVisibleExpense = visibleCategoryStats.reduce((s, c) => s + c.amount, 0);
@@ -469,6 +666,45 @@ export default function StatisticsPage() {
         />
       </div>
 
+      {/* Forecast — projekce do konce období (V37).
+          Zobrazí se jen pokud období běží (neskončilo v minulosti). */}
+      {forecast && (
+        <section className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+          <div className="flex items-baseline justify-between mb-2">
+            <h3 className="text-xs font-medium text-amber-700 uppercase tracking-wide">
+              Projekce do konce období
+            </h3>
+            <span className="text-xs text-amber-700">
+              {Math.round(forecast.periodProgress * 100)} % uplynulo
+            </span>
+          </div>
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <div className="text-xs text-amber-700">Zatím utraceno</div>
+              <div className="text-lg font-semibold tabular-nums text-ink-900">
+                {fmt(forecast.spentSoFar, "CZK", locale)}
+              </div>
+            </div>
+            <div className="text-2xl text-amber-600">→</div>
+            <div className="text-right">
+              <div className="text-xs text-amber-700">Při tomto tempu</div>
+              <div className="text-lg font-bold tabular-nums text-orange-700">
+                {fmt(forecast.projected, "CZK", locale)}
+              </div>
+            </div>
+          </div>
+          <div className="h-1 bg-amber-200 rounded-full mt-3 overflow-hidden">
+            <div
+              className="h-full bg-amber-500 rounded-full"
+              style={{ width: `${forecast.periodProgress * 100}%` }}
+            />
+          </div>
+          <div className="text-xs text-amber-700 mt-2 tabular-nums">
+            Průměr: {fmt(forecast.avgPerDay, "CZK", locale)}/den
+          </div>
+        </section>
+      )}
+
       {/* Insight chips: savings rate + period-over-period comparison.
           Sjednocené s mobile StatisticsScreen (V35). */}
       <div className="flex flex-wrap gap-3">
@@ -500,7 +736,36 @@ export default function StatisticsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Donut + legend */}
         <section className="bg-white rounded-2xl border border-ink-200 p-5">
-          <h2 className="font-semibold text-ink-900 mb-4">{t("expenses_by_category")}</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-ink-900">
+              {donutMode === "INCOME" ? "Příjmy podle kategorií" : t("expenses_by_category")}
+            </h2>
+            {/* V37: toggle Výdaje ↔ Příjmy */}
+            <div className="inline-flex rounded-lg bg-ink-100 p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => setDonutMode("EXPENSE")}
+                className={`px-3 py-1 rounded ${
+                  donutMode === "EXPENSE"
+                    ? "bg-white text-ink-900 shadow-sm"
+                    : "text-ink-600 hover:text-ink-800"
+                }`}
+              >
+                Výdaje
+              </button>
+              <button
+                type="button"
+                onClick={() => setDonutMode("INCOME")}
+                className={`px-3 py-1 rounded ${
+                  donutMode === "INCOME"
+                    ? "bg-white text-emerald-700 shadow-sm"
+                    : "text-ink-600 hover:text-ink-800"
+                }`}
+              >
+                Příjmy
+              </button>
+            </div>
+          </div>
           {visibleCategoryStats.length === 0 ? (
             <div className="py-12 text-center text-ink-500 text-sm">
               {t("no_expenses_in_period")}
@@ -797,6 +1062,101 @@ export default function StatisticsPage() {
         </section>
       )}
 
+      {/* Heatmap weekday × hour (V37). Při Cointrack syncu má tx jen
+          datum (bez času) → zobrazí se jen sloupec 0:00. Pro mobile
+          Fio import s časem se ukáže celá heatmapa. */}
+      {heatmapData.maxAmount > 0 && (
+        <section className="bg-white rounded-2xl border border-ink-200 p-5">
+          <h2 className="font-semibold text-ink-900 mb-4">Kdy nejvíc utrácíš</h2>
+          <HeatmapGrid grid={heatmapData.grid} maxAmount={heatmapData.maxAmount} />
+          <p className="text-[11px] text-ink-500 mt-2">
+            Sytější červená = více výdajů v daném slotu
+          </p>
+        </section>
+      )}
+
+      {/* Account balance trajectories (V37) — sparkline per účet. */}
+      {accountTrajectories.length > 0 && (
+        <section className="bg-white rounded-2xl border border-ink-200 p-5">
+          <h2 className="font-semibold text-ink-900 mb-4">Vývoj zůstatku účtů</h2>
+          <div className="space-y-4">
+            {accountTrajectories.map((traj) => {
+              if (traj.points.length < 2) return null;
+              const first = traj.points[0].balance;
+              const last = traj.points[traj.points.length - 1].balance;
+              const minBal = Math.min(...traj.points.map((p) => p.balance));
+              const maxBal = Math.max(...traj.points.map((p) => p.balance));
+              const range = maxBal - minBal || 1;
+              const W = 200;
+              const H = 40;
+              const stepX = W / (traj.points.length - 1);
+              const path = traj.points
+                .map((p, i) => `${i === 0 ? "M" : "L"} ${i * stepX} ${((maxBal - p.balance) / range) * H}`)
+                .join(" ");
+              const accColor = colorFromInt((traj.account.data as unknown as { color?: number }).color ?? undefined);
+              return (
+                <div key={traj.account.syncId} className="space-y-1">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-sm font-medium text-ink-900 truncate">
+                      {traj.account.data.name}
+                    </span>
+                    <span
+                      className={`text-sm font-bold tabular-nums ${
+                        last >= first ? "text-emerald-700" : "text-red-700"
+                      }`}
+                    >
+                      {fmt(last, traj.account.data.currency, locale)}
+                    </span>
+                  </div>
+                  <svg
+                    viewBox={`0 0 ${W} ${H}`}
+                    className="w-full h-8"
+                    preserveAspectRatio="none"
+                  >
+                    <path
+                      d={path}
+                      stroke={accColor}
+                      strokeWidth="2"
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Category month-over-month line (V37). */}
+      {expenseCategoryOptions.length > 0 && (
+        <section className="bg-white rounded-2xl border border-ink-200 p-5">
+          <h2 className="font-semibold text-ink-900 mb-3">
+            Trend kategorie (12 měsíců)
+          </h2>
+          <select
+            value={trendCategoryId ?? ""}
+            onChange={(e) => setTrendCategoryId(e.target.value || null)}
+            className="h-9 w-full rounded-lg border border-ink-300 bg-white px-3 text-sm text-ink-700 mb-3"
+          >
+            <option value="">Vyber kategorii…</option>
+            {expenseCategoryOptions.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.data.name}
+              </option>
+            ))}
+          </select>
+          {trendCategoryId && categoryMonthlyTrend.length > 0 && (
+            <CategoryMomLineChart
+              trend={categoryMonthlyTrend}
+              color={colorFromInt(catMap.get(trendCategoryId)?.color ?? undefined)}
+              locale={locale}
+            />
+          )}
+        </section>
+      )}
+
       {/* Top merchanti — kde nejvíc utrácíš.
           V35: sjednoceno s mobile StatisticsScreen.topMerchants. */}
       {topMerchants.length > 0 && (
@@ -833,6 +1193,119 @@ export default function StatisticsPage() {
           </div>
         </section>
       )}
+    </div>
+  );
+}
+
+function HeatmapGrid({
+  grid,
+  maxAmount,
+}: {
+  grid: Map<string, number>;
+  maxAmount: number;
+}) {
+  const days = ["Po", "Út", "St", "Čt", "Pá", "So", "Ne"];
+  return (
+    <div className="space-y-0.5">
+      {/* Header — hour labels every 6h */}
+      <div className="flex pl-6">
+        {Array.from({ length: 24 }, (_, h) => (
+          <div
+            key={h}
+            className="flex-1 text-center text-[8px] text-ink-400"
+            style={{ minWidth: 0 }}
+          >
+            {h % 6 === 0 ? h : ""}
+          </div>
+        ))}
+      </div>
+      {days.map((dayLabel, idx) => {
+        const weekday = idx + 1;
+        return (
+          <div key={dayLabel} className="flex items-center gap-1">
+            <div className="w-5 text-[9px] text-ink-500 shrink-0">{dayLabel}</div>
+            {Array.from({ length: 24 }, (_, h) => {
+              const amount = grid.get(`${weekday}-${h}`) ?? 0;
+              const intensity = Math.min(1, amount / maxAmount);
+              const bg =
+                intensity === 0
+                  ? "rgba(203, 213, 225, 0.3)"
+                  : `rgba(239, 68, 68, ${0.2 + intensity * 0.8})`;
+              return (
+                <div
+                  key={h}
+                  className="flex-1 h-4 rounded-sm"
+                  style={{ backgroundColor: bg, minWidth: 0 }}
+                  title={amount > 0 ? `${dayLabel} ${h}:00 — ${amount.toFixed(0)}` : undefined}
+                />
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function CategoryMomLineChart({
+  trend,
+  color,
+  locale,
+}: {
+  trend: { yearMonth: string; label: string; amount: number }[];
+  color: string;
+  locale: string;
+}) {
+  if (trend.length < 2) return null;
+  const maxAmount = Math.max(...trend.map((t) => t.amount), 1);
+  const W = 600;
+  const H = 120;
+  const stepX = W / (trend.length - 1);
+  const yFor = (v: number) => ((maxAmount - v) / maxAmount) * H;
+  const linePath = trend
+    .map((m, i) => `${i === 0 ? "M" : "L"} ${i * stepX} ${yFor(m.amount)}`)
+    .join(" ");
+  const fillPath =
+    `M 0 ${H} ` +
+    trend.map((m, i) => `L ${i * stepX} ${yFor(m.amount)}`).join(" ") +
+    ` L ${(trend.length - 1) * stepX} ${H} Z`;
+  return (
+    <div>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        className="w-full h-32"
+      >
+        <path d={fillPath} fill={color} fillOpacity="0.15" />
+        <path
+          d={linePath}
+          stroke={color}
+          strokeWidth="2"
+          fill="none"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {trend.map((m, i) => (
+          <circle
+            key={m.yearMonth}
+            cx={i * stepX}
+            cy={yFor(m.amount)}
+            r="3"
+            fill={color}
+          >
+            <title>
+              {m.label} {m.yearMonth.slice(0, 4)}: {fmt(m.amount, "CZK", locale)}
+            </title>
+          </circle>
+        ))}
+      </svg>
+      <div className="flex text-[9px] text-ink-500 mt-1">
+        {trend.map((m, i) => (
+          <div key={m.yearMonth} className="flex-1 text-center">
+            {i % 2 === 0 ? m.label : ""}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
